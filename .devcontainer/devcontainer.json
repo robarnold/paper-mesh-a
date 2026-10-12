@@ -1,0 +1,22 @@
+{
+  "name": "paper-mesh-a",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "remoteUser": "vscode",
+  "containerUser": "vscode",
+  "userEnvProbe": "none",
+  "postCreateCommand": "sudo chown -R vscode:vscode /usr/local/cargo /usr/local/rustup /opt/esp",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "nefrob.vscode-just-syntax"
+      ],
+      "settings": {
+        "editor.formatOnSave": true
+      }
+    }
+  }
+}
