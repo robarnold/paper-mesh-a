@@ -1,0 +1,201 @@
+{
+  "repository": "https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO",
+  "branch": "H752-01",
+  "commit": "938d6189db0fde9a12558629bc1405bb49e1be78",
+  "retrieved_on": "2026-10-12",
+  "scope": "Documentation, current schematics and datasheets, mechanical drawings, and board definition; historical schematics, firmware, examples, and libraries are excluded.",
+  "files": [
+    {
+      "path": "upstream/DXF/H752-Board size.dxf",
+      "upstream_path": "DXF/H752-Board size.dxf",
+      "source_url": "https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/DXF/H752-Board%20size.dxf",
+      "git_blob_sha1": "905e28927d203e3683d4d0862454e04a7ec3c243",
+      "sha256": "4b97fdb744f519e3ce578e7c6f01dffd58e28bb10024e6c04f59a78b54dff56e",
+      "bytes": 449414
+    },
+    {
+      "path": "upstream/DXF/H752-Shell size.dwg",
+      "upstream_path": "DXF/H752-Shell size.dwg",
+      "source_url": "https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/DXF/H752-Shell%20size.dwg",
+      "git_blob_sha1": "bc7188db9a8340a8af38e7b578b2abd38944886e",
+      "sha256": "404d444b24aca06bf8338562b66d4ee0d2cc4870a914bfdaeaa158e02e5a00f1",
+      "bytes": 174208
+    },
+    {
+      "path": "upstream/DXF/H752.dxf",
+      "upstream_path": "DXF/H752.dxf",
+      "source_url": "https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/DXF/H752.dxf",
+      "git_blob_sha1": "707b73c9abb68470db1b7b44a681416c999c600f",
+      "sha256": "e66bdf08407e1a6c4f645718ce0dec3e94d5f518980b7d192323695d0a0a7aa9",
+      "bytes": 537054
+    },
+    {
+      "path": "upstream/README.md",
+      "upstream_path": "README.md",
+      "source_url": "https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/README.md",
+      "git_blob_sha1": "b29b2fc03c7032c87375fac3f5aa2b0994600c85",
+      "sha256": "bdb9247e416ad0f65faf82b27d6bede3c809234f51d2f35e3def64f717f45273",
+      "bytes": 10801
+    },
+    {
+      "path": "upstream/README_CN.md",
+      "upstream_path": "README_CN.md",
+      "source_url": "https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/README_CN.md",
+      "git_blob_sha1": "6344be8eebe5a9432f7e77cef0d71332975dbcfe",
+      "sha256": "d93e6dd42c272d54a905808403e5f91b45f5e1e62d88625da23cd0b51a9e4e70",
+      "bytes": 7374
+    },
+    {
+      "path": "upstream/boards/T5-ePaper-S3.json",
+      "upstream_path": "boards/T5-ePaper-S3.json",
+      "source_url": "https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/boards/T5-ePaper-S3.json",
+      "git_blob_sha1": "2c677fdef694bcb1d7ba1dfcc9689a9844a5b18c",
+      "sha256": "b0e1a9d86051b716315b0bd66a08fde48c57c5d1499dec4d35b46741e35d3e29",
+      "bytes": 971
+    },
+    {
+      "path": "upstream/docs/README_img/T5_S3_反面.png",
+      "upstream_path": "docs/README_img/T5_S3_反面.png",
+      "source_url": "https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/docs/README_img/T5_S3_%E5%8F%8D%E9%9D%A2.png",
+      "git_blob_sha1": "d4e39508c6f9eaa230f2c0828b23cb0210d47622",
+      "sha256": "c02e67733c872dc43e23daf09e63b3acdda0344b4be76e8d4ad5482c609a4110",
+      "bytes": 1648168
+    },
+    {
+      "path": "upstream/docs/README_img/T5_S3_正面.png",
+      "upstream_path": "docs/README_img/T5_S3_正面.png",
+      "source_url": "https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/docs/README_img/T5_S3_%E6%AD%A3%E9%9D%A2.png",
+      "git_blob_sha1": "8a98c45f48d07624512b302af7b6936fc7c49d08",
+      "sha256": "9f74dee1491220feb6f2e5ed10ebe4ee1020c4983eaccff7ee305de6757624c0",
+      "bytes": 1165344
+    },
+    {
+      "path": "upstream/docs/README_img/image-2.png",
+      "upstream_path": "docs/README_img/image-2.png",
+      "source_url": "https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/docs/README_img/image-2.png",
+      "git_blob_sha1": "7c9318138237a73b44277ec1a76078553c934f91",
+      "sha256": "2240398a55d8837bcb52b54b5ff215b613a217b5c29a82cd09ec06dc3dbc4c8c",
+      "bytes": 588313
+    },
+    {
+      "path": "upstream/docs/README_img/lilygo_spark.png",
+      "upstream_path": "docs/README_img/lilygo_spark.png",
+      "source_url": "https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/docs/README_img/lilygo_spark.png",
+      "git_blob_sha1": "169735888d5574d61dacacea67f71cb9bcb40bf0",
+      "sha256": "97d625a59f9935ba6bf91caa1f771395bd1dd6916cdacd4fc887fdb08c63f66f",
+      "bytes": 263131
+    },
+    {
+      "path": "upstream/docs/flash_download_tool/flash_download_tool.md",
+      "upstream_path": "docs/flash_download_tool/flash_download_tool.md",
+      "source_url": "https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/docs/flash_download_tool/flash_download_tool.md",
+      "git_blob_sha1": "2da7c3ac30ae1dcb6ea53979f3eb70aef9f839d7",
+      "sha256": "fadcc202427366d8cac5e29dfec766cfa9318aed791191dbeef72bac6b3a9aad",
+      "bytes": 743
+    },
+    {
+      "path": "upstream/docs/flash_download_tool/image-1.png",
+      "upstream_path": "docs/flash_download_tool/image-1.png",
+      "source_url": "https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/docs/flash_download_tool/image-1.png",
+      "git_blob_sha1": "f2a090e03de0dba48c312ba4d9bfce03fcae09e6",
+      "sha256": "b94208fb7430a37418e545b58b15ee29a9934c7c05143ea6697af6b743efc0f7",
+      "bytes": 5712
+    },
+    {
+      "path": "upstream/docs/flash_download_tool/image-2.png",
+      "upstream_path": "docs/flash_download_tool/image-2.png",
+      "source_url": "https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/docs/flash_download_tool/image-2.png",
+      "git_blob_sha1": "2421a39b354a04b90f6c75489c86ab604e48cb34",
+      "sha256": "918081a8c0228ab06b776c0ce16098626f80a7e62e41abd8204d640b7b8e50d4",
+      "bytes": 58950
+    },
+    {
+      "path": "upstream/docs/flash_download_tool/image.png",
+      "upstream_path": "docs/flash_download_tool/image.png",
+      "source_url": "https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/docs/flash_download_tool/image.png",
+      "git_blob_sha1": "6863910a4ceffcde2a9469d74acd10e279cb76be",
+      "sha256": "8aa5d9aa03ff318c3667e550e3f27daed995b2d4552b2702313d64fbe4604ec8",
+      "bytes": 55529
+    },
+    {
+      "path": "upstream/docs/pin_define.md",
+      "upstream_path": "docs/pin_define.md",
+      "source_url": "https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/docs/pin_define.md",
+      "git_blob_sha1": "6b0651ba2ccc68ed9f17a4921409151d96307ac5",
+      "sha256": "1d0423ea3b58efbbe05185f9bd262832bb3108767b9bb7b55139ec33f1aef723",
+      "bytes": 2217
+    },
+    {
+      "path": "upstream/docs/pinmap.md",
+      "upstream_path": "docs/pinmap.md",
+      "source_url": "https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/docs/pinmap.md",
+      "git_blob_sha1": "673fdc5fe621ce4a4f2c661c2c18078d330c32aa",
+      "sha256": "9b2bd05c0e8174e36192635878b3bbf613e1cd166225fce15e00f815035beab6",
+      "bytes": 9546
+    },
+    {
+      "path": "upstream/docs/pinmap_cn.md",
+      "upstream_path": "docs/pinmap_cn.md",
+      "source_url": "https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/docs/pinmap_cn.md",
+      "git_blob_sha1": "367cbc96f0da14e63b0ee2156af5a756bce973a9",
+      "sha256": "d7fd3451c5eb3a58ddb998f94bdbe053ae6ce951b3657aa531c2c7c1c6d5003c",
+      "bytes": 9169
+    },
+    {
+      "path": "upstream/hardware/ED047TC1.pdf",
+      "upstream_path": "hardware/ED047TC1.pdf",
+      "source_url": "https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/hardware/ED047TC1.pdf",
+      "git_blob_sha1": "02ff545160bb5bb43a316cad5e14610076a31af2",
+      "sha256": "c8c3d8be57e8ff3d798739f38458b07a386286293d465f95ede462c1069b5c37",
+      "bytes": 1182427
+    },
+    {
+      "path": "upstream/hardware/LoRa-Top V1.0 24-04-20.pdf",
+      "upstream_path": "hardware/LoRa-Top V1.0 24-04-20.pdf",
+      "source_url": "https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/hardware/LoRa-Top%20V1.0%2024-04-20.pdf",
+      "git_blob_sha1": "8a33b56ef65c4cdc1a55d88651b9a7a050f640b9",
+      "sha256": "1bb3353581c93327739be7fa3a5cda00c4048d0ca9f44b79857ab05d96cc3ca9",
+      "bytes": 256546
+    },
+    {
+      "path": "upstream/hardware/MIA-M10Q_DataSheet_UBX-22015849.pdf",
+      "upstream_path": "hardware/MIA-M10Q_DataSheet_UBX-22015849.pdf",
+      "source_url": "https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/hardware/MIA-M10Q_DataSheet_UBX-22015849.pdf",
+      "git_blob_sha1": "5b88b4aa6f9abdbfe7d4abff3031226b03a104b2",
+      "sha256": "c49bf070fda78bd84c035905eb80dfbcf4002207916e05a90161844a0a069516",
+      "bytes": 1669963
+    },
+    {
+      "path": "upstream/hardware/Quectel_L76K_GNSS_Protocol_Specification_V1.1.pdf",
+      "upstream_path": "hardware/Quectel_L76K_GNSS_Protocol_Specification_V1.1.pdf",
+      "source_url": "https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/hardware/Quectel_L76K_GNSS_Protocol_Specification_V1.1.pdf",
+      "git_blob_sha1": "8a8bbdab02c14089d969339158b9d97023eeaf3d",
+      "sha256": "ccb6b255ec66223663e92e9a2fbb4241ea5c52a49fa26863322ced308a68af25",
+      "bytes": 303193
+    },
+    {
+      "path": "upstream/hardware/T5 E-paper S3 Pro V1.0 24-12-24.pdf",
+      "upstream_path": "hardware/T5 E-paper S3 Pro V1.0 24-12-24.pdf",
+      "source_url": "https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/hardware/T5%20E-paper%20S3%20Pro%20V1.0%2024-12-24.pdf",
+      "git_blob_sha1": "ffffd6301ddf0b31f6944336c050279f90e3b73d",
+      "sha256": "0a23ed650b918c5f33e427c3b37ed552849d9285308e16c9341150e7d450e317",
+      "bytes": 834876
+    },
+    {
+      "path": "upstream/hardware/pca9535.pdf",
+      "upstream_path": "hardware/pca9535.pdf",
+      "source_url": "https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/hardware/pca9535.pdf",
+      "git_blob_sha1": "e07487b4a20257266a912cd51dc80b55438c3143",
+      "sha256": "2b94bba74398296afb7498e59b44e49ec24052c2a0d8b84ea210436445fb7a70",
+      "bytes": 3465689
+    },
+    {
+      "path": "upstream/hardware/tps65185.pdf",
+      "upstream_path": "hardware/tps65185.pdf",
+      "source_url": "https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/hardware/tps65185.pdf",
+      "git_blob_sha1": "8335a56d71787635eea1a6bd5e22273b1551a21a",
+      "sha256": "eb8c801600ae7069d5bb793761deb74c523cfd38f0cf3325a99f28942df4466b",
+      "bytes": 4233951
+    }
+  ]
+}
