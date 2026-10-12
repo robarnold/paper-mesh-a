@@ -18,7 +18,8 @@ Do not fall back to running checks on the host.
 Run `just ci` inside the container before committing. Do not use semantic commit
 messages. Do not flash a connected device unless the user requests it.
 
-This repository starts with development infrastructure only. The intended device
-is the LILYGO T5 S3 E-Paper Pro with LoRa. The planned firmware uses Rust and a
-custom display/touch interface, with explicit power and multicore control.
+The intended device is the LILYGO T5 S3 E-Paper Pro with LoRa. The firmware in
+`firmware/` uses Rust, esp-hal, and Embassy on esp-rtos. Run Cargo from that
+directory so it loads the target configuration and the `esp` toolchain.
+Custom display/touch handling, power management, and multicore control are planned.
 ESPHome and an ESP-IDF application runtime are not part of the chosen design.

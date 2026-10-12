@@ -1,0 +1,37 @@
+[package]
+name = "paper-mesh-firmware"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+publish = false
+
+[[bin]]
+name = "paper-mesh-firmware"
+path = "src/main.rs"
+test = false
+bench = false
+
+[dependencies]
+embassy-executor = { version = "0.10.0", features = ["log"] }
+embassy-time = { version = "0.5.1", features = ["log"] }
+esp-backtrace = { version = "0.20.0", default-features = false, features = ["esp32s3", "panic-handler", "println"] }
+esp-bootloader-esp-idf = { version = "0.6.0", features = ["esp32s3", "log-04"] }
+# esp-rtos uses unstable HAL APIs; stay on the compatible HAL minor release.
+esp-hal = { version = "~1.2.2", features = ["esp32s3", "log-04", "unstable"] }
+# UART0 is wired to the GPS. Never fall back to UART logging on this board.
+esp-println = { version = "0.18.0", default-features = false, features = ["esp32s3", "jtag-serial", "log-04", "critical-section"] }
+esp-rtos = { version = "0.4.0", features = ["esp32s3", "embassy", "log-04"] }
+log = "0.4.29"
+
+[profile.dev]
+opt-level = "s"
+
+[profile.release]
+codegen-units = 1
+debug = 2
+lto = "fat"
+opt-level = "s"
+
+[lints.clippy]
+mem_forget = "deny"
+large_stack_frames = "deny"
