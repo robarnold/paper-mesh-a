@@ -4,13 +4,14 @@ default:
     @just --list
 
 # Run the same checks locally and on GitHub-hosted runners.
-ci: lint toolchain-check firmware-check image
+ci: lint toolchain-check native-check firmware-check image simulator-snapshot
 
 lint:
     bash scripts/require-container.sh
     shellcheck -x scripts/*.sh
     python3 -m json.tool .devcontainer/devcontainer.json > /dev/null
     actionlint
+    cargo fmt --all --check
     cd firmware && cargo fmt --check
     git diff --check
     git diff --cached --check
@@ -18,6 +19,21 @@ lint:
 # Check the installed tooling; firmware-build exercises the real linker.
 toolchain-check:
     bash scripts/check-toolchain.sh
+
+native-check:
+    bash scripts/require-container.sh
+    cargo clippy --locked --workspace --all-targets -- -D warnings
+    cargo test --locked --workspace
+
+# Rust runs in the container; the browser only displays frames and sends input.
+sim:
+    bash scripts/require-container.sh
+    cargo run --locked -p paper-mesh-simulator
+
+simulator-snapshot:
+    bash scripts/require-container.sh
+    cargo run --locked -p paper-mesh-simulator -- --snapshot target/simulator/hello.png
+    cargo run --locked -p paper-mesh-simulator -- --snapshot-native target/simulator/native.png
 
 # Cargo must run here to load firmware/.cargo/config.toml and the esp toolchain.
 firmware-check:
@@ -34,4 +50,5 @@ image: firmware-build
 
 fmt:
     bash scripts/require-container.sh
+    cargo fmt --all
     cd firmware && cargo fmt

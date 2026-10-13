@@ -12,6 +12,7 @@ test = false
 bench = false
 
 [dependencies]
+paper-mesh-app = { path = "../crates/app" }
 embassy-executor = { version = "0.10.0", features = ["log"] }
 embassy-time = { version = "0.5.1", features = ["log"] }
 esp-backtrace = { version = "0.20.0", default-features = false, features = ["esp32s3", "panic-handler", "println"] }

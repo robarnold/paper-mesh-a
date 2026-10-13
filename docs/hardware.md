@@ -4,6 +4,11 @@ The initial target is the **H752-01 full Pro with LoRa**, not the older H752 or
 the Lite model. This profile comes from LILYGO's repository at commit
 [`938d6189db0fde9a12558629bc1405bb49e1be78`](https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/tree/938d6189db0fde9a12558629bc1405bb49e1be78).
 Confirm the revision and fitted components when the device arrives.
+The [hardware reference index](vendor/lilygo/t5-s3-pro/README.md) links to the
+vendor's schematics, datasheets, pin maps, and mechanical drawings.
+Panel scan geometry, waveform/driver limitations, and the evidence needed for
+application performance budgets are documented in
+[display-constraints.md](display-constraints.md).
 
 ## Build profile
 

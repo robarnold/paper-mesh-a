@@ -1,0 +1,5 @@
+[workspace]
+members = ["crates/app", "simulator"]
+# Keep the Xtensa toolchain, target settings, and dependency features isolated.
+exclude = ["firmware"]
+resolver = "3"

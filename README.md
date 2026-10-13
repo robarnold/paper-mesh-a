@@ -5,10 +5,18 @@ Rust firmware for the LILYGO T5 S3 E-Paper Pro with LoRa. The bootstrap uses
 core 0 at 80 MHz, starts the async timer, and logs a boot message followed by a
 heartbeat every 30 seconds over USB Serial/JTAG.
 
-Display, touch, PSRAM allocation, power management, second-core tasks, radio
+Hardware display/touch drivers, PSRAM allocation, power management, second-core tasks, radio
 protocol integration, and OTA are still to come. The board profile and bring-up
 notes are in [docs/hardware.md](docs/hardware.md). Hardware operation has not yet
 been tested.
+
+A native Rust simulator runs the shared application with a grayscale display,
+touch input, and a controllable clock. It runs inside the devcontainer and serves
+its screen at [localhost:8080](http://localhost:8080).
+The shared contracts and implementation boundaries are documented in
+[the application architecture](docs/architecture.md).
+See [e-paper constraints](docs/display-constraints.md) for the panel/driver limits
+that guide component design and the measurements still needed on hardware.
 
 ## Development
 
@@ -24,8 +32,8 @@ The image contains a pinned host Rust compiler, the Espressif Xtensa Rust
 toolchain registered as `esp`, `espup`, `esp-generate`, `espflash`, and `just`.
 Version pins live in `.devcontainer/Dockerfile`. `firmware/rust-toolchain.toml`
 selects the installed `esp` toolchain; `firmware/Cargo.lock` locks dependencies.
-The default host-target compiler remains available inside the container for
-future host tools and tests.
+The default host-target compiler builds the simulator and shared application
+tests inside the container. Their dependencies are locked by the root `Cargo.lock`.
 
 Tool installation happens when building the image. Rustup, Cargo, and Espressif
 files stay inside the container filesystem; the host home directory is not
@@ -36,6 +44,38 @@ No host shell startup changes or manual sourcing are needed.
 Dev Containers may adjust the container user's numeric ID to match the host or
 GitHub runner. The creation hook updates ownership of the container's tool
 directories so Cargo and Rustup remain writable after that adjustment.
+
+## Simulator
+
+```sh
+devcontainer exec --workspace-folder . just sim
+```
+
+Open [localhost:8080](http://localhost:8080). Click the on-screen button, or focus
+the display and press Enter. Pause and advance virtual time to inspect refreshes
+and heartbeats. Stop the server with Ctrl+C. Port 8080 is published only on the
+host's loopback interface. If an existing container predates this port setting,
+recreate it with `devcontainer up --workspace-folder . --remove-existing-container`.
+
+The browser only transports input and displays PNG frames. Application behavior,
+hit testing, rendering, and simulated hardware run in Rust inside the container.
+The simulator is an application environment; it does not execute Xtensa/ULP
+instructions or emulate ESP registers. Firmware currently connects only the
+shared application's clock; its physical display and touch remain uninitialized.
+
+```sh
+# Native Clippy and deterministic application/device scenarios.
+devcontainer exec --workspace-folder . just native-check
+
+# Render a screenshot without starting a web server or opening a display.
+devcontainer exec --workspace-folder . just simulator-snapshot
+```
+
+Snapshots are saved to `target/simulator/hello.png` (portrait view) and
+`target/simulator/native.png` (native framebuffer). While the simulator runs,
+[/frame-native.png](http://localhost:8080/frame-native.png) exposes that native
+image directly. See [the application architecture](docs/architecture.md) for
+the shared contracts and [the simulator guide](docs/simulator.md) for its API.
 
 ## Firmware commands
 
@@ -95,10 +135,10 @@ not configure hardware memory protection on the ESP32-S3.
 GitHub Actions uses the GitHub-hosted `ubuntu-24.04` runner to build this same
 devcontainer and execute `just ci`. The runner itself does not install or invoke
 the Rust/ESP toolchain. `just ci` checks infrastructure syntax, Rust formatting,
-and Clippy, then links release firmware and packages its boot image. This replaces
-the earlier toolchain-only smoke test with a complete firmware build. GitHub
-uploads the image, ELF, and checksums as a workflow artifact retained for 14 days.
-These checks verify the build and packaging, not execution on hardware.
+and Clippy for both targets, runs native simulation scenarios, links release
+firmware, packages its boot image, and renders a simulator screenshot. GitHub
+uploads the firmware image, ELF, and checksums plus a separate simulator screenshot
+artifact, retained for 14 days. These checks do not verify execution on hardware.
 
 CI does not require a project image registry or publish images. The first image
 build downloads and compiles the development tools; local rebuilds reuse Docker

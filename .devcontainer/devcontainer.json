@@ -7,6 +7,7 @@
   "remoteUser": "vscode",
   "containerUser": "vscode",
   "userEnvProbe": "none",
+  "appPort": ["127.0.0.1:8080:8080"],
   "postCreateCommand": "sudo chown -R vscode:vscode /usr/local/cargo /usr/local/rustup /opt/esp",
   "customizations": {
     "vscode": {
@@ -16,7 +17,7 @@
       ],
       "settings": {
         "editor.formatOnSave": true,
-        "rust-analyzer.linkedProjects": ["firmware/Cargo.toml"],
+        "rust-analyzer.linkedProjects": ["Cargo.toml", "firmware/Cargo.toml"],
         "rust-analyzer.check.allTargets": false
       }
     }
