@@ -196,6 +196,70 @@
       "sha256": "eb8c801600ae7069d5bb793761deb74c523cfd38f0cf3325a99f28942df4466b",
       "bytes": 4233951,
       "download_url": "https://raw.githubusercontent.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/938d6189db0fde9a12558629bc1405bb49e1be78/hardware/tps65185.pdf"
+    },
+    {
+      "upstream_path": "examples/factory/main/main.cpp",
+      "source_url": "https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/examples/factory/main/main.cpp",
+      "git_blob_sha1": "f0f49a003c3a2ed573ac4136c71feaf33e3ae736",
+      "sha256": "fd24ae26a7b0d9564ad80850733ba2be52ef80e9f497dd4ec5fb103f8f945e5a",
+      "bytes": 19453,
+      "download_url": "https://raw.githubusercontent.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/938d6189db0fde9a12558629bc1405bb49e1be78/examples/factory/main/main.cpp"
+    },
+    {
+      "upstream_path": "examples/bq25896/main/main.ino",
+      "source_url": "https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/examples/bq25896/main/main.ino",
+      "git_blob_sha1": "f36c35913397d312fabc73d606457ab52e708000",
+      "sha256": "f8d7e86e31473eac1b7a0fe591655fa44d7482f719f9c45c2904b38d49254bdd",
+      "bytes": 1531,
+      "download_url": "https://raw.githubusercontent.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/938d6189db0fde9a12558629bc1405bb49e1be78/examples/bq25896/main/main.ino"
+    },
+    {
+      "upstream_path": "examples/bq27220/main/main.ino",
+      "source_url": "https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/examples/bq27220/main/main.ino",
+      "git_blob_sha1": "22b12bdbb4f78f92ec3cc60ae6a4c7a6111538f4",
+      "sha256": "f7ccd563113d1d9d1883bf297d2e8adb7188533c3963f21bb3993ca5b4f34568",
+      "bytes": 1015,
+      "download_url": "https://raw.githubusercontent.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/938d6189db0fde9a12558629bc1405bb49e1be78/examples/bq27220/main/main.ino"
+    },
+    {
+      "upstream_path": "examples/GPS/main/main.ino",
+      "source_url": "https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/examples/GPS/main/main.ino",
+      "git_blob_sha1": "dc16c954c8ebdbaab9906dc3c566cf1703847acc",
+      "sha256": "13da1ed825bf3d77f599215c2479e3e4e9a2adf8ae003593673070e5f32c50da",
+      "bytes": 9508,
+      "download_url": "https://raw.githubusercontent.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/938d6189db0fde9a12558629bc1405bb49e1be78/examples/GPS/main/main.ino"
+    },
+    {
+      "upstream_path": "examples/touch_gt6972p/README.md",
+      "source_url": "https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/examples/touch_gt6972p/README.md",
+      "git_blob_sha1": "81dd0b3cc62d2bcceab20c6e636677dbc8ab042b",
+      "sha256": "a5af2f7bbb183013a8843e76497e2492eafffbc8abb5ef6279b86c6a200b7c11",
+      "bytes": 898,
+      "download_url": "https://raw.githubusercontent.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/938d6189db0fde9a12558629bc1405bb49e1be78/examples/touch_gt6972p/README.md"
+    },
+    {
+      "upstream_path": "lib/SensorLib/src/TouchDrvGT911.hpp",
+      "source_url": "https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/lib/SensorLib/src/TouchDrvGT911.hpp",
+      "git_blob_sha1": "3dafad5e276b3d981ce0112bfe2120c0f50403cc",
+      "sha256": "8856c2ba785039dd4c88f407330fbddcba6d364cd8e3ff51e07c9f6f4066ade0",
+      "bytes": 18555,
+      "download_url": "https://raw.githubusercontent.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/938d6189db0fde9a12558629bc1405bb49e1be78/lib/SensorLib/src/TouchDrvGT911.hpp"
+    },
+    {
+      "upstream_path": "lib/SensorLib/src/REG/GT911Constants.h",
+      "source_url": "https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/lib/SensorLib/src/REG/GT911Constants.h",
+      "git_blob_sha1": "d8d527173aa286657d2c9355d3923dc39c47a172",
+      "sha256": "3bb10a9426c23088bd66afdc25315ad083630a1d43507f5f75b4a3d854f0e709",
+      "bytes": 7208,
+      "download_url": "https://raw.githubusercontent.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/938d6189db0fde9a12558629bc1405bb49e1be78/lib/SensorLib/src/REG/GT911Constants.h"
+    },
+    {
+      "upstream_path": "lib/SensorLib/src/TouchDrvInterface.cpp",
+      "source_url": "https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/lib/SensorLib/src/TouchDrvInterface.cpp",
+      "git_blob_sha1": "5e43a306c483188c276a97a58ddc12f41a59fa53",
+      "sha256": "c7fcfea878513709dc7b884784506afcfbf3ada6d0e4ff949e28cee7e3629ec3",
+      "bytes": 2530,
+      "download_url": "https://raw.githubusercontent.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/938d6189db0fde9a12558629bc1405bb49e1be78/lib/SensorLib/src/TouchDrvInterface.cpp"
     }
   ]
 }

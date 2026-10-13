@@ -31,12 +31,18 @@ Keep application behavior and rendering in the shared crate; simulator HTTP and
 wall-clock pacing belong in the native binary. Hardware drivers implement the
 application's platform interfaces using esp-hal/embedded-hal underneath.
 Keep `docs/architecture.md` current when changing shared application contracts.
-Rendering and touch use the shared portrait rotation; native display storage
+Keep those contracts and `docs/device-interfaces.md` independent of board SKUs.
+Board inventories, chip behavior, wiring, and conformance cases belong in
+`docs/boards/`; adapters translate them into capabilities, geometry, and logical
+controls. Do not introduce board/chip checks in shared application policy.
+The current demo uses the shared portrait rotation; native display storage
 stays 960 × 540 while the application sees 540 × 960.
 Run `just sim` in the devcontainer to serve the simulator on localhost:8080.
 
 Keep vendor documents external: link to pinned upstream sources instead of
 committing copies, extracted text, or document screenshots. The reference index
 is `docs/vendor/lilygo/t5-s3-pro/README.md`; download documents into the
-devcontainer's `/tmp` directory when needed. Record project findings in our own
-docs with links and page/section references to the original sources.
+devcontainer's `/tmp` directory when needed. Record project findings in the
+relevant backend profile with links and page/section references to the original
+sources. Keep general service and display requirements in the architecture and
+portable contract documents.

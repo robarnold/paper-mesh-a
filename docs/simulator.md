@@ -5,7 +5,7 @@ services. It is not an ESP32-S3 instruction or register emulator. The first
 screen is deliberately small: a touch counter and a 30-second heartbeat, sharing
 the same state machine and rendering code that the firmware can use.
 
-The application uses a 540 × 960 portrait coordinate space. The simulator's
+The current demo uses a 540 × 960 portrait coordinate space. The simulator's
 staging, pending, and visible framebuffers use native 960 × 540 row-major
 storage. Drawing and touch pass through the shared portrait rotation adapter.
 The browser displays a portrait view derived from the completed native frame.
@@ -40,6 +40,24 @@ Firmware currently exercises only `Clock` and the shared heartbeat state
 machine. There are no placeholder display/touch drivers claiming hardware
 success. The shared renderer is cross-compiled, but physical rendering awaits
 the actual panel driver, buffering, and power sequencing.
+
+## Scenario profiles and board conformance
+
+The simulator implements portable services. Its current geometry follows the
+first hardware target; this does not require every future scenario to imitate
+that board. Configurable profiles are planned, not implemented today.
+
+- Contract scenarios vary geometry, control inventory, optional services,
+  display capabilities, latency, and faults. They test that shared application
+  behavior depends on declared capabilities rather than a particular SKU.
+- Board conformance presets apply a physical backend's resource and lifecycle
+  constraints to those same contracts. The
+  [LILYGO conformance cases](boards/lilygo-t5-s3-pro.md#backend-conformance-scenarios)
+  cover its actual buttons, shared resources, wake limits, and power behavior.
+
+A synthetic sensor-present profile is valid for testing automatic orientation;
+it must not be labeled as matching a board that has no such sensor. Neither
+profile type proves electrical timing or physical driver correctness.
 
 ## Deterministic execution
 
@@ -89,3 +107,10 @@ Keep physical chip protocols in drivers beneath those services. The current
 simulator does not model radio propagation, battery current, sleep/ULP execution,
 core scheduling, panel waveforms, ghosting, temperature, or DMA timing. Its
 refresh delay is a test condition, not a measured hardware characteristic.
+
+The [device service design](device-interfaces.md#simulator-acceptance-scenarios)
+lists portable contract scenarios; board profiles add physical-control mappings.
+The current Reset UI action resets the test fixture; it does not model the
+hardware backend's reset/power controls or persistence across power transitions.
+GNSS, SD, battery/charging, frontlight, RTC, radio, and physical buttons do not
+have simulator implementations yet.

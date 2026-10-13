@@ -4,6 +4,10 @@ External documentation for the **H752-01 full Pro with LoRa and GPS**.
 Start with the board schematic and pin map below when implementing drivers.
 Vendor documents remain hosted upstream; this repository contains links and
 source metadata, not copies of the documents, images, or drawings.
+Our [LILYGO backend profile](../../../boards/lilygo-t5-s3-pro.md) accounts for
+every control and signal family and maps them to the
+[portable service contracts](../../../device-interfaces.md). These sources
+establish facts about this backend, not requirements for all application targets.
 
 | Reference | Upstream document |
 | --- | --- |
@@ -32,6 +36,30 @@ source metadata, not copies of the documents, images, or drawings.
 paths, Git blob IDs, byte counts, and SHA-256 digests. It also indexes the
 vendor's supplementary images and flashing guide. Availability depends on the
 upstream host; pinning identifies the reviewed version but does not preserve it.
+
+The inventory also uses pinned implementation references indexed in the manifest:
+
+| Evidence | Reference |
+| --- | --- |
+| Capacitive Home-key setup | [Factory initialization](https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/examples/factory/main/main.cpp#L328-L351) |
+| Home callback event semantics | [GT911 driver](https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/lib/SensorLib/src/TouchDrvGT911.hpp#L203-L213) |
+| Key register names and host coordinate handling | [GT911 constants](https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/lib/SensorLib/src/REG/GT911Constants.h), [coordinate helper](https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/lib/SensorLib/src/TouchDrvInterface.cpp#L77-L99) |
+| Battery-only versus USB shutdown | [Charger example](https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/examples/bq25896/main/main.ino) |
+| Battery observations and units | [Fuel-gauge example](https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/examples/bq27220/main/main.ino) |
+| GNSS variant/baud probing | [GNSS example](https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/examples/GPS/main/main.ino) |
+| Optional touch/pen capabilities | [GT6972P example](https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/examples/touch_gt6972p/README.md) |
+
+Manufacturer references: [TI BQ25896 datasheet, SLUSC76C, section 9.2.10](https://www.ti.com/lit/ds/symlink/bq25896.pdf#page=26)
+for QON/shipping/reset behavior, and [Espressif ESP32-S3 sleep modes](https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-reference/system/sleep_modes.html)
+for wake-source restrictions. These URLs are maintained upstream rather than
+pinned Git files; the cited revision/section or platform matters when rechecking.
+
+For the [Home-key investigation](../../../boards/lilygo-t5-s3-pro.md#gt911-home-key-configuration-and-lower-bezel),
+reviewed on 2026-10-13, use Goodix's [GT911 Programming Guide, Rev.10, 2017-07-26](https://www.lcd-module.de/fileadmin/eng/pdf/zubehoer/GT911_Programming_Guide_Rev.10.pdf)
+(hosted by DISPLAY VISIONS, sections 3.2, 3.3, and 4.4) and [GT911 datasheet, Rev.09](https://www.olimex.com/Products/OLinuXino/LCD/_resources/GT911_Datasheet.pdf)
+(hosted by Olimex, section 5.4). These are controller references, not the fitted
+LILYGO touch-panel electrode layout or a dump of its factory configuration.
+Keep these documents external as well.
 
 The board and component documents cover the vendor's available variants; confirm
 the fitted hardware when the unit arrives. The mechanical filenames retain the
@@ -66,7 +94,7 @@ PYTHON
 ```
 
 Do not commit downloaded documents, extracted text, or document screenshots.
-Record relevant findings in our own words in [hardware.md](../../../hardware.md)
-or [display-constraints.md](../../../display-constraints.md), citing the pinned
+Record relevant findings in our own words in the [backend profile](../../../boards/lilygo-t5-s3-pro.md)
+or [display evidence](../../../boards/lilygo-t5-s3-pro-display.md), citing the pinned
 upstream document and relevant pages or sections. When reviewing a newer source,
 update the affected URLs and metadata along with any changed findings.

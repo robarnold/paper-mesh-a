@@ -1,22 +1,27 @@
 # paper-mesh-a
 
-Rust firmware for the LILYGO T5 S3 E-Paper Pro with LoRa. The bootstrap uses
-`no_std` Rust, esp-hal, and Embassy on the Rust esp-rtos scheduler. It initializes
+Shared Rust application software for e-paper devices, with a native simulator
+and an initial firmware backend for the LILYGO T5 S3 E-Paper Pro with LoRa.
+That firmware bootstrap uses `no_std` Rust, esp-hal, and Embassy on the Rust
+esp-rtos scheduler. It initializes
 core 0 at 80 MHz, starts the async timer, and logs a boot message followed by a
 heartbeat every 30 seconds over USB Serial/JTAG.
 
 Hardware display/touch drivers, PSRAM allocation, power management, second-core tasks, radio
 protocol integration, and OTA are still to come. The board profile and bring-up
-notes are in [docs/hardware.md](docs/hardware.md). Hardware operation has not yet
-been tested.
+notes are in the [LILYGO backend profile](docs/boards/lilygo-t5-s3-pro.md).
+Hardware operation has not yet been tested.
 
 A native Rust simulator runs the shared application with a grayscale display,
 touch input, and a controllable clock. It runs inside the devcontainer and serves
 its screen at [localhost:8080](http://localhost:8080).
 The shared contracts and implementation boundaries are documented in
 [the application architecture](docs/architecture.md).
-See [e-paper constraints](docs/display-constraints.md) for the panel/driver limits
-that guide component design and the measurements still needed on hardware.
+The [device service design](docs/device-interfaces.md) defines portable contracts
+and simulator scenarios. [Backend profiles](docs/hardware.md) map hardware to
+those contracts. The [display contract](docs/display-constraints.md) guides
+component behavior; [LILYGO display evidence](docs/boards/lilygo-t5-s3-pro-display.md)
+records the panel/driver limits and measurements motivating that design.
 
 ## Development
 
