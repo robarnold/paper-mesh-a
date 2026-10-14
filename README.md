@@ -1,54 +1,57 @@
 # paper-mesh-a
 
-Shared Rust application software for e-paper devices, with a native simulator
-and an initial firmware backend for the LILYGO T5 S3 E-Paper Pro with LoRa.
-That firmware bootstrap uses `no_std` Rust, esp-hal, and Embassy on the Rust
-esp-rtos scheduler. It initializes
-core 0 at 80 MHz, starts the async timer, and logs a boot message followed by a
-heartbeat every 30 seconds over USB Serial/JTAG.
+This project provides shared Rust application software for e-paper devices.
+It includes a native simulator and an initial firmware backend for the
+LILYGO T5 S3 E-Paper Pro with LoRa.
+The firmware uses `no_std` Rust, esp-hal, and Embassy on esp-rtos.
+It initializes core 0 at 80 MHz and starts the asynchronous timer.
+It sends a boot message and a heartbeat every 30 seconds through USB Serial/JTAG.
 
-Hardware display/touch drivers, PSRAM allocation, power management, second-core tasks, radio
-protocol integration, and OTA are still to come. The board profile and bring-up
-notes are in the [LILYGO backend profile](docs/boards/lilygo-t5-s3-pro.md).
-Hardware operation has not yet been tested.
+Hardware display drivers, touch drivers, PSRAM allocation, power management,
+second-core tasks, radio protocols, and OTA stay planned work.
+The [LILYGO backend profile](docs/boards/lilygo-t5-s3-pro.md) gives information about the board
+and initial hardware checks. Hardware operation stays unverified.
 
-A native Rust simulator runs the shared application with a grayscale display,
-touch input, and a controllable clock. It runs inside the devcontainer and serves
-its screen at [localhost:8080](http://localhost:8080).
-The shared contracts and implementation boundaries are documented in
-[the application architecture](docs/architecture.md).
-The [device service design](docs/device-interfaces.md) defines portable contracts
-and simulator scenarios. [Backend profiles](docs/hardware.md) map hardware to
-those contracts. The [display contract](docs/display-constraints.md) guides
-component behavior; [LILYGO display evidence](docs/boards/lilygo-t5-s3-pro-display.md)
-records the panel/driver limits and measurements motivating that design.
+The native Rust simulator runs the shared application with a grayscale display,
+touch input, and a controllable clock. It runs in the devcontainer.
+It serves its screen at [localhost:8080](http://localhost:8080).
+
+The [application architecture](docs/architecture.md) gives information about shared contracts
+and implementation boundaries. The [device service design](docs/device-interfaces.md)
+defines portable contracts and simulator scenarios.
+[Backend profiles](docs/hardware.md) map hardware to these contracts.
+The [display contract](docs/display-constraints.md) defines component requirements.
+[LILYGO display evidence](docs/boards/lilygo-t5-s3-pro-display.md) records panel
+limits, driver limits, and calculations that support the design.
 
 ## Development
 
-The only host prerequisites are Docker and the Dev Container CLI, or an editor
-with Dev Containers support. Run all project tooling inside the container:
+The host must have Docker and the Dev Container CLI, or an editor with
+Dev Containers support. Run all project tools in the container:
 
 ```sh
 devcontainer up --workspace-folder .
 devcontainer exec --workspace-folder . just ci
 ```
 
-The image contains a pinned host Rust compiler, the Espressif Xtensa Rust
-toolchain registered as `esp`, `espup`, `esp-generate`, `espflash`, and `just`.
-Version pins live in `.devcontainer/Dockerfile`. `firmware/rust-toolchain.toml`
-selects the installed `esp` toolchain; `firmware/Cargo.lock` locks dependencies.
-The default host-target compiler builds the simulator and shared application
-tests inside the container. Their dependencies are locked by the root `Cargo.lock`.
+The image contains a native Rust compiler and the Espressif Xtensa Rust toolchain,
+registered as `esp`. It also contains `espup`, `esp-generate`, `espflash`, and
+`just`. `.devcontainer/Dockerfile` specifies their versions.
+`firmware/rust-toolchain.toml` selects the installed `esp` toolchain.
+`firmware/Cargo.lock` fixes the firmware dependency versions.
 
-Tool installation happens when building the image. Rustup, Cargo, and Espressif
-files stay inside the container filesystem; the host home directory is not
-mounted. `espup` writes its environment script to `/opt/esp/export.sh`, and the
-image sets the required paths for interactive and non-interactive commands.
-No host shell startup changes or manual sourcing are needed.
+The native Rust compiler builds the simulator and shared application tests
+in the container. The root `Cargo.lock` fixes their dependency versions.
 
-Dev Containers may adjust the container user's numeric ID to match the host or
-GitHub runner. The creation hook updates ownership of the container's tool
-directories so Cargo and Rustup remain writable after that adjustment.
+The image build installs the tools. Rustup, Cargo, and Espressif files stay
+in the container filesystem. The container does not mount the host home
+directory. `espup` writes its environment script to `/opt/esp/export.sh`.
+The image sets the necessary paths for interactive and non-interactive commands.
+No host shell changes or manual script execution are necessary.
+
+Dev Containers can change the container user's numeric ID to match the host or
+GitHub runner. The creation hook then updates ownership of the tool directories.
+Cargo and Rustup keep write access after the ID change.
 
 ## Simulator
 
@@ -56,35 +59,39 @@ directories so Cargo and Rustup remain writable after that adjustment.
 devcontainer exec --workspace-folder . just sim
 ```
 
-Open [localhost:8080](http://localhost:8080). Click the on-screen button, or focus
-the display and press Enter. Pause and advance virtual time to inspect refreshes
-and heartbeats. Stop the server with Ctrl+C. Port 8080 is published only on the
-host's loopback interface. If an existing container predates this port setting,
-recreate it with `devcontainer up --workspace-folder . --remove-existing-container`.
+Open [localhost:8080](http://localhost:8080). Click the screen button.
+Alternatively, focus the display and press Enter.
+Use Pause and the time controls to inspect refreshes and heartbeats.
+To stop the server, press Ctrl+C.
 
-The browser only transports input and displays PNG frames. Application behavior,
-hit testing, rendering, and simulated hardware run in Rust inside the container.
-The simulator is an application environment; it does not execute Xtensa/ULP
-instructions or emulate ESP registers. Firmware currently connects only the
-shared application's clock; its physical display and touch remain uninitialized.
+The container publishes port 8080 only on the host's loopback interface.
+If an existing container predates this port setting, recreate it with
+`devcontainer up --workspace-folder . --remove-existing-container`.
+
+The browser transports input and displays PNG frames. Rust code in the
+container controls application behavior, hit testing, rendering, and simulated
+hardware. The simulator does not execute Xtensa or ULP instructions.
+It does not emulate ESP registers. Firmware currently connects only the shared
+application's clock. Physical display and touch drivers stay uninitialized.
 
 ```sh
-# Native Clippy and deterministic application/device scenarios.
+# Run native Clippy and deterministic application and device scenarios.
 devcontainer exec --workspace-folder . just native-check
 
-# Render a screenshot without starting a web server or opening a display.
+# Render a screenshot without a web server or display.
 devcontainer exec --workspace-folder . just simulator-snapshot
 ```
 
-Snapshots are saved to `target/simulator/hello.png` (portrait view) and
-`target/simulator/native.png` (native framebuffer). While the simulator runs,
-[/frame-native.png](http://localhost:8080/frame-native.png) exposes that native
-image directly. See [the application architecture](docs/architecture.md) for
-the shared contracts and [the simulator guide](docs/simulator.md) for its API.
+The snapshot command writes `target/simulator/hello.png` for the portrait view
+and `target/simulator/native.png` for the native framebuffer.
+During simulation, [/frame-native.png](http://localhost:8080/frame-native.png)
+provides the native image directly.
+The [application architecture](docs/architecture.md) gives information about the shared contracts.
+The [simulator guide](docs/simulator.md) gives information about the API.
 
 ## Firmware commands
 
-From the repository root on the host:
+Run these commands from the repository root on the host:
 
 ```sh
 # Format Rust sources.
@@ -93,66 +100,78 @@ devcontainer exec --workspace-folder . just fmt
 # Run Clippy for the ESP32-S3 target.
 devcontainer exec --workspace-folder . just firmware-check
 
-# Link release firmware and package its boot image without accessing a device.
+# Link release firmware and make its boot image without device access.
 devcontainer exec --workspace-folder . just image
 ```
 
-Recipes change into `firmware/` before running Cargo so it reads that directory's
-`.cargo/config.toml`. When using Cargo directly, run it there inside the
-container; passing only `--manifest-path` from the repository root does not load
-the firmware's target configuration.
+Recipes change into `firmware/` before Cargo execution.
+Thus, Cargo reads that directory's `.cargo/config.toml`.
+For direct Cargo commands, use that directory in the container.
+The `--manifest-path` option alone does not load the firmware target
+configuration from the repository root.
 
 `just image` writes these files to `target/artifacts/`:
 
 - `paper-mesh-firmware.elf`: firmware with debug symbols for diagnostics.
-- `paper-mesh-firmware.bin`: merged bootloader, partition table, and application,
-  starting at flash offset `0x0`, configured for 16 MB QIO flash at 80 MHz.
+- `paper-mesh-firmware.bin`: merged bootloader, partition table, and application.
+  The image starts at flash offset `0x0`. It uses 16 MB QIO flash at 80 MHz.
 - `SHA256SUMS`: checksums for both artifacts.
 
-The image uses espflash's bundled bootloader and default single-factory partition
-table. It is a development image, with no OTA slots or update transport. The
-`esp-bootloader-esp-idf` crate supplies image metadata and bootloader support;
-the application does not run ESP-IDF or FreeRTOS. No `cargo run` flash runner is
-configured, and none of the recipes flash a device.
+The image uses espflash's supplied bootloader and default single-factory
+partition table. This development image has no OTA slots or update transport.
+The `esp-bootloader-esp-idf` crate supplies image metadata and bootloader support.
+The application does not run ESP-IDF or FreeRTOS.
+There is no `cargo run` flash runner. No recipe flashes a device.
 
 ### Linker configuration
 
 `firmware/ld/esp32s3-readonly.x` is a versioned copy of the esp-hal 1.2.2 chip
-script with one correction: `.rotext_dummy` is declared `READONLY` instead of
+script with one correction. It declares `.rotext_dummy` as `READONLY` instead of
 `NOLOAD`. This empty padding section prevents overlap between the data and
-instruction mappings of flash. The upstream declaration gives it a write flag,
-which combines with the adjacent executable `.text` section to produce an RWX
-load segment.
+instruction mappings of flash.
+The upstream declaration gives this section a write flag.
+With the adjacent executable `.text` section, this flag produces an RWX load
+segment.
 
-The corrected section still has no file contents (`NOBITS`) and retains its
-address, size, and alignment. The flash code segment is now read/execute. The
-small `paper-mesh.x` entry script selects this correction while retaining the
-HAL's memory regions and shared section scripts. Provenance and the upstream
-license are included in `firmware/ld/`; compare the chip script with upstream
-when upgrading esp-hal, and remove the override when it is fixed upstream.
+The corrected section has no file contents (`NOBITS`).
+Its address, size, and alignment stay the same.
+The flash code segment now has read and execute permissions.
+The `paper-mesh.x` entry script selects this correction.
+It keeps the HAL memory regions and shared section scripts.
 
-`build.rs` enables RWX diagnostics and makes them linker errors, so builds and
-CI reject a recurrence. These ELF flags describe the linker's output; they do
-not configure hardware memory protection on the ESP32-S3.
+`firmware/ld/` includes the source details and upstream license.
+When esp-hal changes, compare the chip script with upstream.
+When upstream corrects the declaration, remove the override.
+
+`build.rs` enables RWX diagnostics and makes them linker errors.
+Thus, local builds and CI reject a new RWX load segment.
+These ELF flags give information about linker output.
+They do not configure ESP32-S3 hardware memory protection.
 
 ## Continuous integration
 
-GitHub Actions uses the GitHub-hosted `ubuntu-24.04` runner to build this same
-devcontainer and execute `just ci`. The runner itself does not install or invoke
-the Rust/ESP toolchain. `just ci` checks infrastructure syntax, Rust formatting,
-and Clippy for both targets, runs native simulation scenarios, links release
-firmware, packages its boot image, and renders a simulator screenshot. GitHub
-uploads the firmware image, ELF, and checksums plus a separate simulator screenshot
-artifact, retained for 14 days. These checks do not verify execution on hardware.
+GitHub Actions uses a GitHub-hosted `ubuntu-24.04` runner to build the same
+devcontainer and execute `just ci`.
+The runner does not install or execute the Rust or ESP toolchain outside the
+container. CI checks infrastructure syntax, Rust formatting, and Clippy for
+both targets. It also runs native simulation scenarios, links release firmware,
+makes the boot image, and renders simulator screenshots.
 
-CI does not require a project image registry or publish images. The first image
-build downloads and compiles the development tools; local rebuilds reuse Docker
-layers. Add shared CI image caching if build time becomes an issue.
+GitHub uploads the firmware image, ELF, and checksums as artifacts.
+It also uploads a separate simulator screenshot artifact.
+GitHub keeps these artifacts for 14 days.
+These checks do not verify hardware execution.
+
+CI operates without a project image registry. It does not publish container images.
+The first image build downloads and compiles development tools.
+Local builds reuse Docker layers.
+If build time becomes a problem, add a shared CI image cache.
 
 ## Hardware access
 
-The default container requires no connected device, so it also works in CI.
+The default container operates without a connected device and also operates in CI.
 When hardware arrives, add an ignored `.devcontainer/devcontainer.local.json`
-with USB/serial passthrough for the specific host and select it with the CLI's
-`--config` option. Do not install flashing tools on the host. Hardware setup will
-be verified against the actual device and serial permissions at that point.
+with USB and serial passthrough for the host.
+Select that file with the CLI's `--config` option.
+Do not install flashing tools on the host.
+Hardware setup and serial permissions must pass checks with the actual device.

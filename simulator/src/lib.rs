@@ -1,5 +1,6 @@
-//! Native adapters and deterministic simulation. HTTP and wall-clock pacing
-//! live in the binary; scenarios can drive this library without either.
+//! Native adapters and deterministic simulation.
+//! The binary controls HTTP and wall-clock pacing.
+//! Scenarios can use this library without either service.
 
 use embedded_graphics::{pixelcolor::Gray4, prelude::*};
 use paper_mesh_app::{
@@ -11,7 +12,8 @@ use paper_mesh_app::{
 };
 use serde::Serialize;
 
-// An artificial delay to exercise asynchronous refresh, not a panel measurement.
+// This artificial delay exercises asynchronous refresh.
+// It is not a panel measurement.
 pub const REFRESH_MS: u64 = 250;
 const ROTATION: PortraitRotation = PortraitRotation::new(NATIVE_SCREEN_SIZE);
 
@@ -181,8 +183,8 @@ impl Simulation {
             .expect("application must not draw while display is busy");
     }
 
-    /// Visit deadlines in order, even when fast-forwarding over many heartbeats.
-    /// This gives scenarios the same behavior as many small time advances.
+    /// Visits deadlines in order, including advances across many heartbeats.
+    /// Large time advances give the same behavior as many small advances.
     pub fn advance(&mut self, duration_ms: u64) {
         let end = self.clock.0.saturating_add(duration_ms);
         while self.clock.0 < end {
@@ -195,15 +197,15 @@ impl Simulation {
         }
     }
 
-    /// Input aligned with the native panel axes, as supplied by a calibrated
-    /// touch driver. This is the shared hardware-to-application rotation path.
+    /// Accepts input aligned with native panel axes from a calibrated touch driver.
+    /// Uses the shared rotation path from hardware to application coordinates.
     pub fn touch_native(&mut self, event: TouchEvent) {
         self.app.touch(ROTATION.touch_to_portrait(event));
         self.poll();
     }
 
-    /// The browser sees the device held in portrait. Generate native touch
-    /// input from that view, then feed it through the same input adapter.
+    /// Converts browser portrait coordinates into native touch input.
+    /// Sends that input through the shared input adapter.
     pub fn touch_portrait(&mut self, event: TouchEvent) {
         let native = match event {
             TouchEvent::Down(point) => ROTATION.to_native(point).map(TouchEvent::Down),
@@ -213,8 +215,8 @@ impl Simulation {
         self.touch_native(native.unwrap_or(TouchEvent::Cancel));
     }
 
-    /// Present the completed native frame as if the panel were held clockwise.
-    /// This export-only buffer is not an application drawing surface.
+    /// Exports the completed native frame with a clockwise rotation.
+    /// The application does not draw into this export buffer.
     pub fn portrait_png(&self) -> Result<Vec<u8>, png::EncodingError> {
         let mut portrait = vec![0; (SCREEN_SIZE.width * SCREEN_SIZE.height) as usize];
         for (index, pixel) in portrait.iter_mut().enumerate() {
@@ -253,7 +255,7 @@ mod tests {
     use super::*;
 
     fn tap(sim: &mut Simulation) {
-        // Native (480, 269) corresponds to portrait (270, 480), inside the button.
+        // Native (480, 269) maps to portrait (270, 480), in the button.
         let point = Point::new(480, 269);
         sim.touch_native(TouchEvent::Down(point));
         sim.touch_native(TouchEvent::Up(point));
@@ -328,7 +330,7 @@ mod tests {
 
     #[test]
     fn portrait_export_matches_direct_render_after_native_refresh() {
-        // Independent portrait reference target: no rotation code is used here.
+        // This independent portrait reference target uses no rotation code.
         struct Reference(Vec<u8>);
         impl OriginDimensions for Reference {
             fn size(&self) -> Size {

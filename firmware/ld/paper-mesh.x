@@ -1,5 +1,5 @@
-/* Same include order as esp-hal's ESP32-S3 linkall.x, with the corrected
- * chip script selected explicitly rather than relying on include lookup order.
+/* The include order matches esp-hal's ESP32-S3 linkall.x.
+ * Explicit chip script selection avoids dependence on include lookup order.
  */
 INCLUDE "memory.x"
 INCLUDE "alias.x"

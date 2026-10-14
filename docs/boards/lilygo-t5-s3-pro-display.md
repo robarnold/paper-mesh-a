@@ -1,90 +1,98 @@
 # LILYGO display backend evidence
 
-This is evidence for the [LILYGO backend](lilygo-t5-s3-pro.md), informing the
-[portable display contract](../display-constraints.md). Its numbers and driver
-algorithms are not universal application requirements.
+This evidence for the [LILYGO backend](lilygo-t5-s3-pro.md) supports the
+[portable display contract](../display-constraints.md).
+Its numerical examples and driver algorithms apply to this backend.
+They are not universal application requirements.
 
-Evidence reviewed on **2026-10-12**. This describes the ED047TC1 panel and
-reference driver approaches; we have not implemented or benchmarked our physical
-Rust driver. Numerical examples below are calculations, not measured device
-performance. The simulator's 250 ms refresh is a test delay.
+The evidence review date is **2026-10-12**.
+The review covers the ED047TC1 panel and reference drivers.
+The project has no physical Rust display driver or hardware benchmark yet.
+The examples below are calculations, not measured performance.
+The simulator's 250 ms refresh is an artificial test delay.
 
 ## Panel facts and terminology
 
 The [ED047TC1 specification hosted by LILYGO](https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/hardware/ED047TC1.pdf)
-identifies 540 gate lines and 960 source positions in its scan-direction drawing
-(p. 8). We represent each gate line as a **960-pixel native row**, giving native
-storage of 960 × 540. The mechanical specification describes the same panel in
-portrait as 540 × 960 (p. 4). These are different coordinate conventions for the
-same pixels, not different panels.
+shows 540 gate lines and 960 source positions in the scan-direction drawing
+(page 8).
+This project represents each gate line as a **960-pixel native row**.
+Native storage is therefore 960 × 540.
+The mechanical specification gives information about the same panel as 540 × 960 in portrait
+(page 4). These are coordinate conventions for the same pixels.
 
-The interface has eight source-data signals plus source/gate clocks and control
-signals (pp. 6–7). The specification lists a maximum refresh rate of **85 Hz**
-(p. 11), AC timing constraints (pp. 12–13), an operating range of **0–50 °C**
-(p. 10), and waveform/controller-dependent grayscale capability (p. 4).
-Electrical and optical guarantees are conditional on the manufacturer's
-controller and waveforms (p. 11).
+The interface has eight source-data signals, source and gate clocks, and control
+signals (pages 6–7).
+The specification lists a maximum refresh rate of **85 Hz** (page 11).
+It specifies AC timing limits (pages 12–13) and an operating range of **0–50 °C**
+(page 10).
+Grayscale capability depends on the waveform and controller (page 4).
+Electrical and optical guarantees depend on the manufacturer's controller and
+waveforms (page 11).
 
-Here, a **scan** is one traversal applying drive commands; a **transition** is
-the multi-scan process moving pixels toward their target shades. An application's
-new image need not finish in one scan. The 85 Hz specification therefore does
-not promise 85 completed grayscale images per second.
+A **scan** is one traversal that applies drive commands.
+A **transition** is a sequence of scans that moves pixels toward their target
+shades. A new application image can take multiple scans.
+Thus, 85 Hz does not guarantee 85 completed grayscale images per second.
 
-The host driver implements waveform scheduling over the panel's source/gate
-drivers. Its two-bit drive commands are not two-bit image colors: grayscale
-comes from a sequence of drives. Modos's controller documentation explains this
-distinction and the role of previous pixel state, waveform phase, and temperature
-in generating those commands. [Source: Glider/Caster design][caster]
+The host driver schedules waveforms through the panel's source and gate drivers.
+Two-bit drive commands do not represent two-bit image colors.
+Grayscale comes from a sequence of drives.
+The Modos controller documentation gives information about last pixel state, waveform
+phase, and temperature as inputs to command generation.
+[Source: Glider/Caster design][caster]
 
 ## What determines update cost?
 
-There are several independent costs; the count of newly changed pixels is not
-enough to predict latency:
+Update latency depends on multiple independent costs.
+The number of changed pixels alone is insufficient.
 
-| Work | Useful inputs to measure | When a small change helps |
+| Work | Useful measurements | Conditions that reduce work |
 | --- | --- | --- |
-| Layout and rasterization | Invalidated components, pixels drawn | Components preserve unaffected content and avoid unnecessary re-layout |
-| Difference detection | Pixels/bytes compared, candidate regions | Valid damage bounds avoid a full-frame comparison |
-| Transition processing | Active transitions, waveform mode, phase/history | Driver omits settled regions; pixels still completing earlier changes remain active |
-| Scan output | Native rows visited, full rows transferred, rows skipped | Backend actually shortens inactive-row handling |
-| Physical transition | Drive duration, source/target shade, temperature | Smaller area does not by itself shorten the required drive for each pixel |
-| Power and cleanup | Rail startup, discharge, cleanup cycles | Updates are batched and the chosen mode permits reuse of a known panel state |
+| Layout and rasterization | Invalidated components, pixels drawn | Components keep unaffected content and avoid unnecessary layout changes. |
+| Difference detection | Compared pixels and bytes, candidate regions | Valid damage bounds prevent a full-frame comparison. |
+| Transition processing | Active transitions, waveform mode, phase, history | The driver omits settled regions. Incomplete earlier transitions stay active. |
+| Scan output | Visited native rows, transferred rows, skipped rows | The backend shortens work for inactive rows. |
+| Physical transition | Drive duration, source shade, target shade, temperature | Smaller area alone does not shorten the required drive for each pixel. |
+| Power and cleanup | Rail startup, discharge, cleanup cycles | Combined updates and the selected mode permit reuse of known panel state. |
 
-The gate driver advances through lines; it is not a random-access pixel store.
-In the reference implementations below, an active row carries a full row of
-drive commands, including neutral commands at unchanged positions. Row skipping
-can advance inactive lines faster, but still has timing and pipeline overhead.
-An update rectangle does not automatically imply a proportional transfer saving.
+The gate driver advances through lines.
+It does not provide random pixel access.
+In these reference drivers, an active row carries a complete row of drive
+commands. Unchanged positions receive neutral commands.
+Row skipping can advance inactive lines faster, but has timing and pipeline
+costs. An update rectangle does not guarantee proportional transfer savings.
 
 ### Row skipping is backend-specific
 
-The following are source-code observations at pinned revisions, not claims
-about every driver bearing the same name:
+These observations apply to inspected code at specified revisions.
+Other implementations with the same name can differ.
 
-| Reference | What the inspected implementation does | Consequence |
+| Reference | Inspected behavior | Consequence |
 | --- | --- | --- |
-| [EPDiy I2S output][epdiy-i2s], `i2s_skip_row` | Flushes the row pipeline, then advances inactive rows with gate pulses | Long inactive runs can reduce scan time; skipping is not free |
-| [EPDiy LCD output][epdiy-lcd], `lcd_calculate_frame` | Queues neutral line buffers for inactive rows; the [LCD engine][epdiy-engine] still traverses the configured display lines | Avoided waveform work does not imply avoided full scan output |
-| [FastEPD][fastepd], `bbepPartialUpdate` | The inspected 1-bpp path iterates all native rows and writes a full-width neutral row outside the active line range | Partial/differential updates need not transfer fewer rows |
+| [EPDiy I2S output][epdiy-i2s], `i2s_skip_row` | Flushes the row pipeline, then advances inactive rows with gate pulses | Long inactive runs can reduce scan time. Skipping has a cost. |
+| [EPDiy LCD output][epdiy-lcd], `lcd_calculate_frame` | Queues neutral buffers for inactive rows. The [LCD engine][epdiy-engine] traverses the configured display lines. | Reduced waveform work does not imply reduced scan output. |
+| [FastEPD][fastepd], `bbepPartialUpdate` | The inspected 1-bpp path visits all native rows. It writes full-width neutral rows outside the active line range. | Partial or differential updates can transfer the same number of rows. |
 
-EPDiy exposes dirty-line and cropped-difference information, while its API also
-distinguishes fast monochrome and grayscale waveform modes. Availability depends
-on the loaded waveform; merely defining an enum value does not make that mode
-supported. [Source: EPDiy API][epdiy-api]
+EPDiy supplies dirty-line and cropped-difference information.
+Its API separates fast monochrome modes from grayscale modes.
+Mode availability depends on the loaded waveform.
+An enum value alone does not establish support.
+[Source: EPDiy API][epdiy-api]
 
-Cheaper handling of unchanged rows therefore needs a capability check: it holds
-for a backend with accelerated skipping, not automatically for the ESP32-S3 LCD
-path or FastEPD. These projects are references, not dependencies of this Rust
-application.
+Reduced cost for unchanged rows depends on backend capabilities.
+Accelerated row skipping can supply this reduction.
+The ESP32-S3 LCD path and FastEPD do not automatically supply it.
+These projects are references, not Rust application dependencies.
 
 ### Rotation changes the shape of the work
 
-Damage must be transformed into **native coordinates before estimating scan
-cost**. Under our current quarter-turn, one native row appears as a vertical
-column in the portrait UI. A portrait rectangle's width becomes its native row
-count; its height becomes its span within each row.
+Scan-cost calculations must use damage in **native coordinates**.
+Under the current quarter-turn, one native row appears as a vertical portrait
+column. A portrait rectangle's width becomes its native row count.
+Its height becomes its span in each row.
 
-For example, two completely changing rectangles contain the same 8,000 pixels:
+Two fully changed rectangles can each contain 8,000 pixels:
 
 | Portrait rectangle | Native rectangle | Native rows touched | Active-row payload per scan, if rows can be skipped |
 | --- | --- | --- | --- |
@@ -92,71 +100,87 @@ For example, two completely changing rectangles contain the same 8,000 pixels:
 | 200 × 40 | 40 × 200 | 200 | 48,000 bytes |
 
 These calculations assume 960 positions per transmitted row and two drive bits
-per position. They exclude inactive-row overhead and waveform dwell time. A
-full-scan backend can transmit **129,600 bytes for either case**. The fivefold
-active-row payload difference is not a promise of fivefold lower latency.
-Scattered changes can also cover many more native rows than one compact region.
+per position. They exclude inactive-row costs and waveform dwell time.
+A full-scan backend can transmit **129,600 bytes for either case**.
+The fivefold payload difference does not guarantee a fivefold latency reduction.
+Scattered changes can cover more native rows than one compact region.
 
-This is an argument for measuring damage shape and driver capabilities, not for
-forcing every component into a particular orientation. Usability still decides
-layout; the display service can report the cost of that layout's update pattern.
+These examples show why measurements of damage shape and driver capabilities are necessary.
+They do not specify a fixed orientation for every component.
+Usability determines layout.
+The display service can report the cost of the resulting update pattern.
 
 ### Throughput and memory examples
 
-For 960 × 540, a full scan contains 518,400 pixel positions. At a hypothetical
-60 scans/second, that is **31.104 million positions/second** and **7.776 MB/s** of
-two-bit drive payload, before blanking and protocol overhead. Rasterization,
-frame comparisons, waveform lookup, state writes, and buffer copies consume
-additional CPU time and memory bandwidth.
+For 960 × 540, a full scan contains 518,400 pixel positions.
+A hypothetical rate of 60 scans/second gives **31.104 million positions/second**.
+The two-bit drive payload is **7.776 MB/s**, before blanking and protocol costs.
+Rasterization, frame comparisons, waveform lookup, state writes, and buffer
+copies use more CPU time and memory bandwidth.
 
-A packed 4-bpp target image is 259,200 bytes; old and new images together need
-518,400 bytes before driver state or DMA buffers. Our byte-per-pixel simulator
-uses 518,400 bytes per image and is not the hardware memory layout. Available
-PSRAM capacity alone says nothing about whether scan deadlines can be met.
+A packed 4-bpp target image uses 259,200 bytes.
+Old and new images together use 518,400 bytes before driver state or DMA
+buffers. The simulator uses one byte per pixel, or 518,400 bytes per image.
+That format does not define hardware storage.
+Available PSRAM capacity alone cannot establish whether scan deadlines are
+possible.
 
-Modos Caster supports independently timed pixels and early redirection of
-transitions. Its documented 16-bit per-pixel state is read and written every
-scan, contributing to a 4.5-byte-per-position memory-traffic example including
-the target image. This removes a global update barrier at a substantial memory
-cost; it does not make pigment motion instantaneous. [Source: Caster design][caster]
+Modos Caster supports independent pixel timing and early transition redirection.
+Its documented state uses 16 bits for each pixel.
+Each scan reads and writes that state.
 
-Wenting Zhang's PaperBoy report demonstrates the technique on ESP32-S3 using
-480 × 144 independently processed positions at 60 Hz, SRAM-resident buffers,
-LCD/DMA output, and roughly 50% CPU time for that processing. It does **not**
-establish full-resolution performance on our board. [Source: author's report][paperboy]
+With the target image, the documented example uses 4.5 bytes of memory traffic
+per position.
+This approach removes a global update barrier at substantial memory cost.
+It does not make pigment motion instantaneous.
+[Source: Caster design][caster]
+
+Wenting Zhang's PaperBoy report demonstrates this technique on ESP32-S3.
+It processes 480 × 144 positions independently at 60 Hz.
+It uses SRAM buffers and LCD/DMA output.
+The report gives approximately 50% CPU time for that processing.
+It does not establish full-resolution performance on this board.
+[Source: author's report][paperboy]
 
 ## Mapping evidence to the display contract
 
-The [portable display contract](../display-constraints.md) captures damage,
-quality intent, capabilities, completion, and recovery. The driver implements
-native scan scheduling, waveform history, temperature handling, and power
-sequencing. Components do not inspect panel IDs or choose row-skipping code.
+The [portable display contract](../display-constraints.md) defines damage,
+quality intent, capabilities, completion, and recovery.
+The driver controls native scans, waveform history, temperature handling, and
+power sequences. Components do not inspect panel IDs or select row-skipping code.
 
-The row-cost examples motivate a backend cost estimate, not a universal cost
-formula or mandatory UI orientation. Buffer sizes belong to this profile; the
-application receives logical geometry and supported rendering capabilities.
+Row costs support backend estimates.
+They do not define a universal formula or mandatory UI orientation.
+Buffer sizes belong to this profile.
+The application receives logical geometry and rendering capabilities.
 
-FastEPD's release notes describe charge imbalance and residual gray from repeated
-unbalanced updates. This motivates cleanup capabilities and measured policy,
-not a universal refresh interval. [Source: FastEPD release notes][fastepd-releases]
+FastEPD release notes give information about charge imbalance and residual gray after repeated
+unbalanced updates. These effects support cleanup capabilities and policy based
+on measurements. They do not establish a universal refresh interval.
+[Source: FastEPD release notes][fastepd-releases]
 
 ## Simulator and hardware validation
 
-The next simulator model should record logical damage, native rows covered,
-actual rows transferred/skipped, pending transitions, update mode, and queue age.
-Give it separate full-scan and row-skipping profiles. Label timing estimates as
-synthetic until fitted to measurements; do not invent a universal pixels-to-ms
-conversion. Test equal-area shapes, scattered changes, rotated layouts, rapid
+The next simulator model will record logical damage, native row coverage, transferred
+and skipped rows, pending transitions, update mode, and queue age.
+Separate profiles will represent full scans and row skipping.
+Timing estimates will stay synthetic until calibration against measurements.
+The model must not assume a universal pixel-count-to-time conversion.
+
+Scenarios must include equal-area shapes, scattered changes, rotated layouts, rapid
 input during refresh, errors, and idle periods without display work.
 
-When hardware is available, measure submission-to-first-visible-change and
-submission-to-settled-image separately from CPU/render time and scan duration.
-Compare black/white and grayscale transitions, compact versus scattered damage,
-both orientations, warm versus cold power rails, and temperature. Record driver
-revision, waveform, clock settings, CPU/PSRAM placement, row counts, cleanup
-history, and energy per update. A logic analyzer can establish electrical
-timing; optical observation is needed for settling and ghosting. No hardware
-rate, grayscale-quality target, cleanup interval, or battery budget is claimed yet.
+Hardware measurements will separate submission-to-first-change time,
+submission-to-settled-image time, CPU time, render time, and scan duration.
+Comparisons will cover black/white and grayscale transitions, compact and
+scattered damage, both orientations, rail startup state, and temperature.
+Records will include driver revision, waveform, clocks, CPU and PSRAM placement,
+row counts, cleanup history, and energy per update.
+
+A logic analyzer can establish electrical timing.
+Optical observations are necessary for settling and ghosting measurements.
+No hardware rate, grayscale quality target, cleanup interval, or battery budget
+is established yet.
 
 [caster]: https://github.com/Modos-Labs/Glider/blob/ed94ef7fd95a42cfdcdaf5e5da1dcdd709122763/README.md#low-latency-drive
 [epdiy-i2s]: https://github.com/vroland/epdiy/blob/42c16127dc5d4bca15e830624f22666ad914575f/src/output_i2s/render_i2s.c#L71

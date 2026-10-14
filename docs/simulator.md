@@ -1,116 +1,145 @@
 # Native Rust simulator
 
-The simulator runs the application against native implementations of device
-services. It is not an ESP32-S3 instruction or register emulator. The first
-screen is deliberately small: a touch counter and a 30-second heartbeat, sharing
-the same state machine and rendering code that the firmware can use.
+The simulator runs the application with native implementations of device
+services. It does not emulate ESP32-S3 instructions or registers.
+The first screen contains a touch counter and a 30-second heartbeat.
+It uses the same state machine and rendering code available to firmware.
 
-The current demo uses a 540 × 960 portrait coordinate space. The simulator's
-staging, pending, and visible framebuffers use native 960 × 540 row-major
-storage. Drawing and touch pass through the shared portrait rotation adapter.
-The browser displays a portrait view derived from the completed native frame.
-This is currently a fixed effective rotation. The planned shared mounting,
-automatic/locked orientation policy, and frame-associated rotation state are
-described in [the application architecture](architecture.md#orientation-state-and-coordinate-spaces).
+The current demonstration uses a 540 × 960 portrait coordinate space.
+Staging, pending, and visible framebuffers use native 960 × 540 row-major storage.
+Drawing and touch use the shared portrait rotation adapter.
+The browser displays a portrait view of the completed native frame.
+This rotation is fixed.
+
+The [application architecture](architecture.md#orientation-state-and-coordinate-spaces)
+gives information about planned mounting configuration, automatic orientation, manual locks,
+and rotation state associated with frames.
 
 ## Code boundaries
 
 | Location | Responsibility |
 | --- | --- |
-| `crates/app` | `no_std` application state, touch handling, deadlines, and rendering |
+| `crates/app` | `no_std` application state, touch handling, deadlines, rendering |
 | `crates/app/src/platform.rs` | Clock and display contracts, normalized touch events |
-| `crates/app/src/platform/rotation.rs` | Shared pixel and touch coordinate transformations |
+| `crates/app/src/platform/rotation.rs` | Shared pixel and touch transforms |
 | `simulator/src/lib.rs` | Virtual clock, grayscale display, refresh completion, deterministic scenarios |
-| `simulator/src/main.rs` | Native HTTP server, input validation, and optional wall-clock pacing |
-| `simulator/src/index.html` | Browser transport and simulation controls; no application logic or rendering |
-| `firmware/src/main.rs` | ESP startup, Embassy scheduling, and the clock adapter |
+| `simulator/src/main.rs` | Native HTTP server, input checks, optional wall-clock pacing |
+| `simulator/src/index.html` | Browser transport and simulation controls. No application logic or rendering. |
+| `firmware/src/main.rs` | ESP startup, Embassy scheduling, clock adapter |
 
-The root workspace builds on native Linux. `firmware/` is a separate Cargo
-project with its own lockfile and toolchain/target configuration. It depends on
-the shared application through a path dependency. This keeps native and ESP
-executor, platform, and dependency features from being combined accidentally.
+The root workspace builds on native Linux.
+`firmware/` is a separate Cargo project with its own lockfile, toolchain, and
+target configuration. It uses a path dependency for the shared application.
+This separation prevents accidental combination of native and ESP executor,
+platform, and dependency features.
 
 ## Shared interfaces
 
-The [application architecture](architecture.md) defines the clock, touch, display,
-rotation, scheduling, and ownership contracts shared with hardware. The simulator
-implements those contracts without depending on ESP registers or an executor.
+The [application architecture](architecture.md) defines clock, touch, display,
+rotation, scheduling, and ownership contracts shared with hardware.
+The simulator implements these contracts without ESP registers or an executor
+dependency.
 
-Firmware currently exercises only `Clock` and the shared heartbeat state
-machine. There are no placeholder display/touch drivers claiming hardware
-success. The shared renderer is cross-compiled, but physical rendering awaits
-the actual panel driver, buffering, and power sequencing.
+Firmware currently uses only `Clock` and the shared heartbeat state machine.
+It has no placeholder display or touch drivers that report incorrect hardware
+success. Cross-compilation includes the shared renderer.
+Physical rendering must have a panel driver, buffers, and power sequences.
 
 ## Scenario profiles and board conformance
 
-The simulator implements portable services. Its current geometry follows the
-first hardware target; this does not require every future scenario to imitate
-that board. Configurable profiles are planned, not implemented today.
+The simulator implements portable services.
+Its current geometry matches the first hardware target.
+Future scenarios can represent different devices.
+Configurable profiles stay planned work.
 
-- Contract scenarios vary geometry, control inventory, optional services,
-  display capabilities, latency, and faults. They test that shared application
-  behavior depends on declared capabilities rather than a particular SKU.
+- Contract scenarios change geometry, controls, optional services, display
+  capabilities, latency, and faults.
+  They verify that application behavior uses declared capabilities without
+  dependence on a particular SKU.
 - Board conformance presets apply a physical backend's resource and lifecycle
-  constraints to those same contracts. The
-  [LILYGO conformance cases](boards/lilygo-t5-s3-pro.md#backend-conformance-scenarios)
-  cover its actual buttons, shared resources, wake limits, and power behavior.
+  constraints to the same contracts.
+  The [LILYGO conformance cases](boards/lilygo-t5-s3-pro.md#backend-conformance-scenarios)
+  cover its buttons, shared resources, wake limits, and power behavior.
 
-A synthetic sensor-present profile is valid for testing automatic orientation;
-it must not be labeled as matching a board that has no such sensor. Neither
-profile type proves electrical timing or physical driver correctness.
+A synthetic profile with a sensor can verify automatic orientation.
+Its label must not claim a match to a board without that sensor.
+Neither profile type proves electrical timing or physical driver correctness.
 
 ## Deterministic execution
 
-`Simulation::advance` visits refresh and heartbeat deadlines in chronological
-order. Advancing 90 seconds at once has the same observable result as many
-small steps. Tests never sleep or depend on wall-clock speed. Interactive mode
-uses native wall time to pace that same virtual clock; Pause disables pacing.
-Reset preserves the current paused/running setting.
+`Simulation::advance` visits refresh and heartbeat deadlines in time order.
+One 90-second advance gives the same observable result as many small advances.
+Tests do not sleep or depend on wall-clock speed.
+Interactive mode uses wall time to pace the same virtual clock.
+Pause disables this pacing.
+Reset keeps the current paused or active setting.
 
-The display starts white. Refresh takes an artificial 250 ms, during which the
-previous image remains visible. Only completion replaces the visible frame.
-This atomic replacement is a simulation simplification: a physical e-paper
-panel changes during its drive sequence. Damage-dependent cost, waveform phases,
-and region scheduling are described as future work in
-[the display constraints](display-constraints.md).
-Pixels have 16 grayscale levels, exported losslessly as an 8-bit grayscale PNG.
-Idle polling does not refresh the screen; touch changes and heartbeat updates do.
+The display starts white.
+Refresh has an artificial delay of 250 ms.
+The last image stays visible until completion replaces it.
+This atomic replacement simplifies simulation.
+Physical e-paper changes throughout its drive sequence.
 
-Tests cover input cancellation and bounds, heartbeat cadence, frame visibility,
-changes arriving during a refresh, refresh failure/retry, fast-forward
-equivalence, and PNG output. Rotation tests check asymmetric native pixel layouts
-and compare the completed portrait view with an independent direct rendering.
-`just ci` generates `target/simulator/hello.png` and `target/simulator/native.png`
-for visual inspection of both orientations.
+[Display constraints](display-constraints.md) give information about planned damage costs,
+waveform phases, and region scheduling.
+Pixels have 16 grayscale levels.
+PNG export keeps these values in an 8-bit grayscale image.
+Idle polling does not refresh the screen.
+Touch changes and heartbeat updates cause refreshes.
+
+Tests cover input cancellation, bounds, heartbeat intervals, and frame visibility.
+They also cover changes during refresh, failure and retry, equivalent time
+advances, and PNG output.
+Rotation tests check asymmetric native pixel layouts.
+They compare the completed portrait view with independent direct rendering.
+`just ci` produces `target/simulator/hello.png` and `target/simulator/native.png`
+for visual checks of both orientations.
 
 ## Running and extending
 
-Use `devcontainer exec --workspace-folder . just sim`, then open
-`http://localhost:8080`. The container publishes port 8080 on host loopback only.
-There are no browser framework, Node, SDL, or host GUI dependencies. The HTTP
-server runs on the existing native Rust toolchain in the devcontainer.
+Run `devcontainer exec --workspace-folder . just sim`.
+Open `http://localhost:8080`.
+The container publishes port 8080 only on host loopback.
+The HTTP server uses the native Rust toolchain in the devcontainer.
+No browser framework, Node, SDL, or host GUI dependencies are necessary.
 
-The small development API consists of `GET /api/state`, `GET /frame.png`
-(portrait), `GET /frame-native.png` (native storage), and `POST /api/event` with
-`Content-Type: application/json`. Event bodies use a
-`type` field: `touch_down`/`touch_up` with `x` and `y`, `touch_cancel`, `pause`,
-`resume`, `advance` with `ms`, or `reset`. Advances require a paused clock and
-are limited to 1–60000 ms per request. The UI converts pointer coordinates to
-portrait display coordinates. `Simulation::touch_portrait` generates native
-contacts from them and feeds `touch_native`, which applies the shared input
-rotation before hit testing in the application. Native scenarios can call
-`touch_native` directly to exercise controller-aligned coordinates.
+The development API has these endpoints:
 
-Add application-facing radio, storage, or power services when their first real
-consumer exists, along with a native implementation and a behavioral scenario.
-Keep physical chip protocols in drivers beneath those services. The current
-simulator does not model radio propagation, battery current, sleep/ULP execution,
-core scheduling, panel waveforms, ghosting, temperature, or DMA timing. Its
-refresh delay is a test condition, not a measured hardware characteristic.
+| Endpoint | Result or input |
+| --- | --- |
+| `GET /api/state` | Current simulation state |
+| `GET /frame.png` | Portrait frame |
+| `GET /frame-native.png` | Native frame |
+| `POST /api/event` | Event body with `Content-Type: application/json` |
+
+Event bodies use a `type` field:
+
+| Type | More fields |
+| --- | --- |
+| `touch_down`, `touch_up` | `x`, `y` |
+| `touch_cancel`, `pause`, `resume`, `reset` | None |
+| `advance` | `ms`, limited to 1–60000 ms per request with a paused clock |
+
+The browser converts pointer positions into portrait display coordinates.
+`Simulation::touch_portrait` converts those positions into native contacts.
+It passes them to `touch_native`.
+This method applies shared input rotation before application hit testing.
+Native scenarios can call `touch_native` directly with coordinates aligned to
+the controller.
+
+For the first consumer of a radio, storage, or power service, add the shared contract.
+Add a native implementation with a behavioral scenario.
+Keep physical chip protocols in drivers below these services.
+
+The simulator does not model radio propagation, battery current, sleep or ULP
+execution, core scheduling, panel waveforms, ghosting, temperature, or DMA timing.
+Its refresh delay is a test condition.
+It is not a measured hardware characteristic.
 
 The [device service design](device-interfaces.md#simulator-acceptance-scenarios)
-lists portable contract scenarios; board profiles add physical-control mappings.
-The current Reset UI action resets the test fixture; it does not model the
-hardware backend's reset/power controls or persistence across power transitions.
-GNSS, SD, battery/charging, frontlight, RTC, radio, and physical buttons do not
-have simulator implementations yet.
+lists portable contract scenarios.
+Board profiles add physical control mappings.
+The current Reset action resets the test fixture.
+It does not model hardware reset, power controls, or persistence across power
+transitions. GNSS, SD, battery, charger, frontlight, RTC, radio, and physical
+buttons have no simulator implementations yet.

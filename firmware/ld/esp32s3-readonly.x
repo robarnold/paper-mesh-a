@@ -2,9 +2,10 @@
  * Derived from esp-hal 1.2.2 (see LICENSE-MIT):
  * https://github.com/esp-rs/esp-hal/blob/915465df59aee91b627fe538f0b442e56c7f4fc9/esp-hal/ld/esp32s3/esp32s3.x
  *
- * The sole functional change is marking the flash-mapping padding read-only.
- * Keep its NOBITS type, size, and alignment. Review against upstream whenever
- * updating esp-hal; remove this override when upstream fixes the section.
+ * The only functional change makes the flash-mapping padding read-only.
+ * Keep its NOBITS type, size, and alignment.
+ * When esp-hal changes, compare this script with upstream.
+ * When upstream corrects the section, remove this override.
  */
 INCLUDE exception.x
 

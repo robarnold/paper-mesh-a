@@ -17,9 +17,9 @@ embassy-executor = { version = "0.10.0", features = ["log"] }
 embassy-time = { version = "0.5.1", features = ["log"] }
 esp-backtrace = { version = "0.20.0", default-features = false, features = ["esp32s3", "panic-handler", "println"] }
 esp-bootloader-esp-idf = { version = "0.6.0", features = ["esp32s3", "log-04"] }
-# esp-rtos uses unstable HAL APIs; stay on the compatible HAL minor release.
+# esp-rtos uses unstable HAL APIs. Keep the compatible HAL minor release.
 esp-hal = { version = "~1.2.2", features = ["esp32s3", "log-04", "unstable"] }
-# UART0 is wired to the GPS. Never fall back to UART logging on this board.
+# UART0 connects to the GPS. Do not use UART logging as an alternative.
 esp-println = { version = "0.18.0", default-features = false, features = ["esp32s3", "jtag-serial", "log-04", "critical-section"] }
 esp-rtos = { version = "0.4.0", features = ["esp32s3", "embassy", "log-04"] }
 log = "0.4.29"

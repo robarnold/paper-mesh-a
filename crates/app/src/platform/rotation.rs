@@ -1,5 +1,5 @@
-//! A clockwise portrait view over a display in its native storage orientation.
-//! The adapter transforms pixel coordinates, allocating no framebuffer itself.
+//! A clockwise portrait view of a native display.
+//! The adapter transforms pixel coordinates without a second framebuffer.
 
 use embedded_graphics::{pixelcolor::Gray4, prelude::*};
 
@@ -33,8 +33,9 @@ impl PortraitRotation {
             .then(|| Point::new(self.native_size.height as i32 - 1 - point.y, point.x))
     }
 
-    /// Normalize panel-aligned touch input. Invalid contacts cancel a gesture.
-    /// Controller calibration, scaling, and axis alignment happen before this.
+    /// Normalizes touch input aligned with the panel.
+    /// Invalid contacts cancel a gesture.
+    /// Controller calibration, scaling, and axis alignment must occur before this operation.
     pub fn touch_to_portrait(self, event: TouchEvent) -> TouchEvent {
         match event {
             TouchEvent::Down(point) => self
@@ -54,8 +55,8 @@ fn contains(size: Size, point: Point) -> bool {
     point.x >= 0 && point.y >= 0 && point.x < size.width as i32 && point.y < size.height as i32
 }
 
-/// Borrow a native display as a portrait draw target. All refresh state,
-/// errors, and buffers remain owned by the native display.
+/// A borrowed native display that provides a portrait draw target.
+/// The native display keeps ownership of refresh state, errors, and buffers.
 pub struct PortraitDisplay<'a, D> {
     native: &'a mut D,
     rotation: PortraitRotation,

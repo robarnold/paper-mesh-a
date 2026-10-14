@@ -1,13 +1,16 @@
 # LILYGO T5 S3 E-Paper Pro hardware references
 
-External documentation for the **H752-01 full Pro with LoRa and GPS**.
-Start with the board schematic and pin map below when implementing drivers.
-Vendor documents remain hosted upstream; this repository contains links and
-source metadata, not copies of the documents, images, or drawings.
-Our [LILYGO backend profile](../../../boards/lilygo-t5-s3-pro.md) accounts for
-every control and signal family and maps them to the
-[portable service contracts](../../../device-interfaces.md). These sources
-establish facts about this backend, not requirements for all application targets.
+This index lists external references for the **H752-01 full Pro with LoRa and GPS**.
+For driver implementation, first read the board schematic and pin map.
+Vendor documents stay on upstream hosts.
+This repository stores links and source metadata.
+It does not store copies of documents, images, or drawings.
+
+The [LILYGO backend profile](../../../boards/lilygo-t5-s3-pro.md) identifies each
+control and signal family.
+It maps them to [portable service contracts](../../../device-interfaces.md).
+These sources establish facts about this backend.
+They do not define requirements for all application targets.
 
 | Reference | Upstream document |
 | --- | --- |
@@ -29,15 +32,16 @@ establish facts about this backend, not requirements for all application targets
 - Repository: [Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO](https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO).
 - Branch: `H752-01`.
 - Reviewed commit: [`938d6189db0fde9a12558629bc1405bb49e1be78`](https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/tree/938d6189db0fde9a12558629bc1405bb49e1be78).
-- Retrieved: 2026-10-12; this was the branch head at retrieval.
+- Retrieval date: 2026-10-12. The reviewed commit was the branch head on this date.
 - Online product reference: [LILYGO wiki](https://wiki.lilygo.cc/products/t5-series/t5-e-paper-s3-pro/).
 
-[SOURCES.json](SOURCES.json) records pinned viewing and download URLs, upstream
-paths, Git blob IDs, byte counts, and SHA-256 digests. It also indexes the
-vendor's supplementary images and flashing guide. Availability depends on the
-upstream host; pinning identifies the reviewed version but does not preserve it.
+[SOURCES.json](SOURCES.json) records viewing and download URLs at specified
+revisions, upstream paths, Git blob IDs, byte counts, and SHA-256 digests.
+It also lists supplementary images and the vendor flashing guide.
+Availability depends on the upstream host.
+A fixed revision identifies the reviewed version but does not store it.
 
-The inventory also uses pinned implementation references indexed in the manifest:
+The inventory also uses these implementation references from the manifest:
 
 | Evidence | Reference |
 | --- | --- |
@@ -49,28 +53,35 @@ The inventory also uses pinned implementation references indexed in the manifest
 | GNSS variant/baud probing | [GNSS example](https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/examples/GPS/main/main.ino) |
 | Optional touch/pen capabilities | [GT6972P example](https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/examples/touch_gt6972p/README.md) |
 
-Manufacturer references: [TI BQ25896 datasheet, SLUSC76C, section 9.2.10](https://www.ti.com/lit/ds/symlink/bq25896.pdf#page=26)
-for QON/shipping/reset behavior, and [Espressif ESP32-S3 sleep modes](https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-reference/system/sleep_modes.html)
-for wake-source restrictions. These URLs are maintained upstream rather than
-pinned Git files; the cited revision/section or platform matters when rechecking.
+The [TI BQ25896 datasheet, SLUSC76C, section 9.2.10](https://www.ti.com/lit/ds/symlink/bq25896.pdf#page=26)
+gives information about QON, shipping mode, and reset behavior.
+[Espressif ESP32-S3 sleep modes](https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-reference/system/sleep_modes.html)
+gives information about wake-source restrictions.
+Upstream hosts maintain these URLs without fixed Git revisions.
+During a new review, check the cited revision, section, and platform.
 
-For the [Home-key investigation](../../../boards/lilygo-t5-s3-pro.md#gt911-home-key-configuration-and-lower-bezel),
-reviewed on 2026-10-13, use Goodix's [GT911 Programming Guide, Rev.10, 2017-07-26](https://www.lcd-module.de/fileadmin/eng/pdf/zubehoer/GT911_Programming_Guide_Rev.10.pdf)
-(hosted by DISPLAY VISIONS, sections 3.2, 3.3, and 4.4) and [GT911 datasheet, Rev.09](https://www.olimex.com/Products/OLinuXino/LCD/_resources/GT911_Datasheet.pdf)
-(hosted by Olimex, section 5.4). These are controller references, not the fitted
-LILYGO touch-panel electrode layout or a dump of its factory configuration.
-Keep these documents external as well.
+The [Home-key investigation](../../../boards/lilygo-t5-s3-pro.md#gt911-home-key-configuration-and-lower-bezel)
+has a review date of 2026-10-13.
+It uses Goodix's [GT911 Programming Guide, Rev.10, 2017-07-26](https://www.lcd-module.de/fileadmin/eng/pdf/zubehoer/GT911_Programming_Guide_Rev.10.pdf),
+sections 3.2, 3.3, and 4.4, hosted by DISPLAY VISIONS.
+It also uses the [GT911 datasheet, Rev.09](https://www.olimex.com/Products/OLinuXino/LCD/_resources/GT911_Datasheet.pdf),
+section 5.4, hosted by Olimex.
+These references give information about the controller.
+They do not supply the fitted panel's electrode layout or factory configuration.
 
-The board and component documents cover the vendor's available variants; confirm
-the fitted hardware when the unit arrives. The mechanical filenames retain the
-vendor's `H752` naming even though they are published on the `H752-01` branch.
-Use this project's root README and AGENTS.md for our development workflow; the
-vendor's Arduino/PlatformIO instructions describe its own example software.
+Keep these documents external.
+
+Board and component documents cover the vendor's available variants.
+When the unit arrives, confirm its fitted hardware.
+Mechanical filenames keep the vendor's `H752` names on the `H752-01` branch.
+The vendor's Arduino and PlatformIO instructions apply to its example software.
+Use the project README and AGENTS.md for this project's development procedure.
 
 ## Retrieve a document for local inspection
 
-Download inside the devcontainer into its temporary directory. For example,
-retrieve and verify the panel datasheet against the recorded source:
+Download documents into the devcontainer's temporary directory.
+The example below retrieves the panel datasheet.
+It checks the downloaded bytes against the recorded source metadata.
 
 ```sh
 devcontainer exec --workspace-folder . python3 - <<'PYTHON'
@@ -94,7 +105,8 @@ PYTHON
 ```
 
 Do not commit downloaded documents, extracted text, or document screenshots.
-Record relevant findings in our own words in the [backend profile](../../../boards/lilygo-t5-s3-pro.md)
-or [display evidence](../../../boards/lilygo-t5-s3-pro-display.md), citing the pinned
-upstream document and relevant pages or sections. When reviewing a newer source,
-update the affected URLs and metadata along with any changed findings.
+Record findings in the project's own words in the [backend profile](../../../boards/lilygo-t5-s3-pro.md)
+or [display evidence](../../../boards/lilygo-t5-s3-pro-display.md).
+Include upstream links at specified revisions and applicable page or section
+references. During a new source review, update affected URLs and metadata.
+Update changed findings with the new evidence.

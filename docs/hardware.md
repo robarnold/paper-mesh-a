@@ -1,35 +1,39 @@
 # Hardware backends
 
 The [application architecture](architecture.md), [service contracts](device-interfaces.md),
-and [display contract](display-constraints.md) define portable behavior. Board
-profiles map that behavior to particular hardware and record evidence, limits,
-and implementation status. Application components consume capabilities and
-service results; they do not select behavior by board name or chip model.
+and [display contract](display-constraints.md) define portable behavior.
+Board profiles map that behavior to particular hardware.
+They record evidence, limits, and implementation status.
+Application components use capabilities and service results.
+They do not select behavior by board name or chip model.
 
 | Backend profile | Contents | Status |
 | --- | --- | --- |
-| [LILYGO T5 S3 E-Paper Pro](boards/lilygo-t5-s3-pro.md) | H752-01 inventory, controls, wiring, power/wake restrictions, service mapping, and bring-up checks | Initial firmware target; peripheral drivers remain planned |
-| [LILYGO display evidence](boards/lilygo-t5-s3-pro-display.md) | Panel timing, scan geometry, reference-driver behavior, and numerical examples | Research and calibration plan; no measured Rust-driver performance |
+| [LILYGO T5 S3 E-Paper Pro](boards/lilygo-t5-s3-pro.md) | H752-01 inventory, controls, wiring, power limits, wake limits, service mapping, and initial hardware checks | Initial firmware target. Peripheral drivers stay planned work. |
+| [LILYGO display evidence](boards/lilygo-t5-s3-pro-display.md) | Panel timing, scan geometry, reference-driver behavior, and numerical examples | Research and calibration plan. No measured Rust-driver performance. |
 
-The [native simulator](simulator.md) implements the same service contracts. Its
-current display preset follows the first board's geometry. Future scenarios can
-exercise other capability combinations without claiming to emulate a physical
-board. A board-specific conformance preset additionally models that profile's
-constraints; it is not the definition of the application architecture.
+The [native simulator](simulator.md) implements the same service contracts.
+Its current display preset uses the first board's geometry.
+Future scenarios can use other capability combinations without emulation of a
+physical board. A board conformance preset also models that profile's constraints.
+The preset does not define the application architecture.
 
 ## Adding a backend
 
-Record the board revision and sources, map available services and controls to
-portable contracts, and distinguish absent hardware from missing drivers. Keep
-wiring, shared-resource dependencies, chip configuration, boot modes, and
-native display cost models in the backend profile and adapters.
+Record the board revision and sources.
+Map available services and controls to portable contracts.
+Distinguish absent hardware from missing drivers.
+Keep wiring, resource dependencies, chip configuration, boot modes, and display
+cost models in the backend profile and adapters.
 
-Check the shared contract scenarios, then add board-specific conformance and
-hardware validation cases. A second backend should supply a different capability
-set and geometry without new chip-name conditionals in application components.
-Current hard-coded demo assumptions are tracked in the
-[architecture's implementation status](architecture.md#scheduling-and-implementation-status).
+Check the shared contract scenarios.
+Add board conformance tests and hardware validation cases.
+The intended design lets a second backend supply different capabilities and geometry without chip
+checks in application components.
+The [implementation status](architecture.md#scheduling-and-implementation-status)
+records current fixed assumptions in the demonstration.
 
-Vendor documents remain external. The first target's
-[reference index](vendor/lilygo/t5-s3-pro/README.md) records pinned links and source
-metadata; our profiles contain findings in our own words.
+Vendor documents stay external.
+The first target's [reference index](vendor/lilygo/t5-s3-pro/README.md) records
+links at specified revisions and source metadata.
+Backend profiles contain project findings in the project's own words.

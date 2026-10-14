@@ -9,8 +9,8 @@ fn main() {
         fs::copy(source, out_dir.join(script)).expect("copy the ESP32-S3 linker script");
     }
 
-    // Select the corrected chip script explicitly. All memory regions and
-    // shared section scripts still come from esp-hal and xtensa-lx-rt.
+    // Select the corrected chip script explicitly.
+    // esp-hal and xtensa-lx-rt supply memory regions and shared section scripts.
     println!("cargo:rustc-link-search={}", out_dir.display());
     println!("cargo:rustc-link-arg=-Tpaper-mesh.x");
     // A future writable executable segment must fail the build, including CI.

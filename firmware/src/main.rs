@@ -16,7 +16,8 @@ impl Clock for FirmwareClock {
     }
 }
 
-// Metadata for the ESP image format, not an ESP-IDF application runtime.
+// This metadata describes the ESP image format.
+// It does not add an ESP-IDF application runtime.
 esp_bootloader_esp_idf::esp_app_desc!();
 
 #[esp_rtos::main]
@@ -33,9 +34,9 @@ async fn main(_spawner: Spawner) -> ! {
         env!("CARGO_PKG_VERSION")
     );
 
-    // Board peripherals stay uninitialized until their drivers and power
-    // sequencing have been verified. In particular, do not transmit on LoRa.
-    // Only the shared application's clock is connected on hardware so far.
+    // Peripheral initialization must use validated drivers and power sequences.
+    // Do not transmit on LoRa.
+    // Current hardware firmware connects only the shared application's clock.
     let clock = FirmwareClock;
     let mut app = App::new(&clock);
     loop {

@@ -16,7 +16,7 @@ lint:
     git diff --check
     git diff --cached --check
 
-# Check the installed tooling; firmware-build exercises the real linker.
+# Check the installed tools. The firmware-build recipe uses the real linker.
 toolchain-check:
     bash scripts/check-toolchain.sh
 
@@ -25,7 +25,7 @@ native-check:
     cargo clippy --locked --workspace --all-targets -- -D warnings
     cargo test --locked --workspace
 
-# Rust runs in the container; the browser only displays frames and sends input.
+# Rust runs in the container. The browser displays frames and sends input.
 sim:
     bash scripts/require-container.sh
     cargo run --locked -p paper-mesh-simulator
@@ -44,7 +44,7 @@ firmware-build:
     bash scripts/require-container.sh
     cd firmware && cargo build --locked --release
 
-# Produce an ELF and merged boot image without accessing hardware.
+# Produce an ELF and merged boot image without hardware access.
 image: firmware-build
     bash scripts/build-image.sh
 

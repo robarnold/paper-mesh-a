@@ -1,7 +1,8 @@
 #![no_std]
 
-//! Shared application state and rendering. No ESP registers, OS, heap, or
-//! executor are required. Each platform delivers input and schedules polling.
+//! Shared application state and rendering.
+//! This crate operates without ESP registers, an OS, a heap, or an executor.
+//! Each platform delivers input and schedules application polls.
 
 pub mod platform;
 
@@ -45,8 +46,9 @@ impl App {
         }
     }
 
-    /// Emit at most one heartbeat per poll, preserving the original cadence
-    /// after a long pause. Time is supplied by the platform, never read globally.
+    /// Emits at most one heartbeat per poll.
+    /// A long pause does not change the initial schedule.
+    /// The platform supplies time through the clock argument.
     pub fn tick(&mut self, clock: &impl Clock) -> Option<u64> {
         let now = clock.now_ms();
         let elapsed = now.saturating_sub(self.last_heartbeat_ms);
@@ -81,8 +83,9 @@ impl App {
         }
     }
 
-    /// Coalesce changes while the panel is busy. Returns true only when a new
-    /// frame was submitted. Failed drawing or refresh remains pending.
+    /// Combines changes while the panel is busy.
+    /// Returns true only after successful submission of a new frame.
+    /// A drawing or refresh error leaves the frame pending.
     pub fn present<D: Display>(&mut self, display: &mut D) -> Result<bool, D::Error> {
         if !self.dirty || display.is_busy() {
             return Ok(false);
@@ -113,7 +116,7 @@ impl App {
         )
         .draw(display)?;
         let mut label = String::<64>::new();
-        // Maximum formatted lengths are bounded by u32/u64 decimal widths.
+        // Decimal u32/u64 widths limit the formatted lengths.
         let _ = write!(label, "Touches: {}", self.taps);
         Text::with_alignment(
             &label,

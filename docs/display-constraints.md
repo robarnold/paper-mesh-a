@@ -1,109 +1,125 @@
 # Portable e-paper display contract
 
-This design describes what shared components and display policy need from a
-backend. It does not prescribe a panel, scan geometry, waveform implementation,
-or update rate. The first target's [display evidence](boards/lilygo-t5-s3-pro-display.md)
-provides the concrete measurements and reference-driver examples that motivated
-these boundaries. Proposed extensions below are not yet implemented by `Display`.
+This design defines backend requirements for shared components and display
+policy. It specifies no panel, scan geometry, waveform implementation, or update
+rate. The first target's [display evidence](boards/lilygo-t5-s3-pro-display.md)
+provides calculations and reference-driver examples that support these boundaries.
+The proposed `Display` extensions stay unimplemented.
 
 ## Capabilities and geometry
 
 A backend supplies stable native geometry, mounting information, and supported
-rendering/update capabilities. The [shared orientation state](architecture.md#orientation-state-and-coordinate-spaces)
-derives the logical viewport used by components. Native framebuffer size and
-storage order remain backend concerns; components do not hard-code panel dimensions.
+rendering and update capabilities.
+The [shared orientation state](architecture.md#orientation-state-and-coordinate-spaces)
+derives the logical viewport for components.
+The backend controls native framebuffer size and storage order.
+Components must not contain fixed panel dimensions.
 
-| Capability | What shared policy needs to know |
+| Capability | Required information for shared policy |
 | --- | --- |
-| Rendering | Supported logical shades/formats and any mode-specific restrictions |
-| Update regions | Whether damage can limit physical work, and any region alignment constraints |
-| Quality modes | Available quality/latency choices and required cleanup or history |
-| Concurrency | Whole-update serialization or independently active regions |
-| Cancellation | Whether work can be canceled, replaced, or only coalesced before submission |
-| Presentation state | Completion identity, retained-content guarantees, and whether recovery requires repainting |
-| Cost estimate | Optional expected latency/energy with uncertainty, assumptions, and validity |
+| Rendering | Supported logical shades and formats, with mode restrictions |
+| Update regions | Whether damage can limit physical work, with region alignment requirements |
+| Quality modes | Available quality and latency choices, with required cleanup or history |
+| Concurrency | Serialized updates or independently active regions |
+| Cancellation | Whether the backend can cancel or replace accepted work, or only combine work before submission |
+| Presentation state | Completion identity, content retention guarantees, and recovery requirements for repaint |
+| Cost estimate | Optional latency and energy estimates, with uncertainty, assumptions, and validity |
 
-Do not infer a capability from a chip name or enum value. Unsupported operations
-must be rejected or handled by an explicit fallback. The current `Gray4` contract
-selects a logical rendering format; it does not establish identical quality in
-every backend mode or dictate buffer packing.
+A chip name or enum value does not establish a capability.
+The backend must reject unsupported operations or use an explicit alternative.
+The current `Gray4` contract selects a logical rendering format.
+It does not establish identical quality for all modes or specify buffer packing.
 
 ## Damage, scheduling, and cost
 
-Components report logical damage and urgency/quality intent. The compositor
-combines damage, restores old regions when content moves or disappears, and
-renders the latest state instead of queuing every intermediate animation frame.
-The orientation adapter converts damage to backend coordinates using the same
-snapshot as drawing.
+Components report logical damage, urgency, and quality intent.
+The compositor combines damage.
+It restores old regions when content moves or disappears.
+It renders the latest state without a queue of all intermediate animation frames.
+The orientation adapter converts damage into backend coordinates.
+It uses the same snapshot as drawing.
 
-The backend interprets that damage using its actual update model. Changed-pixel
-count alone is not a universal cost estimate. Different backends can have
-row-oriented, rectangular-region, tile, or full-frame costs; some can shorten
-unchanged work and some cannot. Shared policy can use a backend estimate without
-knowing scan clocks, line widths, or waveform phases. Estimates are optional and
-must state whether they are measured or synthetic.
+The backend interprets damage through its update model.
+Changed-pixel count alone cannot predict cost for all backends.
+A backend can have row, rectangle, tile, or full-frame costs.
+Some backends can shorten work for unchanged regions.
+Shared policy can use estimates without scan clocks, line widths, or waveform
+phases. Each optional estimate must identify its measured or synthetic basis.
 
-A backend should distinguish preparation, submission, first visible change, and
-settled completion where observable. A scan rate is not an application frame
-rate, and a small region need not settle proportionally faster. Backend reports
-and measurements establish useful limits; the architecture supplies no fixed
-pixels-to-time formula.
+The intended backend reports preparation, submission, first visible change,
+and settled completion where observable.
+Scan rate is not application frame rate.
+A small region does not necessarily settle proportionally faster.
+Backend reports and measurements establish useful limits.
+The architecture specifies no fixed pixel-count-to-time formula.
 
 ## Component behavior
 
 | Owner | Responsibility |
 | --- | --- |
-| UI components | Stable layout/background where practical, logical damage, meaningful update cadence |
-| Shared compositor | Damage merging, retained rendering state, bounded pending work |
-| Shared orientation policy | Matching snapshots for layout, drawing, input, and submitted/presented frames |
-| Shared display policy | Select advertised modes, coalesce work, schedule cleanup according to capabilities |
-| Backend adapter | Pixel packing, transfer/drive mechanics, history, power sequencing, and completion/failure |
+| UI components | Stable layout and background where practical, logical damage, useful update intervals |
+| Shared compositor | Combined damage, retained rendering state, bounded pending work |
+| Shared orientation policy | Consistent snapshots for layout, drawing, input, submitted frames, and presented frames |
+| Shared display policy | Supported mode selection, combined work, cleanup that obeys capabilities |
+| Backend adapter | Pixel packing, transfer and drive operations, history, power sequences, completion, failures |
 
-Selection markers should invalidate bounded regions. Updating a value should
-avoid moving neighbors unnecessarily. Clocks and progress indicators use a useful
-cadence; blinking and animation must have deliberate budgets. Scrolling coalesces
-movement when presentation lags. Drawing input updates application state promptly
-while the visible result catches up. Layout remains a usability choice, not a
-rule derived from one panel's row direction.
+The intended selection markers invalidate bounded regions.
+The intended value updates prevent movement of adjacent content when that movement is not necessary.
+Clocks and progress indicators must use useful update intervals.
+Blinking and animation must have explicit resource budgets.
+When presentation is slow, scrolling combines movement.
+Drawing input updates application state promptly, even when presentation is late.
 
-Interactive feedback can request latency preference and settled content can
-request quality preference. The backend must validate the requested mode and
-state what it accepted. Cleanup frequency depends on its history and measured
-behavior, not a universal periodic full-screen flash.
+Layout stays a usability decision.
+A panel's row direction does not determine every component layout.
+Interactive feedback can request low latency.
+Settled content can request high quality.
+The backend checks each requested mode and reports the accepted mode.
+
+Cleanup frequency depends on driver history and measured behavior.
+The contract gives no universal interval for full-screen flashes.
 
 ## Lifecycle and ownership
 
-Keep desired content, accepted work, and last completed presentation distinct.
-Successful submission means acceptance, not visibility. Physical presentation
-may change progressively; a completed target does not imply an atomic optical
-swap. Input must use the orientation of the visible layout, as described in the
-architecture, and remain blocked while presentation is unknown during recovery.
+Desired content, accepted work, and completed presentation are separate states.
+Successful submission confirms acceptance, not visibility.
+Physical presentation can change progressively.
+A completed target does not imply an atomic optical replacement.
 
-Reset, failed transfers, or lost driver history can invalidate differential
-updates even if visible content is retained. A backend declares how to recover
-known state and which content survives each lifecycle transition. Buffer clears
-are software operations; they do not by themselves imply a physical refresh.
+Input must use the visible layout's orientation, as the architecture specifies.
+Input stays blocked while presentation is unknown during recovery.
 
-The backend owns buffers and keeps accepted transfer data valid until completion,
-including work on another core or DMA. Applications must follow its ownership
-and backpressure contract rather than assume a particular number of framebuffers.
+Reset, transfer failure, or lost driver history can invalidate differential
+updates. Visible content can stay despite that invalidation.
+The backend defines recovery to a known state.
+It also defines content retention for each lifecycle transition.
+A buffer clear is a software operation.
+It does not imply a physical refresh.
 
-Today `refresh()`/`is_busy()` serializes an update and does not express damage,
-mode selection, identified completion, or asynchronous failures. The demo redraws
-its whole buffer. Those are implementation limits to extend as consumers need
-them; components should never need to generate electrical drive commands.
+The backend owns buffers and keeps accepted transfer data valid until completion.
+This requirement includes DMA and work on another core.
+Applications must obey buffer ownership and backpressure rules.
+They must not assume a particular framebuffer count.
+
+The current `refresh()`/`is_busy()` interface serializes an update.
+It does not represent damage, mode selection, completion identity, or asynchronous
+failure. The demonstration redraws its complete buffer.
+Future consumers will drive extensions to these limits.
+Components must not generate electrical drive commands.
 
 ## Simulator and hardware validation
 
-Portable scenarios should compare supported and unsupported region updates,
-different cost models, changed geometry/mounting, rapid input while busy,
-coalesced submissions, faults, and idle periods without display work. Verify that
-components remain correct when an estimate is absent or a requested fast mode
-is unavailable. Use deterministic virtual time and label synthetic costs.
+Portable scenarios must include supported and unsupported region updates, different cost
+models, changed geometry, and changed mounting.
+They must also include rapid input while busy, combined submissions, faults, and idle
+periods without display work.
+Components must stay correct without estimates or a requested fast mode.
+Scenarios use deterministic virtual time and identified synthetic costs.
 
-Board-specific calibration separately measures preparation and transfer costs,
-first visible change, settling, quality/ghosting, temperature sensitivity, and
-energy. Record driver/configuration revision and history. Those results populate
-backend capabilities and estimates; they do not become constants in application
-components. The [first backend's calibration plan](boards/lilygo-t5-s3-pro-display.md#simulator-and-hardware-validation)
-contains its row/scan-specific measurements.
+Board calibration measures preparation, transfer, first visible change, settling,
+quality, ghosting, temperature effects, and energy separately.
+Records include driver revision, configuration revision, and history.
+Results supply backend capabilities and estimates.
+They do not become fixed values in application components.
+The [first backend's calibration plan](boards/lilygo-t5-s3-pro-display.md#simulator-and-hardware-validation)
+includes its row and scan measurements.

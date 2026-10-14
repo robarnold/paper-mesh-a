@@ -3,7 +3,7 @@
   "branch": "H752-01",
   "commit": "938d6189db0fde9a12558629bc1405bb49e1be78",
   "retrieved_on": "2026-10-12",
-  "scope": "External reference index only; source documents remain hosted upstream and are not included in this repository.",
+  "scope": "This index contains external references. Source documents stay on upstream hosts. This repository does not include those documents.",
   "files": [
     {
       "upstream_path": "DXF/H752-Board size.dxf",

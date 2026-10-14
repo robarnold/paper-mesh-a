@@ -175,7 +175,7 @@ fn main() -> Result<(), Error> {
         return Err("Usage: paper-mesh-simulator [--snapshot|--snapshot-native FILE.png]".into());
     }
 
-    // Docker publishes this only on the host loopback interface.
+    // Docker publishes this port only on the host loopback interface.
     let server = Server::http("0.0.0.0:8080")?;
     let mut session = Session {
         simulation: Simulation::default(),
