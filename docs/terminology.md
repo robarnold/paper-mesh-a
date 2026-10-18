@@ -1,7 +1,7 @@
 # Project terminology
 
 These terms identify software and hardware concepts in this project.
-The [agent guidelines](../AGENTS.md#english-prose) specify ASD-STE100 for English
+The [documentation guide](../DOCUMENTATION.md#english-prose) specifies ASD-STE100 for English
 prose. This list supports the same terms for the same concepts. It does not replace the
 standard's dictionary or permit other meanings and parts of speech.
 
@@ -10,7 +10,8 @@ standard's dictionary or permit other meanings and parts of speech.
 | Term | Meaning |
 | --- | --- |
 | Adapter | Code that connects a service contract to another interface or coordinate space |
-| Application | Shared state, behavior, and rendering in `crates/app` |
+| Application | Screens, workflows, state, layout, actions, and policy choices for a specific use |
+| Application toolkit | Reusable components and services that applications combine into screens and workflows |
 | Availability | Current readiness or fault state of a service |
 | Backend | Implementation of platform services for hardware or the simulator |
 | BSSID | Address that identifies a Wi-Fi access point in discovery results |
@@ -37,13 +38,15 @@ standard's dictionary or permit other meanings and parts of speech.
 | Native coordinates | Coordinates that use the display backend's storage orientation |
 | NMEA | Message protocol that the GNSS adapter decodes |
 | Observation | Service value with units, validity, and an observation time |
-| Platform | Resources and execution environment that supply application services |
+| Platform | Application toolkit, service contracts, adapters, resources, and execution |
+| Platform crate | Reusable toolkit implementations and portable contracts in `crates/platform`, without an application dependency |
 | Position fix | Geographic position that a location provider marks as valid |
 | Presented snapshot | State associated with the last completed display frame |
 | Resource coordinator | Backend owner that controls access to shared buses, interrupts, and power domains |
 | RMC | NMEA message that supplies position status, speed, course, UTC, and date |
 | RSSI | Received signal strength indicator, expressed in dBm for discovery results |
-| Radio debugger | Shared screen that shows discovery results and scan controls |
+| Radio debugger | Application screen that shows discovery results and scan controls |
+| Runtime | Code that connects an application to services and controls execution and event delivery |
 | Scenario profile | Simulator configuration for capabilities, timing, and faults |
 | SSID | Name that identifies a Wi-Fi network |
 | Staging buffer | Pixel storage that accepts drawing before refresh submission |

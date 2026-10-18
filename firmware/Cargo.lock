@@ -1565,6 +1565,7 @@ version = "0.1.0"
 dependencies = [
  "embedded-graphics",
  "heapless 0.9.3",
+ "paper-mesh-platform",
 ]
 
 [[package]]
@@ -1597,6 +1598,7 @@ dependencies = [
  "paper-mesh-app",
  "paper-mesh-ed047tc1",
  "paper-mesh-gt911",
+ "paper-mesh-platform",
  "static_cell",
 ]
 
@@ -1605,6 +1607,14 @@ name = "paper-mesh-gt911"
 version = "0.1.0"
 dependencies = [
  "embedded-hal 1.0.0",
+]
+
+[[package]]
+name = "paper-mesh-platform"
+version = "0.1.0"
+dependencies = [
+ "embedded-graphics",
+ "heapless 0.9.3",
 ]
 
 [[package]]

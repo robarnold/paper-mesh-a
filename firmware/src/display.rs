@@ -20,11 +20,13 @@ use esp_hal::{
     time::{Duration, Instant, Rate},
 };
 use log::{error, info};
-use paper_mesh_app::platform::Display;
 use paper_mesh_ed047tc1::{
     FRAME_BYTES, FrameHistory, Framebuffer, HEIGHT, PARTIAL_PHASE_TICKS, PHASE_TICKS, ROW_BYTES,
-    STORAGE_BYTES, Update,
+    STORAGE_BYTES, Update, WIDTH,
 };
+use paper_mesh_platform::Display;
+
+pub const NATIVE_SCREEN_SIZE: Size = Size::new(WIDTH as u32, HEIGHT as u32);
 
 const EXPANDER: u8 = 0x20;
 const SUPPLY: u8 = 0x68;

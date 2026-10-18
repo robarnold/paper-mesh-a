@@ -5,7 +5,7 @@ use bt_hci::{
     event::le::{LeAdvertisingReport, LeEventKind, LeEventPacket},
     param::AddrKind,
 };
-use paper_mesh_app::platform::discovery::{AddressKind, Network, ScanError};
+use paper_mesh_platform::discovery::{AddressKind, Network, ScanError};
 
 pub fn visit(data: &[u8], mut observe: impl FnMut(Network)) -> Result<(), ScanError> {
     let event = LeEventPacket::from_hci_bytes_complete(data).map_err(|_| ScanError::Failed)?;

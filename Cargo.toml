@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/app", "crates/ed047tc1", "crates/gt911", "simulator"]
+members = ["crates/app", "crates/platform", "crates/ed047tc1", "crates/gt911", "simulator"]
 # Keep the Xtensa toolchain, target settings, and dependency features isolated.
 exclude = ["firmware"]
 resolver = "3"

@@ -1,15 +1,6 @@
 //! Shared location screen, observation validity, and display deadlines.
 
-use crate::{
-    debugger::{BACK_TARGET, button},
-    platform::{
-        TouchEvent,
-        location::{
-            Coordinates, Location, LocationAvailability, LocationSnapshot, SatelliteObservation,
-            UtcTime,
-        },
-    },
-};
+use crate::BACK_TARGET;
 use core::fmt::Write;
 use embedded_graphics::{
     mono_font::{MonoTextStyle, ascii::FONT_10X20},
@@ -19,6 +10,23 @@ use embedded_graphics::{
     text::Text,
 };
 use heapless::String;
+use paper_mesh_platform::{
+    TouchEvent,
+    input::TapGesture,
+    location::{
+        Coordinates, Location, LocationAvailability, LocationSnapshot, SatelliteObservation,
+        UtcTime,
+    },
+    time::ObservationWindow,
+    ui::{
+        button,
+        format::{
+            coordinate_degrees as coordinate_label, course_true_degrees as course_label,
+            elapsed_seconds as age_label, elevation_meters as elevation_label, satellite_label,
+            speed_kmh as speed_label, utc_time as utc_label,
+        },
+    },
+};
 
 pub const LOCATION_TARGET: Rectangle = Rectangle::new(Point::new(48, 278), Size::new(444, 64));
 pub const LOCATION_MAX_AGE_MS: u64 = 5_000;
@@ -87,10 +95,13 @@ pub struct LocationView {
 
 impl LocationView {
     fn from_snapshot(snapshot: LocationSnapshot, now_ms: u64) -> Self {
+        let window = ObservationWindow::new(now_ms, LOCATION_MAX_AGE_MS);
         let age = snapshot
             .observation
-            .and_then(|value| now_ms.checked_sub(value.observed_at_ms));
-        let fresh = age.is_some_and(|age| age < LOCATION_MAX_AGE_MS);
+            .and_then(|value| window.age_ms(value.observed_at_ms));
+        let fresh = snapshot
+            .observation
+            .is_some_and(|value| window.contains(value.observed_at_ms));
         let status = match snapshot.availability {
             LocationAvailability::Starting => FixStatus::Starting,
             LocationAvailability::Unavailable => FixStatus::Unavailable,
@@ -111,10 +122,13 @@ impl LocationView {
         let usable = fresh && snapshot.availability == LocationAvailability::Ready;
         let response_age = snapshot
             .activity
-            .and_then(|activity| now_ms.checked_sub(activity.received_at_ms));
+            .and_then(|activity| window.age_ms(activity.received_at_ms));
         let receiver_status = if snapshot.availability == LocationAvailability::Fault {
             ReceiverStatus::Fault
-        } else if response_age.is_some_and(|age| age < LOCATION_MAX_AGE_MS) {
+        } else if snapshot
+            .activity
+            .is_some_and(|value| window.contains(value.received_at_ms))
+        {
             ReceiverStatus::Active
         } else if snapshot.activity.is_some() {
             ReceiverStatus::Quiet
@@ -123,13 +137,9 @@ impl LocationView {
         };
         let satellite_age = snapshot
             .satellites
-            .and_then(|satellites| now_ms.checked_sub(satellites.observed_at_ms));
-        let current = |time| {
-            snapshot.availability == LocationAvailability::Ready
-                && now_ms
-                    .checked_sub(time)
-                    .is_some_and(|age| age < LOCATION_MAX_AGE_MS)
-        };
+            .and_then(|satellites| window.age_ms(satellites.observed_at_ms));
+        let current =
+            |time| snapshot.availability == LocationAvailability::Ready && window.contains(time);
         let motion = snapshot
             .motion
             .filter(|value| current(value.observed_at_ms));
@@ -163,10 +173,9 @@ impl LocationView {
             valid_messages: snapshot
                 .activity
                 .map_or(0, |activity| activity.valid_messages),
-            satellites: snapshot.satellites.filter(|_| {
-                snapshot.availability == LocationAvailability::Ready
-                    && satellite_age.is_some_and(|age| age < LOCATION_MAX_AGE_MS)
-            }),
+            satellites: snapshot
+                .satellites
+                .filter(|value| current(value.observed_at_ms)),
             satellite_age_seconds: satellite_age.map(|age| age / 1000),
         }
     }
@@ -174,7 +183,7 @@ impl LocationView {
 
 pub struct LocationScreen {
     open: bool,
-    back_armed: bool,
+    back_gesture: TapGesture<()>,
     view: LocationView,
     next_update_ms: u64,
     expires_at_ms: Option<u64>,
@@ -190,7 +199,7 @@ impl LocationScreen {
     pub const fn new() -> Self {
         Self {
             open: false,
-            back_armed: false,
+            back_gesture: TapGesture::new(),
             view: LocationView {
                 status: FixStatus::Starting,
                 coordinates: None,
@@ -220,7 +229,7 @@ impl LocationScreen {
 
     pub fn open(&mut self) {
         self.open = true;
-        self.back_armed = false;
+        self.back_gesture.cancel();
         self.next_update_ms = 0;
     }
 
@@ -234,18 +243,17 @@ impl LocationScreen {
     pub fn poll(&mut self, now_ms: u64, location: &mut impl Location) -> bool {
         let snapshot = location.snapshot(now_ms);
         let view = LocationView::from_snapshot(snapshot, now_ms);
-        self.expires_at_ms = [
-            snapshot.observation.map(|value| value.observed_at_ms),
-            snapshot.motion.map(|value| value.observed_at_ms),
-            snapshot.utc.map(|value| value.observed_at_ms),
-            snapshot.activity.map(|value| value.received_at_ms),
-            snapshot.satellites.map(|value| value.observed_at_ms),
-        ]
-        .into_iter()
-        .flatten()
-        .map(|time| time.saturating_add(LOCATION_MAX_AGE_MS))
-        .filter(|deadline| *deadline > now_ms)
-        .min();
+        self.expires_at_ms = ObservationWindow::new(now_ms, LOCATION_MAX_AGE_MS).next_expiry_ms(
+            [
+                snapshot.observation.map(|value| value.observed_at_ms),
+                snapshot.motion.map(|value| value.observed_at_ms),
+                snapshot.utc.map(|value| value.observed_at_ms),
+                snapshot.activity.map(|value| value.received_at_ms),
+                snapshot.satellites.map(|value| value.observed_at_ms),
+            ]
+            .into_iter()
+            .flatten(),
+        );
         if !self.open
             || now_ms >= self.next_update_ms
             || view.status != self.view.status
@@ -265,19 +273,14 @@ impl LocationScreen {
     }
 
     pub fn touch(&mut self, event: TouchEvent) -> bool {
-        match event {
-            TouchEvent::Down(point) => self.back_armed = BACK_TARGET.contains(point),
-            TouchEvent::Up(point) => {
-                let close = self.back_armed && BACK_TARGET.contains(point);
-                self.back_armed = false;
-                if close {
-                    self.open = false;
-                }
-                return close;
-            }
-            TouchEvent::Cancel => self.back_armed = false,
+        let close = self
+            .back_gesture
+            .update(event, |point| BACK_TARGET.contains(point).then_some(()))
+            .is_some();
+        if close {
+            self.open = false;
         }
-        false
+        close
     }
 
     pub fn render<D: DrawTarget<Color = Gray4>>(&self, display: &mut D) -> Result<(), D::Error> {
@@ -377,7 +380,12 @@ impl LocationScreen {
             for (row, satellite) in satellites.strongest.iter().flatten().enumerate() {
                 let y = 574 + row as i32 * 32;
                 label.clear();
-                let _ = write!(label, "{} {:03}", satellite.system.label(), satellite.id);
+                let _ = write!(
+                    label,
+                    "{} {:03}",
+                    satellite_label(satellite.system),
+                    satellite.id
+                );
                 Text::new(&label, Point::new(28, y), black).draw(display)?;
                 Rectangle::new(Point::new(190, y - 16), Size::new(210, 18))
                     .into_styled(PrimitiveStyle::with_stroke(Gray4::new(9), 1))
@@ -426,153 +434,13 @@ impl LocationScreen {
     }
 }
 
-fn age_label(age: Option<u64>) -> String<24> {
-    let mut label = String::new();
-    if let Some(age) = age {
-        let _ = write!(label, "{age}");
-    } else {
-        let _ = label.push_str("--");
-    }
-    label
-}
-
-fn speed_label(value: Option<u32>) -> String<24> {
-    let mut label = String::new();
-    if let Some(speed) = value {
-        let tenths = (u64::from(speed) * 36 + 500) / 1_000;
-        let _ = write!(label, "{}.{:01}", tenths / 10, tenths % 10);
-    } else {
-        let _ = label.push_str("--");
-    }
-    label
-}
-
-fn course_label(value: Option<u32>) -> String<24> {
-    let mut label = String::new();
-    if let Some(course) = value.filter(|course| *course < 360_000) {
-        let directions = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
-        let direction = directions[((course + 22_500) / 45_000 % 8) as usize];
-        let tenths = ((course + 50) / 100) % 3_600;
-        let _ = write!(
-            label,
-            "{direction} {}.{} deg true",
-            tenths / 10,
-            tenths % 10
-        );
-    } else {
-        let _ = label.push_str("--");
-    }
-    label
-}
-
-fn utc_label(value: Option<UtcTime>) -> String<24> {
-    let mut label = String::new();
-    if let Some(time) = value {
-        let _ = write!(
-            label,
-            "{:02}:{:02}:{:02}",
-            time.hour(),
-            time.minute(),
-            time.second()
-        );
-    } else {
-        let _ = label.push_str("--:--:--");
-    }
-    label
-}
-
-fn elevation_label(value: Option<i32>) -> String<24> {
-    let mut label = String::new();
-    if let Some(value) = value {
-        let tenths = (value.unsigned_abs() + 50) / 100;
-        let _ = write!(
-            label,
-            "{}{}.{:01}",
-            if value < 0 && tenths != 0 { "-" } else { "" },
-            tenths / 10,
-            tenths % 10
-        );
-    } else {
-        let _ = label.push_str("--");
-    }
-    label
-}
-
-fn coordinate_label(value: Option<i32>) -> String<24> {
-    let mut label = String::new();
-    if let Some(value) = value {
-        let magnitude = value.unsigned_abs();
-        let _ = write!(
-            label,
-            "{}{}.{:06}",
-            if value < 0 { "-" } else { "" },
-            magnitude / 1_000_000,
-            magnitude % 1_000_000
-        );
-    } else {
-        let _ = label.push_str("--");
-    }
-    label
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{
-        FixStatus, LocationView, ReceiverStatus, coordinate_label, course_label, elevation_label,
-        speed_label, utc_label,
+    use super::{FixStatus, LocationView, ReceiverStatus};
+    use paper_mesh_platform::location::{
+        Coordinates, LocationAvailability, LocationObservation, LocationSnapshot, MAX_SATELLITES,
+        MotionObservation, ReceiverActivity, SatelliteObservation, UtcObservation, UtcTime,
     };
-    use crate::platform::location::{
-        Coordinates, DISPLAY_SATELLITES, LocationAvailability, LocationObservation,
-        LocationSnapshot, MotionObservation, ReceiverActivity, SatelliteObservation,
-        UtcObservation, UtcTime,
-    };
-
-    #[test]
-    fn coordinate_labels_keep_the_sign_below_one_degree() {
-        assert_eq!(coordinate_label(Some(-500_001)), "-0.500001");
-        assert_eq!(coordinate_label(Some(0)), "0.000000");
-        assert_eq!(coordinate_label(Some(180_000_000)), "180.000000");
-        assert_eq!(coordinate_label(None), "--");
-    }
-
-    #[test]
-    fn elevation_labels_round_to_tenths_and_preserve_missing_values() {
-        assert_eq!(elevation_label(Some(75_700)), "75.7");
-        assert_eq!(elevation_label(Some(-430_500)), "-430.5");
-        assert_eq!(elevation_label(Some(-150)), "-0.2");
-        assert_eq!(elevation_label(Some(-1)), "0.0");
-        assert_eq!(elevation_label(Some(0)), "0.0");
-        assert_eq!(elevation_label(Some(i32::MIN)), "-2147483.6");
-        assert_eq!(elevation_label(None), "--");
-    }
-
-    #[test]
-    fn motion_and_clock_labels_keep_zero_missing_and_direction_boundaries() {
-        assert_eq!(speed_label(Some(0)), "0.0");
-        assert_eq!(speed_label(Some(5_144)), "18.5");
-        assert_eq!(speed_label(Some(u32::MAX)), "15461882.3");
-        assert_eq!(speed_label(None), "--");
-        for (course, expected) in [
-            (0, "N 0.0 deg true"),
-            (22_499, "N 22.5 deg true"),
-            (22_500, "NE 22.5 deg true"),
-            (90_000, "E 90.0 deg true"),
-            (180_000, "S 180.0 deg true"),
-            (270_000, "W 270.0 deg true"),
-            (315_000, "NW 315.0 deg true"),
-            (359_999, "N 0.0 deg true"),
-            (360_000, "--"),
-        ] {
-            assert_eq!(course_label(Some(course)), expected);
-        }
-        assert_eq!(course_label(None), "--");
-        assert_eq!(utc_label(UtcTime::new(0, 0, 0)), "00:00:00");
-        assert_eq!(utc_label(UtcTime::new(23, 59, 59)), "23:59:59");
-        assert_eq!(utc_label(None), "--:--:--");
-        assert_eq!(UtcTime::new(24, 0, 0), None);
-        assert_eq!(UtcTime::new(0, 60, 0), None);
-        assert_eq!(UtcTime::new(0, 0, 60), None);
-    }
 
     #[test]
     fn future_observations_and_unavailable_providers_cannot_supply_a_fix() {
@@ -601,7 +469,7 @@ mod tests {
                 observed_at_ms: 1_000,
                 satellites_in_view: 0,
                 satellites_with_signal: 0,
-                strongest: [None; DISPLAY_SATELLITES],
+                strongest: [None; MAX_SATELLITES],
                 truncated: false,
             }),
         };

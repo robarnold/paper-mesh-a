@@ -1,10 +1,10 @@
 use embedded_graphics::{prelude::*, primitives::Rectangle};
 use paper_mesh_app::{
-    TAP_TARGET,
-    debugger::{BACK_TARGET, DEBUGGER_TARGET},
+    BACK_TARGET, TAP_TARGET,
+    debugger::DEBUGGER_TARGET,
     location::{FixStatus, LOCATION_TARGET, ReceiverStatus},
-    platform::TouchEvent,
 };
+use paper_mesh_platform::TouchEvent;
 use paper_mesh_simulator::{
     REFRESH_MS, Simulation,
     location::{ACQUISITION_MS, LocationScenario},

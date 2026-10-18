@@ -9,6 +9,7 @@ publish = false
 workspace = true
 
 [dependencies]
+paper-mesh-platform = { path = "../crates/platform" }
 paper-mesh-app = { path = "../crates/app" }
 embedded-graphics = "0.8.2"
 png = "0.18"

@@ -1,16 +1,17 @@
 # Hardware backends
 
-The [application architecture](architecture.md), [service contracts](device-interfaces.md),
+The [software architecture](architecture.md), [service contracts](device-interfaces.md),
 and [display contract](display-constraints.md) define portable behavior.
 Board profiles map that behavior to particular hardware.
 They record evidence, limits, and implementation status.
 Application components use capabilities and service results.
 They do not select behavior by board name or chip model.
 
-| Backend profile | Contents | Status |
-| --- | --- | --- |
-| [LILYGO T5 S3 E-Paper Pro](boards/lilygo-t5-s3-pro.md) | H752-01 inventory, controls, wiring, power limits, wake limits, service mapping, and hardware checks | Display and GT911 adapters. Other peripheral drivers stay planned work. |
-| [LILYGO display evidence](boards/lilygo-t5-s3-pro-display.md) | Panel timing, scan geometry, driver behavior, and numerical examples | Initial physical display check and remaining calibration work. |
+| Backend profile | Contents |
+| --- | --- |
+| [LILYGO T5 S3 E-Paper Pro](boards/lilygo-t5-s3-pro.md) | Board inventory, resource mapping, adapter topics, and conformance cases |
+
+Each profile records implementation status and links to detailed adapter documents.
 
 The [native simulator](simulator.md) implements the same service contracts.
 Its current display preset uses the first board's geometry.
@@ -30,8 +31,8 @@ Check the shared contract scenarios.
 Add board conformance tests and hardware validation cases.
 The intended design lets a second backend supply different capabilities and geometry without chip
 checks in application components.
-The [implementation status](architecture.md#scheduling-and-implementation-status)
-records current fixed assumptions in the demonstration.
+The [application layout](application.md#layout-and-input) records current viewport requirements.
+The [simulator execution](simulator/execution.md) records its current geometry.
 
 Vendor documents stay external.
 The first target's [reference index](vendor/lilygo/t5-s3-pro/README.md) records

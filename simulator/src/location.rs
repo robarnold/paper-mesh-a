@@ -1,8 +1,8 @@
 //! Deterministic location observations. The simulator does not model satellite reception.
 
-use paper_mesh_app::platform::location::{
-    Coordinates, DISPLAY_SATELLITES, Location, LocationAvailability, LocationObservation,
-    LocationSnapshot, MotionObservation, ReceiverActivity, SatelliteObservation, SatelliteSignal,
+use paper_mesh_platform::location::{
+    Coordinates, Location, LocationAvailability, LocationObservation, LocationSnapshot,
+    MAX_SATELLITES, MotionObservation, ReceiverActivity, SatelliteObservation, SatelliteSignal,
     SatelliteSystem, UtcObservation, UtcTime,
 };
 use serde::{Deserialize, Serialize};
@@ -112,7 +112,7 @@ impl Location for SimLocation {
                 7 * 3_600 + 15 * 60 + 56
             })
             % 86_400;
-        let mut strongest = [None; DISPLAY_SATELLITES];
+        let mut strongest = [None; MAX_SATELLITES];
         for (index, level) in [44, 40, 37, 33, 26, 18, 0, 0].into_iter().enumerate() {
             strongest[index] = Some(SatelliteSignal {
                 system: if index < 4 {

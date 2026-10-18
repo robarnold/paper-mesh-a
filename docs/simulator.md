@@ -1,59 +1,30 @@
 # Native Rust simulator
 
-The simulator runs the application with native implementations of device
-services. It does not emulate ESP32-S3 instructions or registers.
-The first screen contains a touch counter and a 30-second heartbeat.
-Its `Radio debugger` button opens Wi-Fi and Bluetooth LE scans with test data.
-It uses the same state machine and rendering code available to firmware.
+The simulator supplies native platform services and deterministic execution.
+It runs the same application code as firmware.
+The browser transports input and displays completed frames.
+It does not contain application policy or rendering code.
 
-The current demonstration uses a 540 × 960 portrait coordinate space.
-Staging, pending, and visible framebuffers use native 960 × 540 row-major storage.
-Drawing and touch use the shared portrait rotation adapter.
-The browser displays a portrait view of the completed native frame.
-This rotation is fixed.
+The [architecture](architecture.md) defines code boundaries.
+The [device services](device-interfaces.md) specify portable contracts.
+The [application](application.md) describes screens and policy choices.
+Hardware drivers and simulator adapters implement the same contracts.
 
-The [application architecture](architecture.md#orientation-state-and-coordinate-spaces)
-gives information about planned mounting configuration, automatic orientation, manual locks,
-and rotation state associated with frames.
+## Use the simulator
 
-## Code boundaries
+Run `devcontainer exec --workspace-folder . just sim`.
+Open [localhost:8080](http://localhost:8080).
+Use Pause and the time controls to inspect application behavior.
+To stop the server, press Ctrl+C.
 
-| Location | Responsibility |
+| Topic | Contents |
 | --- | --- |
-| `crates/app` | `no_std` application state, touch handling, deadlines, rendering |
-| `crates/app/src/platform.rs` | Clock and display contracts, normalized touch events |
-| `crates/app/src/platform/discovery.rs` | Scan contract and bounded result order |
-| `crates/app/src/debugger.rs` | Shared debugger controls and rendering |
-| `simulator/src/discovery.rs` | Deterministic scan results and failures |
-| `crates/app/src/platform/rotation.rs` | Shared pixel and touch transforms |
-| `simulator/src/lib.rs` | Virtual clock, grayscale display, refresh completion, deterministic scenarios |
-| `simulator/src/main.rs` | Native HTTP server, input checks, optional wall-clock pacing |
-| `simulator/src/index.html` | Browser transport and simulation controls. No application logic or rendering. |
-| `firmware/src/main.rs` | ESP startup, Embassy scheduling, clock adapter |
+| [Execution](simulator/execution.md) | Current geometry, virtual time, refresh completion, and frame export |
+| [API](simulator/api.md) | HTTP endpoints, input events, and pointer conversion |
+| [Scenarios](simulator/scenarios.md) | Radio and GNSS controls, test data, and expected results |
+| [Development environment](development.md) | Devcontainer setup and host access |
 
-The root workspace builds on native Linux.
-`firmware/` is a separate Cargo project with its own lockfile, toolchain, and
-target configuration. It uses a path dependency for the shared application.
-This separation prevents accidental combination of native and ESP executor,
-platform, and dependency features.
-
-## Shared interfaces
-
-The [application architecture](architecture.md) defines clock, touch, display,
-rotation, scheduling, and ownership contracts shared with hardware.
-The simulator implements these contracts without ESP registers or an executor
-dependency.
-
-Firmware uses the same clock, touch, display, and portrait contracts.
-Its panel driver controls PSRAM, scan output, and display power.
-A native test compares every packed hardware pixel with the simulator frame.
-The test covers initial output and two heartbeat updates.
-Physical checks remain necessary for optical output and touch alignment.
-Firmware also supplies passive radio scans through the shared discovery contract.
-Native tests exercise firmware requests and Bluetooth advertisement conversion.
-These tests do not verify radio hardware.
-
-## Scenario profiles and board conformance
+## Planned profiles and conformance
 
 The simulator implements portable services.
 Its current geometry matches the first hardware target.
@@ -73,151 +44,15 @@ A synthetic profile with a sensor can verify automatic orientation.
 Its label must not claim a match to a board without that sensor.
 Neither profile type proves electrical timing or physical driver correctness.
 
-## Deterministic execution
+## Limits
 
-`Simulation::advance` visits refresh and heartbeat deadlines in time order.
-One 90-second advance gives the same observable result as many small advances.
-Tests do not sleep or depend on wall-clock speed.
-Interactive mode uses wall time to pace the same virtual clock.
-Pause disables this pacing.
-Reset keeps the current paused or active setting.
-
-The display starts white.
-Refresh has an artificial delay of 250 ms.
-The last image stays visible until completion replaces it.
-This atomic replacement simplifies simulation.
-Physical e-paper changes throughout its drive sequence.
-
-[Display constraints](display-constraints.md) give information about planned damage costs,
-waveform phases, and region scheduling.
-Pixels have 16 grayscale levels.
-PNG export keeps these values in an 8-bit grayscale image.
-Idle polling does not refresh the screen.
-Touch changes and heartbeat updates cause refreshes.
-
-Tests cover input cancellation, bounds, heartbeat intervals, and frame visibility.
-They also cover changes during refresh, failure and retry, equivalent time
-advances, and PNG output.
-Rotation tests check asymmetric native pixel layouts.
-They compare the completed portrait view with independent direct rendering.
-`just ci` produces `target/simulator/hello.png` and `target/simulator/native.png`
-for visual checks of both orientations.
-
-## Running and extending
-
-Run `devcontainer exec --workspace-folder . just sim`.
-Open `http://localhost:8080`.
-The container publishes port 8080 only on host loopback.
-The HTTP server uses the native Rust toolchain in the devcontainer.
-No browser framework, Node, SDL, or host GUI dependencies are necessary.
-
-The development API has these endpoints:
-
-| Endpoint | Result or input |
-| --- | --- |
-| `GET /api/state` | Current simulation state |
-| `GET /frame.png` | Portrait frame |
-| `GET /frame-native.png` | Native frame |
-| `POST /api/event` | Event body with `Content-Type: application/json` |
-
-Event bodies use a `type` field:
-
-| Type | More fields |
-| --- | --- |
-| `touch_down`, `touch_up` | `x`, `y` |
-| `touch_cancel`, `pause`, `resume`, `reset` | None |
-| `advance` | `ms`, limited to 1–60000 ms per request with a paused clock |
-| `scan_scenario` | `scenario`: `nearby`, `empty`, `failed`, `unavailable`, or `timeout` |
-| `location_scenario` | `scenario`: a value from the GNSS scenario table below |
-
-The browser provides equivalent buttons for device touch targets.
-Rust supplies their labels and coordinates through `/api/state`.
-These buttons also permit keyboard input.
-
-### Radio debugger
-
-1. Select `Radio debugger` on the device screen or in the browser controls.
-2. Select `Wi-Fi` or `Bluetooth LE`.
-3. If virtual time is paused, advance it by two seconds.
-4. Use `Next` and `Previous` to see more results.
-5. To repeat the scan, select `Scan again`.
-6. To return to the counter, select `Back`.
-
-The debugger shows RSSI in dBm, with the strongest measured signal first.
-Unknown RSSI appears last.
-The scan time identifies the completed results.
-Wi-Fi names can repeat across different access points.
-Bluetooth LE results show devices that advertise.
-The debugger does not support Bluetooth Classic discovery.
-
-The `Radio scenario` selector changes the next scan.
-The nearby scenario has seven entries for each radio, including an empty name and unknown RSSI.
-Other scenarios produce empty results, a failure, an unavailable adapter, or a timeout.
-Reset restores the nearby scenario and the counter screen.
-The simulator does not access host radios or physical device radios.
-
-### GNSS screen
-
-1. Select `GNSS` on the device screen or in the browser controls.
-2. Select a GNSS scenario in the browser.
-3. If virtual time is paused, advance it with the time controls.
-4. To return to the home screen, select `Back`.
-
-The application screen shows coordinates, fix status, satellite count, and observation age.
-The simulator page labels test data outside the application screen.
-It also shows elevation, speed in km/h, course relative to true north, and UTC time of day.
-UTC shows the latest report and updates at five-second display intervals. Missing and expired values show dashes.
-The default scenario supplies a fix after three virtual seconds.
-Later observations arrive at one-second intervals.
-The scenario selector takes effect immediately and starts a new scenario interval.
-Reset restores the default scenario and the home screen.
-These intervals are test conditions, not receiver performance measurements.
-
-| Scenario | Behavior |
-| --- | --- |
-| `fix` | No fix for three seconds, then a valid fix with eight satellites |
-| `acquiring` | Reports continue without a position fix |
-| `no_signal` | The receiver reports eight satellites without signal levels or a position fix |
-| `messages_only` | Receiver messages continue without fix or satellite reports |
-| `stale_satellites` | Satellite reports stop. Fix reports and receiver messages continue. |
-| `lost_fix` | A valid fix becomes invalid after three seconds |
-| `silent` | One valid fix, then no new observations. The screen removes coordinates after five seconds. |
-| `unavailable` | No receiver data |
-| `fault` | Receiver fault without coordinates |
-| `zero_coordinates` | Valid latitude and longitude of zero |
-| `below_sea_level` | A valid position with elevation at -430.5 m above mean sea level |
-| `missing_elevation` | Valid horizontal coordinates without an elevation value |
-| `stopped` | Zero speed with a valid fix and UTC. The screen hides course. |
-| `missing_motion` | Valid position and UTC without speed or course |
-| `missing_utc` | Valid position and motion without UTC |
-| `stale_motion` | Motion reports stop. Position, UTC, and receiver messages continue. |
-| `stale_utc` | UTC reports stop. Position, motion, and receiver messages continue. |
-
-Native tests cover acquisition, fix loss, expiry, faults, recovery, zero coordinates, navigation, and updates during display refresh.
-They also cover receiver activity, signal levels without a fix, independent satellite expiry, and message counts.
-Elevation tests cover signed values, zero, missing values, fix loss, expiry, and invalid units.
-Motion and UTC tests cover unit conversion, direction limits, stops, midnight, invalid fields, fix loss, faults, and independent expiry.
-Large and small time advances produce the same location state and completed frame.
-Separate native tests execute the firmware decoder and baud selection code.
-The simulator does not model satellite reception or verify the physical receiver.
-
-The browser converts pointer positions into portrait display coordinates.
-`Simulation::touch_portrait` converts those positions into native contacts.
-It passes them to `touch_native`.
-This method applies shared input rotation before application hit testing.
-Native scenarios can call `touch_native` directly with coordinates aligned to
-the controller.
-
-For the first consumer of a radio, storage, or power service, add the shared contract.
-Add a native implementation with a behavioral scenario.
-Keep physical chip protocols in drivers below these services.
-
+The simulator does not emulate processor instructions or registers.
 The simulator does not model radio propagation, battery current, sleep or ULP
 execution, core scheduling, panel waveforms, ghosting, temperature, or DMA timing.
 Its refresh delay is a test condition.
 It is not a measured hardware characteristic.
 
-The [device service design](device-interfaces.md#simulator-acceptance-scenarios)
+The [device service design](platform/service-validation.md)
 lists portable contract scenarios.
 Board profiles add physical control mappings.
 The current Reset action resets the test fixture.

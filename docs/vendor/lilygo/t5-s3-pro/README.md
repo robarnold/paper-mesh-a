@@ -60,7 +60,7 @@ gives information about wake-source restrictions.
 Upstream hosts maintain these URLs without fixed Git revisions.
 During a new review, check the cited revision, section, and platform.
 
-The [Home-key investigation](../../../boards/lilygo-t5-s3-pro.md#gt911-home-key-configuration-and-lower-bezel)
+The [Home-key investigation](../../../boards/lilygo-t5-s3-pro-touch.md#gt911-home-key-configuration-and-lower-bezel)
 has a review date of 2026-10-13.
 It uses Goodix's [GT911 Programming Guide, Rev.10, 2017-07-26](https://www.lcd-module.de/fileadmin/eng/pdf/zubehoer/GT911_Programming_Guide_Rev.10.pdf),
 sections 3.2, 3.3, and 4.4, hosted by DISPLAY VISIONS.
@@ -72,10 +72,10 @@ They do not supply the fitted panel's electrode layout or factory configuration.
 Keep these documents external.
 
 Board and component documents cover the vendor's available variants.
-When the unit arrives, confirm its fitted hardware.
+Before use of another unit, confirm its fitted hardware.
 Mechanical filenames keep the vendor's `H752` names on the `H752-01` branch.
 The vendor's Arduino and PlatformIO instructions apply to its example software.
-Use the project README and AGENTS.md for this project's development procedure.
+Use the [development guide](../../../development.md) for this project's development procedure.
 
 ## Retrieve a document for local inspection
 

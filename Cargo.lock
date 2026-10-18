@@ -287,6 +287,7 @@ version = "0.1.0"
 dependencies = [
  "embedded-graphics",
  "heapless",
+ "paper-mesh-platform",
 ]
 
 [[package]]
@@ -304,6 +305,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "paper-mesh-platform"
+version = "0.1.0"
+dependencies = [
+ "embedded-graphics",
+ "heapless",
+]
+
+[[package]]
 name = "paper-mesh-simulator"
 version = "0.1.0"
 dependencies = [
@@ -312,6 +321,7 @@ dependencies = [
  "embedded-hal",
  "paper-mesh-app",
  "paper-mesh-ed047tc1",
+ "paper-mesh-platform",
  "png",
  "serde",
  "serde_json",

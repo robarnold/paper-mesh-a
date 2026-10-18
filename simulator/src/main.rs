@@ -6,7 +6,8 @@ use std::{
 };
 
 use embedded_graphics::prelude::*;
-use paper_mesh_app::platform::{SCREEN_SIZE, TouchEvent};
+use paper_mesh_platform::TouchEvent;
+use paper_mesh_simulator::SCREEN_SIZE;
 use paper_mesh_simulator::discovery::ScanScenario;
 use paper_mesh_simulator::location::LocationScenario;
 use paper_mesh_simulator::{REFRESH_MS, Simulation, Snapshot};

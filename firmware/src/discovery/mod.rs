@@ -14,7 +14,7 @@ use embassy_sync::{
 };
 use embassy_time::{Instant, Timer};
 use esp_hal::peripherals::{BT, WIFI};
-use paper_mesh_app::platform::discovery::{
+use paper_mesh_platform::discovery::{
     Discovery, Network, RadioKind, ScanCompletion, ScanError, ScanRequest, ScanResults, ScanSource,
 };
 use state::ScanState;

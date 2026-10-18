@@ -5,7 +5,7 @@ mod advertisement;
 #[path = "../../firmware/src/discovery/state.rs"]
 mod state;
 
-use paper_mesh_app::platform::discovery::{
+use paper_mesh_platform::discovery::{
     AddressKind, MAX_NETWORKS, Network, RadioKind, ScanError, ScanRequest, ScanResults, ScanSource,
 };
 use state::ScanState;

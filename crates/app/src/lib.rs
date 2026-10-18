@@ -6,7 +6,6 @@
 
 pub mod debugger;
 pub mod location;
-pub mod platform;
 
 use core::fmt::Write;
 use debugger::{DEBUGGER_TARGET, Debugger};
@@ -19,9 +18,16 @@ use embedded_graphics::{
 };
 use heapless::String;
 use location::{LOCATION_TARGET, LocationScreen};
-use platform::discovery::Discovery;
-use platform::location::Location;
-use platform::{Clock, Display, SCREEN_SIZE, TouchEvent};
+use paper_mesh_platform::discovery::Discovery;
+use paper_mesh_platform::location::Location;
+use paper_mesh_platform::{
+    Clock, Display, TouchEvent, display, input::TapGesture, time::PeriodicTimer, ui::button,
+};
+
+/// Fixed logical viewport for this application. Backends supply a compatible display.
+pub const SCREEN_SIZE: Size = Size::new(540, 960);
+
+pub const BACK_TARGET: Rectangle = Rectangle::new(Point::new(402, 24), Size::new(110, 56));
 
 pub const HEARTBEAT_MS: u64 = 30_000;
 const MARGIN: u32 = 48;
@@ -30,14 +36,19 @@ pub const TAP_TARGET: Rectangle = Rectangle::new(
     Size::new(SCREEN_SIZE.width - 2 * MARGIN, 200),
 );
 
+#[derive(PartialEq)]
+enum HomeAction {
+    Count,
+    Debugger,
+    Location,
+}
+
 pub struct App {
     started_at_ms: u64,
-    last_heartbeat_ms: u64,
+    heartbeat: PeriodicTimer,
     uptime_seconds: u64,
     taps: u32,
-    touch_armed: bool,
-    debugger_armed: bool,
-    location_armed: bool,
+    home_gesture: TapGesture<HomeAction>,
     debugger: Debugger,
     location: LocationScreen,
     dirty: bool,
@@ -52,12 +63,10 @@ impl App {
     pub const fn new_at(now: u64) -> Self {
         Self {
             started_at_ms: now,
-            last_heartbeat_ms: now,
+            heartbeat: PeriodicTimer::new(now, HEARTBEAT_MS),
             uptime_seconds: 0,
             taps: 0,
-            touch_armed: false,
-            debugger_armed: false,
-            location_armed: false,
+            home_gesture: TapGesture::new(),
             debugger: Debugger::new(),
             location: LocationScreen::new(),
             dirty: true,
@@ -69,11 +78,9 @@ impl App {
     /// The platform supplies time through the clock argument.
     pub fn tick(&mut self, clock: &impl Clock) -> Option<u64> {
         let now = clock.now_ms();
-        let elapsed = now.saturating_sub(self.last_heartbeat_ms);
-        if elapsed < HEARTBEAT_MS {
+        if !self.heartbeat.poll(now) {
             return None;
         }
-        self.last_heartbeat_ms += (elapsed / HEARTBEAT_MS) * HEARTBEAT_MS;
         self.uptime_seconds = now.saturating_sub(self.started_at_ms) / 1000;
         self.dirty = true;
         Some(self.uptime_seconds)
@@ -88,7 +95,7 @@ impl App {
     }
 
     pub fn next_heartbeat_ms(&self) -> u64 {
-        self.last_heartbeat_ms.saturating_add(HEARTBEAT_MS)
+        self.heartbeat.next_deadline_ms()
     }
 
     pub fn taps(&self) -> u32 {
@@ -120,34 +127,21 @@ impl App {
             self.dirty |= self.debugger.touch(event);
             return;
         }
-        match event {
-            TouchEvent::Down(point) => {
-                self.touch_armed = TAP_TARGET.contains(point);
-                self.debugger_armed = DEBUGGER_TARGET.contains(point);
-                self.location_armed = LOCATION_TARGET.contains(point);
+        if let Some(action) = self.home_gesture.update(event, |point| {
+            [
+                (TAP_TARGET, HomeAction::Count),
+                (DEBUGGER_TARGET, HomeAction::Debugger),
+                (LOCATION_TARGET, HomeAction::Location),
+            ]
+            .into_iter()
+            .find_map(|(target, action)| target.contains(point).then_some(action))
+        }) {
+            match action {
+                HomeAction::Count => self.taps = self.taps.saturating_add(1),
+                HomeAction::Debugger => self.debugger.open(),
+                HomeAction::Location => self.location.open(),
             }
-            TouchEvent::Up(point) => {
-                if self.location_armed && LOCATION_TARGET.contains(point) {
-                    self.location.open();
-                    self.dirty = true;
-                }
-                if self.debugger_armed && DEBUGGER_TARGET.contains(point) {
-                    self.debugger.open();
-                    self.dirty = true;
-                }
-                if self.touch_armed && TAP_TARGET.contains(point) {
-                    self.taps = self.taps.saturating_add(1);
-                    self.dirty = true;
-                }
-                self.touch_armed = false;
-                self.debugger_armed = false;
-                self.location_armed = false;
-            }
-            TouchEvent::Cancel => {
-                self.touch_armed = false;
-                self.debugger_armed = false;
-                self.location_armed = false;
-            }
+            self.dirty = true;
         }
     }
 
@@ -155,13 +149,11 @@ impl App {
     /// Returns true only after successful submission of a new frame.
     /// A drawing or refresh error leaves the frame pending.
     pub fn present<D: Display>(&mut self, display: &mut D) -> Result<bool, D::Error> {
-        if !self.dirty || display.is_busy() {
-            return Ok(false);
+        let submitted = display::present(display, self.dirty, |target| self.render(target))?;
+        if submitted {
+            self.dirty = false;
         }
-        self.render(display)?;
-        display.refresh()?;
-        self.dirty = false;
-        Ok(true)
+        Ok(submitted)
     }
 
     pub fn render<D: DrawTarget<Color = Gray4>>(&self, display: &mut D) -> Result<(), D::Error> {
@@ -176,8 +168,8 @@ impl App {
         let muted = MonoTextStyle::new(&FONT_10X20, Gray4::new(6));
         Text::new("PAPER MESH", Point::new(48, 60), black).draw(display)?;
         Text::new("Hello from shared Rust", Point::new(48, 110), muted).draw(display)?;
-        debugger::button(display, DEBUGGER_TARGET, "Radio debugger", false, true)?;
-        debugger::button(display, LOCATION_TARGET, "GNSS", false, true)?;
+        button(display, DEBUGGER_TARGET, "Radio debugger", false, true)?;
+        button(display, LOCATION_TARGET, "GNSS", false, true)?;
         Rectangle::new(Point::new(48, 144), Size::new(TAP_TARGET.size.width, 2))
             .into_styled(PrimitiveStyle::with_fill(Gray4::new(11)))
             .draw(display)?;

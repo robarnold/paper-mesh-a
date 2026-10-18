@@ -1,7 +1,7 @@
 //! Complete GSV groups with bounded storage and independent expiry.
 
-use paper_mesh_app::platform::location::{
-    DISPLAY_SATELLITES, SatelliteObservation, SatelliteSignal, SatelliteSystem,
+use paper_mesh_platform::location::{
+    MAX_SATELLITES, SatelliteObservation, SatelliteSignal, SatelliteSystem,
 };
 
 use super::receiver::decimal;
@@ -197,8 +197,8 @@ impl Gsv {
                 satellite.id,
             )
         });
-        let mut strongest = [None; DISPLAY_SATELLITES];
-        let displayed = count.min(DISPLAY_SATELLITES);
+        let mut strongest = [None; MAX_SATELLITES];
+        let displayed = count.min(MAX_SATELLITES);
         strongest[..displayed].copy_from_slice(&unique[..displayed]);
         Some(SatelliteObservation {
             observed_at_ms,

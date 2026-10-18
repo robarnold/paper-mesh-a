@@ -1,5 +1,6 @@
-//! Exclusive panel ownership passes between the application and core 1.
+//! Exclusive panel ownership passes between the runtime and core 1.
 
+use crate::display::NATIVE_SCREEN_SIZE;
 use core::sync::atomic::{AtomicBool, Ordering};
 use embassy_sync::{
     blocking_mutex::raw::CriticalSectionRawMutex,
@@ -9,7 +10,7 @@ use embassy_sync::{
 use embedded_graphics::{pixelcolor::Gray4, prelude::*};
 use esp_hal::system::Cpu;
 use log::info;
-use paper_mesh_app::platform::{Display, NATIVE_SCREEN_SIZE};
+use paper_mesh_platform::Display;
 
 use crate::display::{Error, Panel};
 
@@ -35,7 +36,7 @@ pub async fn worker() {
         REFRESHING.store(true, Ordering::Relaxed);
         let result = panel.refresh();
         REFRESHING.store(false, Ordering::Relaxed);
-        // The application cannot submit again before it receives this panel.
+        // The runtime cannot submit again before it receives this panel.
         assert!(COMPLETE.try_send((panel, result)).is_ok());
         CHANGED.signal(());
     }

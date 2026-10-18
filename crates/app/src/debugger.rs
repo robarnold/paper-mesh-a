@@ -1,12 +1,6 @@
 //! Shared discovery controls and grayscale rendering.
 
-use crate::platform::{
-    TouchEvent,
-    discovery::{
-        AddressKind, Discovery, RadioKind, SCAN_TIMEOUT_MS, ScanError, ScanRequest, ScanResults,
-        ScanSource,
-    },
-};
+use crate::BACK_TARGET;
 use core::fmt::Write;
 use embedded_graphics::{
     mono_font::{MonoTextStyle, ascii::FONT_10X20},
@@ -16,9 +10,18 @@ use embedded_graphics::{
     text::Text,
 };
 use heapless::String;
+use paper_mesh_platform::{
+    TouchEvent,
+    discovery::{
+        AddressKind, Discovery, RadioKind, ScanError, ScanRequest, ScanResults, ScanSource,
+    },
+    input::TapGesture,
+    ui::button,
+};
+
+pub const SCAN_TIMEOUT_MS: u64 = 10_000;
 
 pub const DEBUGGER_TARGET: Rectangle = Rectangle::new(Point::new(48, 190), Size::new(444, 64));
-pub const BACK_TARGET: Rectangle = Rectangle::new(Point::new(402, 24), Size::new(110, 56));
 pub const WIFI_TARGET: Rectangle = Rectangle::new(Point::new(28, 112), Size::new(228, 60));
 pub const BLUETOOTH_TARGET: Rectangle = Rectangle::new(Point::new(268, 112), Size::new(244, 60));
 pub const SCAN_TARGET: Rectangle = Rectangle::new(Point::new(28, 808), Size::new(484, 60));
@@ -55,7 +58,7 @@ pub struct Debugger {
     active: Option<ScanRequest>,
     request_id: u64,
     page: usize,
-    armed: Option<Action>,
+    gesture: TapGesture<Action>,
 }
 
 impl Default for Debugger {
@@ -76,7 +79,7 @@ impl Debugger {
             active: None,
             request_id: 0,
             page: 0,
-            armed: None,
+            gesture: TapGesture::new(),
         }
     }
     pub fn is_open(&self) -> bool {
@@ -103,7 +106,7 @@ impl Debugger {
 
     pub fn open(&mut self) {
         self.open = true;
-        self.armed = None;
+        self.gesture.cancel();
         self.request_scan();
     }
 
@@ -176,7 +179,7 @@ impl Debugger {
         false
     }
 
-    fn action(&self, point: Point) -> Option<Action> {
+    fn action(point: Point) -> Option<Action> {
         [
             (BACK_TARGET, Action::Back),
             (WIFI_TARGET, Action::Wifi),
@@ -190,51 +193,43 @@ impl Debugger {
     }
 
     pub fn touch(&mut self, event: TouchEvent) -> bool {
-        match event {
-            TouchEvent::Down(point) => self.armed = self.action(point),
-            TouchEvent::Cancel => self.armed = None,
-            TouchEvent::Up(point) => {
-                if let Some(action) = self.armed.take()
-                    && Some(action) == self.action(point)
-                {
-                    match action {
-                        Action::Back => self.open = false,
-                        Action::Wifi | Action::Bluetooth => {
-                            let kind = if action == Action::Wifi {
-                                RadioKind::Wifi
-                            } else {
-                                RadioKind::BluetoothLe
-                            };
-                            if self.kind == kind {
-                                return false;
-                            }
-                            self.kind = kind;
-                            self.request_scan();
-                        }
-                        Action::Scan => {
-                            if matches!(self.state, ScanState::Requested | ScanState::Active) {
-                                return false;
-                            }
-                            self.request_scan();
-                        }
-                        Action::Previous => {
-                            if self.page == 0 {
-                                return false;
-                            }
-                            self.page -= 1;
-                        }
-                        Action::Next => {
-                            if (self.page + 1) * PAGE_SIZE >= self.results.networks().len() {
-                                return false;
-                            }
-                            self.page += 1;
-                        }
-                    }
-                    return true;
+        let Some(action) = self.gesture.update(event, Self::action) else {
+            return false;
+        };
+        match action {
+            Action::Back => self.open = false,
+            Action::Wifi | Action::Bluetooth => {
+                let kind = if action == Action::Wifi {
+                    RadioKind::Wifi
+                } else {
+                    RadioKind::BluetoothLe
+                };
+                if self.kind == kind {
+                    return false;
                 }
+                self.kind = kind;
+                self.request_scan();
+            }
+            Action::Scan => {
+                if matches!(self.state, ScanState::Requested | ScanState::Active) {
+                    return false;
+                }
+                self.request_scan();
+            }
+            Action::Previous => {
+                if self.page == 0 {
+                    return false;
+                }
+                self.page -= 1;
+            }
+            Action::Next => {
+                if (self.page + 1) * PAGE_SIZE >= self.results.networks().len() {
+                    return false;
+                }
+                self.page += 1;
             }
         }
-        false
+        true
     }
 
     pub fn render<D: DrawTarget<Color = Gray4>>(&self, display: &mut D) -> Result<(), D::Error> {
@@ -364,44 +359,10 @@ impl Debugger {
     }
 }
 
-pub(crate) fn button<D: DrawTarget<Color = Gray4>>(
-    display: &mut D,
-    target: Rectangle,
-    label: &str,
-    selected: bool,
-    enabled: bool,
-) -> Result<(), D::Error> {
-    let fill = if selected && enabled {
-        Gray4::BLACK
-    } else {
-        Gray4::new(14)
-    };
-    let text = if !enabled {
-        Gray4::new(8)
-    } else if selected {
-        Gray4::WHITE
-    } else {
-        Gray4::BLACK
-    };
-    target
-        .into_styled(PrimitiveStyle::with_fill(fill))
-        .draw(display)?;
-    Text::new(
-        label,
-        Point::new(
-            target.top_left.x + 16,
-            target.top_left.y + target.size.height as i32 / 2 + 7,
-        ),
-        MonoTextStyle::new(&FONT_10X20, text),
-    )
-    .draw(display)?;
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::platform::discovery::{ScanCompletion, UnavailableDiscovery};
+    use paper_mesh_platform::discovery::{ScanCompletion, UnavailableDiscovery};
 
     #[derive(Default)]
     struct Adapter {

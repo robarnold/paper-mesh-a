@@ -8,7 +8,7 @@ mod power;
 mod receiver;
 
 use embedded_hal::i2c::{ErrorKind, ErrorType, I2c, Operation};
-use paper_mesh_app::platform::location::{
+use paper_mesh_platform::location::{
     Coordinates, Location, LocationAvailability, LocationSnapshot, SatelliteSystem, UtcTime,
 };
 use receiver::{PROBE_MS, Receiver, SILENCE_MS};

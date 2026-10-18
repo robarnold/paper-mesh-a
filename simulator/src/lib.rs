@@ -3,12 +3,10 @@
 //! Scenarios can use this library without either service.
 
 use embedded_graphics::{pixelcolor::Gray4, prelude::*};
-use paper_mesh_app::{
-    App,
-    platform::{
-        Clock, Display, NATIVE_SCREEN_SIZE, SCREEN_SIZE, TouchEvent,
-        rotation::{PortraitDisplay, PortraitRotation},
-    },
+use paper_mesh_app::App;
+use paper_mesh_platform::{
+    Clock, Display, TouchEvent,
+    rotation::{PortraitDisplay, PortraitRotation},
 };
 use serde::Serialize;
 pub mod discovery;
@@ -17,11 +15,15 @@ use discovery::{ScanScenario, SimDiscovery};
 use location::{LocationScenario, SimLocation};
 use paper_mesh_app::debugger::Debugger;
 use paper_mesh_app::location::LocationScreen;
-use paper_mesh_app::platform::discovery::{RadioKind, ScanSource};
+use paper_mesh_platform::discovery::{RadioKind, ScanSource};
+use paper_mesh_platform::ui::format::satellite_label;
 
 // This artificial delay exercises asynchronous refresh.
 // It is not a panel measurement.
 pub const REFRESH_MS: u64 = 250;
+/// Native display dimensions for the current simulator profile.
+pub const NATIVE_SCREEN_SIZE: Size = Size::new(960, 540);
+pub const SCREEN_SIZE: Size = ROTATION.size();
 const ROTATION: PortraitRotation = PortraitRotation::new(NATIVE_SCREEN_SIZE);
 
 #[derive(Default)]
@@ -315,10 +317,10 @@ impl Simulation {
 
     pub fn snapshot(&self) -> Snapshot {
         use paper_mesh_app::{
-            TAP_TARGET,
+            BACK_TARGET, TAP_TARGET,
             debugger::{
-                BACK_TARGET, BLUETOOTH_TARGET, DEBUGGER_TARGET, NEXT_TARGET, PREVIOUS_TARGET,
-                SCAN_TARGET, ScanState, WIFI_TARGET,
+                BLUETOOTH_TARGET, DEBUGGER_TARGET, NEXT_TARGET, PREVIOUS_TARGET, SCAN_TARGET,
+                ScanState, WIFI_TARGET,
             },
         };
         let debugger = self.app.debugger();
@@ -392,7 +394,7 @@ impl Simulation {
                 .into_iter()
                 .flat_map(|value| value.strongest.into_iter().flatten())
                 .map(|value| SatelliteSnapshot {
-                    system: value.system.label(),
+                    system: satellite_label(value.system),
                     id: value.id,
                     cn0_db_hz: value.cn0_db_hz,
                 })
@@ -413,13 +415,12 @@ impl Simulation {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use paper_mesh_app::{
-        debugger::{
-            BACK_TARGET, BLUETOOTH_TARGET, DEBUGGER_TARGET, NEXT_TARGET, PREVIOUS_TARGET,
-            SCAN_TARGET, ScanState,
-        },
-        platform::discovery::{SCAN_TIMEOUT_MS, ScanError},
+    use paper_mesh_app::BACK_TARGET;
+    use paper_mesh_app::debugger::{
+        BLUETOOTH_TARGET, DEBUGGER_TARGET, NEXT_TARGET, PREVIOUS_TARGET, SCAN_TARGET,
+        SCAN_TIMEOUT_MS, ScanState,
     };
+    use paper_mesh_platform::discovery::ScanError;
 
     fn press(sim: &mut Simulation, target: embedded_graphics::primitives::Rectangle) {
         sim.touch_portrait(TouchEvent::Down(target.center()));
@@ -725,6 +726,7 @@ mod tests {
 
     #[test]
     fn portrait_export_matches_direct_render_after_native_refresh() {
+        assert_eq!(SCREEN_SIZE, paper_mesh_app::SCREEN_SIZE);
         // This independent portrait reference target uses no rotation code.
         struct Reference(Vec<u8>);
         impl OriginDimensions for Reference {

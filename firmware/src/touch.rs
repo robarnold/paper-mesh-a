@@ -1,5 +1,6 @@
 //! H752-01 touch adapter and event queue.
 
+use crate::display::NATIVE_SCREEN_SIZE;
 use core::cell::RefCell;
 use embassy_sync::{
     blocking_mutex::{Mutex, raw::CriticalSectionRawMutex},
@@ -19,8 +20,8 @@ use esp_hal::{
 };
 use esp_rtos::embassy::InterruptExecutor;
 use log::{error, info};
-use paper_mesh_app::platform::{NATIVE_SCREEN_SIZE, TouchEvent, rotation::PortraitRotation};
 use paper_mesh_gt911::{CONFIG_BYTES, Event, Gt911};
+use paper_mesh_platform::{TouchEvent, rotation::PortraitRotation};
 use static_cell::StaticCell;
 
 use crate::bus::Bus;

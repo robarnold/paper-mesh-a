@@ -18,10 +18,8 @@ use embassy_time::{Instant, Timer};
 use esp_backtrace as _;
 use esp_hal::{clock::CpuClock, system::Stack, timer::timg::TimerGroup};
 use log::{error, info};
-use paper_mesh_app::{
-    App,
-    platform::{Clock, location::Location, rotation::PortraitDisplay},
-};
+use paper_mesh_app::App;
+use paper_mesh_platform::{Clock, location::Location, rotation::PortraitDisplay};
 
 use static_cell::{ConstStaticCell, StaticCell};
 

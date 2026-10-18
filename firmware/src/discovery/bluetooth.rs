@@ -17,7 +17,7 @@ use embassy_futures::{
 use embassy_time::Timer;
 use esp_hal::peripherals::BT;
 use esp_radio::ble::controller::BleConnector;
-use paper_mesh_app::platform::discovery::{ScanError, ScanRequest};
+use paper_mesh_platform::discovery::{ScanError, ScanRequest};
 
 type BleController<'a> = ExternalController<BleConnector<'a>, 1>;
 

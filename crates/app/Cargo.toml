@@ -9,5 +9,6 @@ publish = false
 workspace = true
 
 [dependencies]
+paper-mesh-platform = { path = "../platform" }
 embedded-graphics = "0.8.2"
 heapless = "0.9.2"

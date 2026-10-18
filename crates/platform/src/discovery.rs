@@ -4,7 +4,6 @@ use core::cmp::Ordering;
 use heapless::{String, Vec};
 
 pub const MAX_NETWORKS: usize = 24;
-pub const SCAN_TIMEOUT_MS: u64 = 10_000;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RadioKind {
@@ -27,7 +26,8 @@ pub struct Network {
 }
 
 impl Network {
-    /// This method replaces bytes outside printable ASCII with question marks for the display font.
+    /// This method limits names to 32 bytes of printable ASCII.
+    /// Other bytes become question marks.
     /// An empty name identifies a hidden SSID or an unnamed Bluetooth device.
     pub fn new(
         name: &[u8],

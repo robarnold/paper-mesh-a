@@ -1,6 +1,6 @@
 //! Deterministic scan fixtures. This adapter does not access host radios.
 
-use paper_mesh_app::platform::discovery::{
+use paper_mesh_platform::discovery::{
     AddressKind, Discovery, Network, RadioKind, ScanCompletion, ScanError, ScanRequest,
     ScanResults, ScanSource,
 };

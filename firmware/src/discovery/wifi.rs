@@ -3,9 +3,7 @@ use esp_radio::wifi::{
     WifiController,
     scan::{ScanConfig, ScanTypeConfig},
 };
-use paper_mesh_app::platform::discovery::{
-    AddressKind, MAX_NETWORKS, Network, ScanError, ScanRequest,
-};
+use paper_mesh_platform::discovery::{AddressKind, MAX_NETWORKS, Network, ScanError, ScanRequest};
 
 pub fn scan(device: WIFI<'_>, request: ScanRequest) -> super::ScanFuture<'_> {
     Box::pin(run(device, request))

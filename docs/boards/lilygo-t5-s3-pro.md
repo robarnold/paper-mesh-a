@@ -1,7 +1,7 @@
 # LILYGO T5 S3 E-Paper Pro backend profile
 
 This profile maps one hardware target to the portable
-[application architecture](../architecture.md) and
+[software architecture](../architecture.md) and
 [service contracts](../device-interfaces.md).
 Its chips, controls, dimensions, and wake restrictions apply to this backend.
 Other targets can have different characteristics.
@@ -12,7 +12,7 @@ This profile uses LILYGO sources at commit
 [`938d6189db0fde9a12558629bc1405bb49e1be78`](https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/tree/938d6189db0fde9a12558629bc1405bb49e1be78).
 The inventory review used the schematic and examples on **2026-10-12**.
 
-When the device arrives, confirm its revision and fitted components.
+Before use of another unit, confirm its revision and fitted components.
 The [hardware reference index](../vendor/lilygo/t5-s3-pro/README.md) links to
 schematics, datasheets, pin maps, and mechanical drawings.
 [Display backend evidence](lilygo-t5-s3-pro-display.md) gives information about scan geometry,
@@ -47,129 +47,21 @@ The second-stage bootloader can select another flash mode after ROM startup.
 
 [boot-header]: https://docs.espressif.com/projects/esptool/en/release-v4/esp32s3/advanced-topics/boot-mode-selection.html#software-bootloader-header-info
 
-### USB bootstrap check, 2026-10-17
+## Adapter topics
 
-The QIO image caused repeated `ets_loader.c 78` errors before application startup.
-The factory backup had a DIO boot header.
-The DIO image started the same application ELF successfully.
-
-Espflash 4.6.0 verified the flash write on the connected ESP32-S3, revision v0.2.
-USB output showed the `paper-mesh-a 0.1.0` boot message and an 80 MHz CPU clock.
-The application sent heartbeat messages at 30 and 60 seconds.
-These checks do not verify display, touch, power management, or radio operation.
-
-### Display and touch implementation
-
-The later display build uses a 240 MHz CPU clock and initializes OPI PSRAM.
-The [display evidence](lilygo-t5-s3-pro-display.md#current-rust-implementation) records its implementation and physical checks.
-The user confirmed that the shared interface appeared clearly on the panel.
-
-[`crates/gt911`](../../crates/gt911/src/lib.rs) implements the GT911 report protocol.
-[`firmware/src/touch.rs`](../../firmware/src/touch.rs) adapts reports to the shared touch contract.
-The driver probes both documented addresses and checks the product identity.
-If neither probe succeeds, it applies the documented reset sequence and selects address `0x5D`.
-It records the existing configuration through USB without configuration writes.
-
-The connected controller reported GT911 firmware `0x1060`, vendor ID 2, and 540 × 960 coordinates at address `0x5D`.
-The initial probes received no address acknowledgement.
-The reset sequence made the controller available to the subsequent boot.
-The saved USB log contains all 186 bytes from `0x8047` through `0x8100`.
-
-USB output recorded complete taps at logical positions `(345, 482)` and `(359, 480)`.
-The shared counter advanced to 1 and 2, with a completed refresh after each change.
-The user confirmed that the physical screen showed the increased count.
-These checks establish basic single-contact operation, not complete edge calibration or gesture coverage.
-
-Reports must have the ready flag before the driver reads coordinates.
-The driver acknowledges each report after the required reads succeed.
-It emits one press and one release for each single-contact gesture.
-Multiple contacts, invalid coordinates, I2C failures, or event queue overflow cancel the gesture.
-The Home key and pen input stay unimplemented.
-
-[Goodix Programming Guide Rev.10][gt911-guide], sections 3.3, 4.2, and 5, defines identity, reset timing, and report handling.
-The adapter converts the fitted portrait coordinates through the shared native-to-portrait transform.
-
-### Rapid tap investigation, 2026-10-17
-
-The user reported missed taps during rapid input after the partial update check.
-The rebase and flash onto `main` commit `ac2a3af9` preceded this investigation.
-The rebased build passed all 38 native tests and the complete `just ci` checks.
-USB confirmed startup, touch detection, display completion, and heartbeats at 30 and 60 seconds without faults.
-
-The previous touch adapter polled every 20 ms while idle, but only after each complete display scan during refresh.
-Each partial scan sends 541 rows, including the final neutral row.
-Each row requires a 100 µs high pulse and a 5 µs low pulse.
-These pulses alone require 56.805 ms between touch polls.
-Encoding, transfers, rendering, and supply waits add further delays.
-
-The saved controller configuration sets `Refresh_Rate` at `0x8056` to `0x0F`, which selects a 20 ms report period.
-[Goodix Programming Guide Rev.10][gt911-guide], sections 3.2 and 5, defines this period and the acknowledgment requirement.
-The controller retains an unread report instead of replacing it with new coordinates.
-Thus, rapid release and press changes can occur before the host acknowledges the previous report.
-This timing gap can explain missed taps. The software queue cannot recover reports that never reached the host.
-
-### Interrupt and multicore implementation
-
-The display worker runs on core 1 with an 8 KiB stack.
-The application transfers exclusive panel ownership through a channel before each refresh.
-Completion returns ownership and any error to core 0.
-The two existing PSRAM buffers remain sufficient. No frame copies occur during ownership transfer.
-
-GPIO3 uses the existing GT911 low-level interrupt mode from register `0x804D`.
-The GPIO handler records the interrupt time, disables that interrupt, and signals the touch worker.
-The worker uses a priority-2 interrupt executor on core 0.
-It reads and acknowledges the report, then enables the GPIO interrupt after a 1 ms delay.
-A low level that remains pending triggers another interrupt.
-The driver does not change the controller configuration or poll it during idle periods.
-
-An asynchronous mutex protects I2C0. Interrupts remain enabled during bus transactions.
-Display control operations release the mutex after each transaction.
-Pixel transfers use LCD DMA and RMT without the I2C mutex.
-Touch reports therefore proceed during display scans.
-The touch queue holds 32 events. Overflow cancels the gesture and increments an error counter.
-
-USB reports the core assignment, interrupt times, service duration, bus wait, and events received during refresh.
-Service duration starts at GPIO handler entry and ends after the report read and acknowledgment attempt.
-It excludes interrupt latency before handler entry.
-The native burst test verifies all 40 taps across multiple pending refreshes and compares the final image pixel by pixel.
-
-The implementation follows esp-rtos 0.4.0
-[`start_second_core`](https://github.com/esp-rs/esp-hal/blob/63e97be553f435f29171f7ae5f37a41ad737a75a/esp-rtos/src/lib.rs#L440-L458)
-and [`InterruptExecutor`](https://github.com/esp-rs/esp-hal/blob/63e97be553f435f29171f7ae5f37a41ad737a75a/esp-rtos/src/embassy/mod.rs#L308-L419).
-The first API pins the display thread to core 1.
-The second API starts touch service on the core that installs its software interrupt.
-
-### Rapid tap check, 2026-10-17
-
-The complete `just ci` checks passed, including 39 native tests.
-Espflash verified the firmware write to the same ESP32-S3 device.
-USB confirmed touch service on core 0 and display refresh on core 1.
-Startup completed a full refresh in 1,598 ms. Heartbeats continued at 30 and 60 seconds.
-The GT911 responded at `0x14` on this boot, with the same 186 configuration bytes as earlier touch checks.
-
-The user supplied exactly 20 rapid taps without waits for display completion.
-USB recorded 20 presses, 20 releases, and consecutive counts from 1 through 20.
-The burst lasted 4.231 seconds, with press intervals of 187–251 ms and contact durations of 62–84 ms.
-The average press rate was 4.557 taps per second.
-Thirty-six of the 40 contact events received service during display refresh.
-The user confirmed a final count of 20 with clear digits.
-
-The maximum measured service duration was 2.224 ms. The maximum bus wait was 0.701 ms.
-The log contained no I2C errors, queue overflows, display faults, or additional boots.
-Partial refreshes took 879–903 ms at 24 °C.
-Counts that arrived during refresh combined into later frames without losing gestures.
-Repeated low-level interrupts included 1 ms retries while the pin remained asserted.
-The idle interrupt counter stayed at 1,677 at the 60-second and 90-second heartbeats.
-
-This check verifies the reported rapid tap case at the measured rate.
-It does not establish a maximum input rate or latency before GPIO handler entry.
+| Topic | Contents |
+| --- | --- |
+| [Display](lilygo-t5-s3-pro-display.md) | Native storage, scan output, waveform evidence, and limits |
+| [Touch](lilygo-t5-s3-pro-touch.md) | Report protocol, interrupts, shared I2C, and Home-key design |
+| [GNSS](lilygo-t5-s3-pro-gnss.md) | UART, baud selection, NMEA decoding, and observation validity |
+| [Radio discovery](lilygo-t5-s3-pro-radio.md) | Passive scans, resource release, and diagnostic builds |
 
 ## Device inventory
 
 The [device interface design](../device-interfaces.md) defines proposed shared
 services and simulator scenarios.
 Current hardware firmware connects the clock, display, single-contact touch input, passive radio scans, and GNSS observations.
-The simulator implements display, single-contact touch, discovery, and location services.
+The [simulator guide](../simulator.md) describes the native backend.
 Other services in this inventory stay design work.
 
 | Hardware | Connection / expected variant | Shared representation |
@@ -232,86 +124,6 @@ Parsing and baud selection stay below `DEV-LOCATION`.
 GNSS-derived UTC can also supply `DEV-TIME`.
 UART receipt on this wiring does not provide PPS precision.
 
-### GNSS implementation
-
-[`firmware/src/gnss`](../../firmware/src/gnss/mod.rs) enables PCA9535 `IO0_0` through the shared I2C mutex.
-It sets the port 0 output latch before it selects the output direction.
-It preserves other port 0 bits and all display controls on port 1.
-The auxiliary supply stays enabled after startup, during receiver faults, and after exit from the GNSS screen.
-Thus, this version also supplies power to LoRa. The LoRa driver stays uninitialized.
-
-The adapter uses UART1 on RX44/TX43 with 8 data bits, no parity, and one stop bit.
-UART1 uses the GPIO matrix. Application logs continue through USB Serial/JTAG.
-The worker uses a priority-1 interrupt executor on core 0 to receive bytes during application rendering.
-The receive threshold is 32 bytes. The software sentence buffer holds 128 bytes.
-The adapter sends no receiver commands.
-
-Baud selection tries 9600 and 38400 baud for four seconds each.
-A complete NMEA sentence with a valid envelope and checksum selects the baud rate.
-Baud selection does not establish the receiver model.
-After ten seconds without a valid NMEA sentence, the adapter tries both rates again.
-The shared application expires observations after five seconds.
-Incorrect checksums and malformed sentences do not change the previous observation time.
-
-The decoder accepts standard GNSS talker IDs and converts GGA coordinates to signed millionths of a degree.
-It converts the GGA altitude field to elevation above mean sea level in signed millimeters.
-The field must specify meters with `M`. Missing, malformed, and overflowing values supply no elevation.
-The decoder discards fractional precision below one millimeter. It does not add geoid separation to the reported elevation.
-
-Elevation requires a valid position fix. An unavailable elevation does not discard valid horizontal coordinates.
-It accepts satellite fix qualities 1, 2, 4, and 5.
-Other defined qualities supply no position fix, including estimated, manual, and simulated positions.
-A UART error clears the partial sentence and invalidates an established observation.
-The next valid GGA sentence restores the service.
-
-The adapter also decodes GSV satellite reports and RMC motion and UTC fields.
-
-RMC status `A` or `D` permits speed, course, and UTC.
-An optional mode field must specify satellite mode `A`, `D`, `F`, or `R`.
-Invalid status and other modes clear these readouts. The decoder accepts legacy RMC sentences without the mode field.
-The optional navigation status does not replace the data status. The vendor example uses navigation status `V` with valid data.
-
-The decoder converts knots to millimeters per second and course to thousandths of a degree.
-It discards fractional precision below one thousandth before conversion. Speed conversion rounds to the nearest millimeter per second.
-
-RMC UTC supplies hours, minutes, and seconds. The decoder discards fractional seconds and does not decode the date.
-Invalid or absent numeric fields clear only their readout. Invalid RMC status also clears UTC, even if its time field has numbers.
-This conservative policy does not display time from invalid RMC reports before a fix.
-
-RMC motion and UTC expire independently of GGA and GSV data. Other messages cannot extend their receipt times.
-The adapter does not request VTG or ZDA output. Receiver power stays enabled.
-
-The GSV decoder separates reports by constellation and signal ID.
-It accepts the optional signal ID and both `BD` and `GB` identifiers for BeiDou.
-It requires complete, ordered groups before publication. Duplicate satellite IDs invalidate a group.
-It preserves the previous complete group until replacement or expiry after five seconds.
-Partial groups also expire after five seconds.
-It supports 12 report streams, 36 satellites per stream, and 96 distinct satellites in the summary.
-These buffers use static RAM instead of the interrupt stack.
-Storage overflow marks summary counts as lower bounds.
-Multiple signals for one satellite contribute one count and the greatest reported C/N0.
-An empty C/N0 field stays unknown. A reported zero stays zero.
-
-Receiver activity counts messages with a supported talker, a valid envelope, and a correct checksum.
-Malformed measurement fields can establish activity, but they cannot refresh a fix or a satellite report.
-UART errors clear position, motion, UTC, and satellite data. The last response time and message count stay available.
-The USB heartbeat includes these diagnostics without coordinates.
-
-[Quectel L76K protocol specification V1.1][gnss-protocol], section 2.2.2, pages 12–13, specifies GGA fields and fix quality.
-Page 13 defines altitude above mean sea level and the separate geoid separation field.
-Appendix C, page 41, specifies default GGA output at 1 Hz and 9600 baud.
-The [vendor example][gnss] supplies the second baud rate and auxiliary-supply sequence.
-Section 2.2.3, pages 14–15, specifies GSV groups, signal IDs, and C/N0 in dB-Hz.
-It excludes the combined `GN` identifier from GSV reports.
-Section 2.2.1, pages 9–11, specifies RMC fields, data status, mode, and the published example.
-Section 2.2.5, page 17, defines course over ground relative to true north.
-Native tests use the published GGA, GSV, and RMC examples and exercise malformed input, UART errors, baud retries, and independent expiry.
-
-Hardware checks established receiver communication and satellite signal reports.
-Satellite fix acquisition, time to first fix, and measurement accuracy are unverified.
-
-[gnss-protocol]: https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/hardware/Quectel_L76K_GNSS_Protocol_Specification_V1.1.pdf
-
 The [fuel-gauge example][gauge] identifies available measurements.
 It does not establish calibration or accuracy for the delivered cell.
 
@@ -358,76 +170,7 @@ With USB attached, battery disconnection does not switch the system off.
 [BQ25896 section 9.2.10][charger] and the [shutdown example][shutdown] give information about
 these conditions.
 
-### GT911 Home key configuration and lower bezel
-
-The review date is **2026-10-13**.
-The controller has configurable touch-key recognition.
-Extra usable bezel area stays **unconfirmed** for this panel.
-
-[Goodix's programming guide, Rev.10][gt911-guide], section 3.2, gives information about these
-registers:
-
-| Registers | Meaning |
-| --- | --- |
-| `0x804E` bit 0 | Touch-key enable |
-| `0x8093`–`0x8096` | Four key positions. Zero disables a key. Values that are all multiples of eight identify independent-key designs. |
-| `0x8097` | Lower nibble: one-sided active extent (0–15). Upper nibble: baseline updates during a held touch. |
-| `0x8098`–`0x809B` | Key press and release thresholds, sensitivity |
-| `0x805B`–`0x805C` | Crop settings for four borders when the sensor grid extends beyond the visible display |
-
-Guide pages 5–6, 9, and 12–13 give information about these settings.
-The guide does not give pixel or millimeter units for key-area values.
-Section 3.3, page 17, defines `HaveKey` as pressed or released.
-Interpretation must use a valid, ready report.
-
-[Goodix's datasheet][gt911-datasheet], section 5.4, gives information about up to four keys.
-This section is on printed page 8, or PDF page 9.
-The keys use a separate transmit channel and shared receive channels.
-The description includes a separate FPC electrode design.
-
-This design does not establish an arbitrary X/Y rectangle across the lower bezel.
-Configuration cannot add electrodes to the panel.
-A larger key response area can not necessarily provide useful X/Y tracking.
-
-The [LILYGO factory initialization][factory-touch] installs the callback and
-selects low-level interrupt reports.
-[Driver initialization][gt911-init] reads the existing controller settings.
-[Interrupt setup][gt911-irq] changes interrupt bits and updates the configuration
-checksum. It does not install a board-specific key-position or area table.
-Thus, reviewed factory and touch examples do not identify the shipped register
-values.
-
-The [`setMaxCoordinates` helper][touch-coordinate-helper] in newer examples sets
-host mirroring bounds. It does not expand the sensor area.
-The board schematic shows the touch module's host connection.
-It does not show electrode layout.
-The reviewed references contain no fitted-panel electrode drawing or configuration
-dump.
-
-Two possibilities are subjects for hardware tests.
-Existing key electrodes might permit a different recognition area.
-The main sensor matrix might include more area outside the configured
-border. Neither possibility establishes an extra input surface.
-
-When hardware setup is requested, use this sequence:
-
-1. Read the existing `0x8047`–`0x8100` configuration.
-2. Save the configuration before any change.
-3. Record the controller identity, firmware identity, and module ID at `0x814A`.
-4. Inspect the key, border, and channel-map settings together.
-5. Record ready touch and key reports during taps across the lower bezel.
-6. Include press, release, the marked Home area, and adjacent positions.
-7. Keep raw sensor observations separate from rotated application coordinates.
-8. If readback and panel evidence support an experiment, change one setting from the saved baseline.
-9. Apply the checksum and update procedure in guide section 4.4.
-10. Compare the response map with the baseline.
-11. Check ordinary screen accuracy.
-
-The vendor's [`loadConfig`/`dumpRegister` methods][gt911-config] provide a readback
-example. Reset does not necessarily restore initial settings.
-Until measurements establish extra area, Home stays a logical key and extra
-bezel controls stay unavailable.
-These findings do not implement a driver or simulator model.
+The [touch design](lilygo-t5-s3-pro-touch.md#gt911-home-key-configuration-and-lower-bezel) records the Home-key investigation and remaining checks.
 
 ## Shared buses, power domains, and wake routing
 
@@ -534,85 +277,6 @@ Multiple display control signals use the PCA9535 expander and TPS65185 supply.
 The BQ25896 charger and BQ27220 gauge must also have deliberate configuration.
 Unconfigured devices do not establish managed battery operation.
 
-## Radio discovery
-
-`firmware/src/discovery/` implements the shared `Discovery` interface.
-One Embassy worker owns `WIFI` and `BT` on core 0.
-It initializes only the radio for the active request.
-It destroys that controller before it delivers results or starts another scan.
-Cancellation invalidates observations immediately and wakes the worker for resource release.
-The request deadline includes initialization, the scan, and resource release.
-
-The firmware reserves 128 KiB of internal RAM for radio drivers and RTOS tasks.
-Radio futures also use this heap to limit temporary stack storage.
-Application results and worker results use separate static buffers, each with 24 entries.
-The shared application does not allocate heap memory.
-The CPU operates at 240 MHz for display scans.
-Display storage uses PSRAM. Core 1 executes display refreshes.
-
-| Radio | Scan configuration | Result conversion |
-| --- | --- | --- |
-| Wi-Fi | Passive scan, 120 ms per channel, hidden SSIDs included, default driver country configuration | BSSID, SSID, signed RSSI. The adapter requests up to 25 records and retains 24. An extra record sets the result-limit indication. |
-| Bluetooth LE | Passive legacy scan, 1M PHY, 100 ms interval and window, four-second observation period, duplicate filtering disabled | Public or random address, advertised local name, signed RSSI. RSSI 127 means unavailable. Addresses use display byte order. |
-
-The Wi-Fi driver supplies its records in signal order.
-The shared result buffer applies the final order and address tie-break.
-The Wi-Fi API exposes only the valid UTF-8 prefix of an SSID.
-The adapter replaces unavailable suffix bytes with question marks.
-An empty SSID stays a hidden network.
-
-Bluetooth reports update RSSI for the same address and address type.
-An omitted name preserves a previous name from the same scan.
-A complete local name takes precedence over a shortened name within one advertisement.
-Malformed advertising data produces an unnamed observation.
-Malformed HCI reports produce a scan failure and discard partial results.
-The adapter does not resolve private addresses into stable identities.
-
-Passive scans do not send probe requests or scan requests.
-Thus, a device name that appears only in a scan response can stay unavailable.
-The Bluetooth adapter does not request extended or coded-PHY advertisements.
-Wi-Fi discovery covers the ESP32-S3's 2.4 GHz radio.
-These scans do not establish a connection, pair a device, or transmit application data.
-LoRa stays uninitialized.
-
-The implementation pins `esp-radio` to `1.0.0-beta.1` and uses `bt-hci` 0.9.
-The lockfile fixes the resolved dependencies.
-These upstream sources define the adapter assumptions:
-
-| Source | Applicable sections |
-| --- | --- |
-| [esp-radio Wi-Fi source][radio-wifi] | `WifiController::new`, `scan_async`, `WifiRefGuard::drop`, `wifi_deinit`, and `Ssid::as_str` |
-| [esp-radio scan source][radio-scan] | `ScanConfig`, `ScanTypeConfig::Passive`, and `ScanResults` |
-| [esp-radio Bluetooth source][radio-ble] | `BleConnector::new`, `Drop`, and the HCI transport implementation |
-| [esp-radio runtime source][radio-runtime] | Allocator requirement, `init`, and minimum CPU frequency |
-| [bt-hci controller source][hci-controller] | Concurrent command acknowledgment and event reception in `ExternalController` |
-| [bt-hci command source][hci-commands] | `LeSetScanParams`, `LeSetScanEnable`, and Bluetooth specification references |
-| [Espressif Wi-Fi reference][wifi-records] | `esp_wifi_scan_get_ap_records` signal order and scan record lifecycle |
-
-The pinned Wi-Fi wrapper does not expose `ScanDone.status` to its caller.
-The adapter reports errors that the wrapper returns.
-It cannot distinguish every failure inside the driver from an empty result.
-Controller destruction also handles shutdown errors inside the driver.
-Physical tests must therefore check repeated scans, cancellation, and radio changes for resource leaks or continued radio activity.
-The compile checks and native tests do not establish physical operation or heap capacity under radio traffic.
-
-### Diagnostic build
-
-The default firmware waits for shared application requests.
-The display and touch adapters connect the shared debugger to the physical screen.
-The optional `radio-scan-demo` feature performs one Wi-Fi scan and one Bluetooth LE scan at boot.
-It prints the result order, addresses, names, RSSI, errors, and result-limit indication through USB Serial/JTAG.
-
-To build this diagnostic firmware without device access, run:
-
-```sh
-devcontainer exec --workspace-folder . bash -lc 'cd firmware && cargo build --locked --release --features radio-scan-demo'
-```
-
-This command writes the ELF under `firmware/target/xtensa-esp32s3-none-elf/release/`.
-`just ci` checks this feature, then produces the default firmware image.
-Neither command flashes a device.
-
 ## Factory backup
 
 1. Confirm the board revision and USB device identity.
@@ -632,6 +296,7 @@ Neither command flashes a device.
 Use the explicit port and `--after no-reset` for both reads.
 This option keeps the device in the bootloader between reads.
 The read commands do not erase or write flash memory.
+
 The backup contains the bootloader, partition table, applications, and stored data.
 Git ignores `backups/`. This directory is separate from build output.
 Backup completion requires two identical reads of the full flash memory.
@@ -664,7 +329,7 @@ partitions and updates stay separate work.
 ## Backend conformance scenarios
 
 These are planned additions to the
-[portable acceptance scenarios](../device-interfaces.md#simulator-acceptance-scenarios).
+[portable acceptance scenarios](../platform/service-validation.md).
 They are not implemented simulator controls or verified hardware behavior.
 A simulator preset for this board must model these constraints.
 Synthetic profiles with different capabilities can also verify portable
@@ -694,22 +359,9 @@ application behavior.
 [pin-definitions-live]: https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/H752-01/docs/pin_define.md
 [factory-touch]: https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/examples/factory/main/main.cpp#L328-L351
 [gt911]: https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/lib/SensorLib/src/TouchDrvGT911.hpp#L203-L213
-[gt911-init]: https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/lib/SensorLib/src/TouchDrvGT911.hpp#L546-L645
-[gt911-irq]: https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/lib/SensorLib/src/TouchDrvGT911.hpp#L275-L292
-[gt911-config]: https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/lib/SensorLib/src/TouchDrvGT911.hpp#L425-L485
-[touch-coordinate-helper]: https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/lib/SensorLib/src/TouchDrvInterface.cpp#L77-L99
-[gt911-guide]: https://www.lcd-module.de/fileadmin/eng/pdf/zubehoer/GT911_Programming_Guide_Rev.10.pdf
-[gt911-datasheet]: https://www.olimex.com/Products/OLinuXino/LCD/_resources/GT911_Datasheet.pdf
 [pen-example]: https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/examples/touch_gt6972p/README.md
 [charger]: https://www.ti.com/lit/ds/symlink/bq25896.pdf#page=26
 [shutdown]: https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/examples/bq25896/main/main.ino#L55-L61
 [sleep]: https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-reference/system/sleep_modes.html
 [gnss]: https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/examples/GPS/main/main.ino#L80-L96
 [gauge]: https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/examples/bq27220/main/main.ino
-[radio-wifi]: https://github.com/esp-rs/esp-hal/blob/f769fcd27056b0837febe4209f3bae78ed764561/esp-radio/src/wifi/mod.rs
-[radio-scan]: https://github.com/esp-rs/esp-hal/blob/f769fcd27056b0837febe4209f3bae78ed764561/esp-radio/src/wifi/scan.rs
-[radio-ble]: https://github.com/esp-rs/esp-hal/blob/f769fcd27056b0837febe4209f3bae78ed764561/esp-radio/src/ble/controller/mod.rs
-[radio-runtime]: https://github.com/esp-rs/esp-hal/blob/f769fcd27056b0837febe4209f3bae78ed764561/esp-radio/src/lib.rs
-[hci-controller]: https://github.com/embassy-rs/bt-hci/blob/d0f7558ff205313c2c473046adec0ffdc00d919b/src/controller.rs
-[hci-commands]: https://github.com/embassy-rs/bt-hci/blob/d0f7558ff205313c2c473046adec0ffdc00d919b/src/cmd/le.rs
-[wifi-records]: https://docs.espressif.com/projects/esp-idf/en/v5.2.6/esp32s3/api-reference/network/esp_wifi.html#_CPPv428esp_wifi_scan_get_ap_recordsP8uint16_tP16wifi_ap_record_t

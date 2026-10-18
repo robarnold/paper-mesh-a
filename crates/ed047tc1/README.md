@@ -18,6 +18,7 @@ A full refresh clears the panel, then applies the reference's fifteen black-on-w
 Black-to-white and white-to-black changes use five partial phases, with 100 µs drive time per phase.
 Unchanged pixels receive neutral commands, including unchanged gray pixels.
 An unchanged image requires no panel update.
+
 The driver saves the completed image only after the scans and supply shutdown succeed.
 It does not use calibrated, temperature-dependent waveform tables.
 Optical shade accuracy needs physical measurement.

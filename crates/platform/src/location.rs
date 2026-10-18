@@ -110,19 +110,6 @@ pub enum SatelliteSystem {
     Navic,
 }
 
-impl SatelliteSystem {
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Gps => "GPS",
-            Self::Glonass => "GLO",
-            Self::Galileo => "GAL",
-            Self::BeiDou => "BDS",
-            Self::Qzss => "QZS",
-            Self::Navic => "NAV",
-        }
-    }
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SatelliteSignal {
     pub system: SatelliteSystem,
@@ -131,7 +118,8 @@ pub struct SatelliteSignal {
     pub cn0_db_hz: Option<u8>,
 }
 
-pub const DISPLAY_SATELLITES: usize = 8;
+/// Maximum number of signal entries in a location snapshot.
+pub const MAX_SATELLITES: usize = 8;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SatelliteObservation {
@@ -140,7 +128,7 @@ pub struct SatelliteObservation {
     pub satellites_in_view: u16,
     pub satellites_with_signal: u16,
     /// At most eight satellites, in descending signal order.
-    pub strongest: [Option<SatelliteSignal>; DISPLAY_SATELLITES],
+    pub strongest: [Option<SatelliteSignal>; MAX_SATELLITES],
     /// Counts are lower bounds when the provider exceeds its storage capacity.
     pub truncated: bool,
 }

@@ -19,7 +19,7 @@ use esp_hal::{
 };
 use esp_rtos::embassy::InterruptExecutor;
 use log::{error, info};
-use paper_mesh_app::platform::location::{Location, LocationAvailability, LocationSnapshot};
+use paper_mesh_platform::location::{Location, LocationAvailability, LocationSnapshot};
 use receiver::Receiver;
 use static_cell::{ConstStaticCell, StaticCell};
 

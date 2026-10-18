@@ -10,7 +10,7 @@ The proposed `Display` extensions stay unimplemented.
 
 A backend supplies stable native geometry, mounting information, and supported
 rendering and update capabilities.
-The [shared orientation state](architecture.md#orientation-state-and-coordinate-spaces)
+The [platform orientation state](platform/orientation.md)
 derives the logical viewport for components.
 The backend controls native framebuffer size and storage order.
 Components must not contain fixed panel dimensions.
@@ -86,7 +86,7 @@ Successful submission confirms acceptance, not visibility.
 Physical presentation can change progressively.
 A completed target does not imply an atomic optical replacement.
 
-Input must use the visible layout's orientation, as the architecture specifies.
+Input must use the visible layout's orientation, as the [orientation design](platform/orientation.md) specifies.
 Input stays blocked while presentation is unknown during recovery.
 
 Reset, transfer failure, or lost driver history can invalidate differential
@@ -123,3 +123,12 @@ Results supply backend capabilities and estimates.
 They do not become fixed values in application components.
 The [first backend's calibration plan](boards/lilygo-t5-s3-pro-display.md#simulator-and-hardware-validation)
 includes its row and scan measurements.
+
+## Planned display lighting
+
+`DisplayLighting` accepts normalized brightness and an explicit off value.
+It reports the applied level and errors.
+Backend configuration defines the electrical range and brightness mapping.
+Lighting changes do not submit a panel refresh.
+Automatic brightness also depends on an available ambient-light source.
+Lighting capability alone does not supply that source.

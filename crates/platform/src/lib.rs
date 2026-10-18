@@ -1,4 +1,7 @@
-//! Application services above individual chip drivers.
+#![no_std]
+
+//! Reusable application toolkit, service contracts, and coordinate adapters.
+//! This crate has no application or backend dependency.
 //!
 //! The platform adapter controls SPI, I2C, GPIO, interrupts, and executor selection.
 //! Drivers can use embedded-hal below these interfaces.
@@ -6,13 +9,12 @@
 use embedded_graphics::{pixelcolor::Gray4, prelude::*};
 
 pub mod discovery;
+pub mod display;
+pub mod input;
 pub mod location;
 pub mod rotation;
-
-/// Native panel dimensions, independent of device pose.
-pub const NATIVE_SCREEN_SIZE: Size = Size::new(960, 540);
-/// Logical portrait dimensions. Adapters rotate panel and touch coordinates.
-pub const SCREEN_SIZE: Size = Size::new(NATIVE_SCREEN_SIZE.height, NATIVE_SCREEN_SIZE.width);
+pub mod time;
+pub mod ui;
 
 /// Monotonic milliseconds from an arbitrary, stable epoch.
 /// Wall-clock time and CPU frequency changes must not affect this clock.

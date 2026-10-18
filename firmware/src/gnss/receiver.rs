@@ -1,7 +1,7 @@
 //! Bounded NMEA decoder and UART baud selection for the GNSS adapter.
 
 use super::gsv::Gsv;
-use paper_mesh_app::platform::location::{
+use paper_mesh_platform::location::{
     Coordinates, LocationAvailability, LocationObservation, LocationSnapshot, MotionObservation,
     ReceiverActivity, UtcObservation, UtcTime,
 };
