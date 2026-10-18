@@ -7,6 +7,9 @@ The firmware uses `no_std` Rust, esp-hal, and Embassy on esp-rtos.
 It uses both cores at 240 MHz and starts the asynchronous timer.
 It sends a boot message and a heartbeat every 30 seconds through USB Serial/JTAG.
 It supplies passive Wi-Fi and Bluetooth LE scans through the shared discovery interface.
+It supplies GNSS coordinates, elevation, fix status, satellite signals, and receiver activity through the shared location interface.
+The GNSS screen also shows speed, course relative to true north, and UTC time of day.
+The GNSS supply stays enabled. Receiver communication passed hardware checks. A satellite fix is unverified.
 An optional diagnostic build requests both scans and prints their results through USB Serial/JTAG.
 It renders the shared portrait interface on the ED047TC1 panel.
 Two framebuffers use 518,400 bytes of PSRAM.
@@ -71,6 +74,8 @@ devcontainer exec --workspace-folder . just sim
 Open [localhost:8080](http://localhost:8080).
 Click the screen or use the equivalent device controls.
 Select `Radio debugger` to see simulated Wi-Fi and Bluetooth LE results.
+Select `GNSS` to see simulated coordinates, satellite signals, and receiver activity.
+The [GNSS scenarios](docs/simulator.md#gnss-screen) include fix loss, expired data, unavailable data, and receiver faults.
 The debugger sorts results by signal strength.
 The simulator guide describes the [scan scenarios](docs/simulator.md#radio-debugger).
 Use Pause and the time controls to inspect refreshes and heartbeats.

@@ -168,8 +168,8 @@ It does not establish a maximum input rate or latency before GPIO handler entry.
 
 The [device interface design](../device-interfaces.md) defines proposed shared
 services and simulator scenarios.
-Current hardware firmware connects the clock, display, single-contact touch input, and passive radio scans.
-The simulator implements display and single-contact touch services.
+Current hardware firmware connects the clock, display, single-contact touch input, passive radio scans, and GNSS observations.
+The simulator implements display, single-contact touch, discovery, and location services.
 Other services in this inventory stay design work.
 
 | Hardware | Connection / expected variant | Shared representation |
@@ -226,11 +226,91 @@ Other backends can meet the same contracts with different parts or limits.
 | No established orientation or ambient-light sensor | Report automatic sources as unavailable. | Manual rotation and brightness operate without a sensor. Other profiles can supply automatic sources. |
 | No wired SD card-detect or dedicated SD power switch | Detect media through probing and I/O errors. Separate unmount from power removal. | Presence detection can be delayed. Unmount does not guarantee power savings. |
 
-The GNSS adapter must identify the fitted receiver.
+The installed GNSS receiver still requires a physical identification check.
 The [vendor example][gnss] tries L76K at 9600 baud and MIA-M10Q at 38400 baud.
 Parsing and baud selection stay below `DEV-LOCATION`.
 GNSS-derived UTC can also supply `DEV-TIME`.
 UART receipt on this wiring does not provide PPS precision.
+
+### GNSS implementation
+
+[`firmware/src/gnss`](../../firmware/src/gnss/mod.rs) enables PCA9535 `IO0_0` through the shared I2C mutex.
+It sets the port 0 output latch before it selects the output direction.
+It preserves other port 0 bits and all display controls on port 1.
+The auxiliary supply stays enabled after startup, during receiver faults, and after exit from the GNSS screen.
+Thus, this version also supplies power to LoRa. The LoRa driver stays uninitialized.
+
+The adapter uses UART1 on RX44/TX43 with 8 data bits, no parity, and one stop bit.
+UART1 uses the GPIO matrix. Application logs continue through USB Serial/JTAG.
+The worker uses a priority-1 interrupt executor on core 0 to receive bytes during application rendering.
+The receive threshold is 32 bytes. The software sentence buffer holds 128 bytes.
+The adapter sends no receiver commands.
+
+Baud selection tries 9600 and 38400 baud for four seconds each.
+A complete NMEA sentence with a valid envelope and checksum selects the baud rate.
+Baud selection does not establish the receiver model.
+After ten seconds without a valid NMEA sentence, the adapter tries both rates again.
+The shared application expires observations after five seconds.
+Incorrect checksums and malformed sentences do not change the previous observation time.
+
+The decoder accepts standard GNSS talker IDs and converts GGA coordinates to signed millionths of a degree.
+It converts the GGA altitude field to elevation above mean sea level in signed millimeters.
+The field must specify meters with `M`. Missing, malformed, and overflowing values supply no elevation.
+The decoder discards fractional precision below one millimeter. It does not add geoid separation to the reported elevation.
+
+Elevation requires a valid position fix. An unavailable elevation does not discard valid horizontal coordinates.
+It accepts satellite fix qualities 1, 2, 4, and 5.
+Other defined qualities supply no position fix, including estimated, manual, and simulated positions.
+A UART error clears the partial sentence and invalidates an established observation.
+The next valid GGA sentence restores the service.
+
+The adapter also decodes GSV satellite reports and RMC motion and UTC fields.
+
+RMC status `A` or `D` permits speed, course, and UTC.
+An optional mode field must specify satellite mode `A`, `D`, `F`, or `R`.
+Invalid status and other modes clear these readouts. The decoder accepts legacy RMC sentences without the mode field.
+The optional navigation status does not replace the data status. The vendor example uses navigation status `V` with valid data.
+
+The decoder converts knots to millimeters per second and course to thousandths of a degree.
+It discards fractional precision below one thousandth before conversion. Speed conversion rounds to the nearest millimeter per second.
+
+RMC UTC supplies hours, minutes, and seconds. The decoder discards fractional seconds and does not decode the date.
+Invalid or absent numeric fields clear only their readout. Invalid RMC status also clears UTC, even if its time field has numbers.
+This conservative policy does not display time from invalid RMC reports before a fix.
+
+RMC motion and UTC expire independently of GGA and GSV data. Other messages cannot extend their receipt times.
+The adapter does not request VTG or ZDA output. Receiver power stays enabled.
+
+The GSV decoder separates reports by constellation and signal ID.
+It accepts the optional signal ID and both `BD` and `GB` identifiers for BeiDou.
+It requires complete, ordered groups before publication. Duplicate satellite IDs invalidate a group.
+It preserves the previous complete group until replacement or expiry after five seconds.
+Partial groups also expire after five seconds.
+It supports 12 report streams, 36 satellites per stream, and 96 distinct satellites in the summary.
+These buffers use static RAM instead of the interrupt stack.
+Storage overflow marks summary counts as lower bounds.
+Multiple signals for one satellite contribute one count and the greatest reported C/N0.
+An empty C/N0 field stays unknown. A reported zero stays zero.
+
+Receiver activity counts messages with a supported talker, a valid envelope, and a correct checksum.
+Malformed measurement fields can establish activity, but they cannot refresh a fix or a satellite report.
+UART errors clear position, motion, UTC, and satellite data. The last response time and message count stay available.
+The USB heartbeat includes these diagnostics without coordinates.
+
+[Quectel L76K protocol specification V1.1][gnss-protocol], section 2.2.2, pages 12–13, specifies GGA fields and fix quality.
+Page 13 defines altitude above mean sea level and the separate geoid separation field.
+Appendix C, page 41, specifies default GGA output at 1 Hz and 9600 baud.
+The [vendor example][gnss] supplies the second baud rate and auxiliary-supply sequence.
+Section 2.2.3, pages 14–15, specifies GSV groups, signal IDs, and C/N0 in dB-Hz.
+It excludes the combined `GN` identifier from GSV reports.
+Section 2.2.1, pages 9–11, specifies RMC fields, data status, mode, and the published example.
+Section 2.2.5, page 17, defines course over ground relative to true north.
+Native tests use the published GGA, GSV, and RMC examples and exercise malformed input, UART errors, baud retries, and independent expiry.
+
+Hardware checks established receiver communication and satellite signal reports.
+Satellite fix acquisition, time to first fix, and measurement accuracy are unverified.
+
+[gnss-protocol]: https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/hardware/Quectel_L76K_GNSS_Protocol_Specification_V1.1.pdf
 
 The [fuel-gauge example][gauge] identifies available measurements.
 It does not establish calibration or accuracy for the delivered cell.
@@ -571,7 +651,7 @@ Backup completion requires two identical reads of the full flash memory.
 11. Compare shutdown with USB power and battery-only power.
 12. Check recovery after reset during I/O.
 
-Current firmware initializes display storage, display output, GT911 input, and requested radio scans.
+Current firmware initializes display storage, display output, GT911 input, requested radio scans, and continuous GNSS input.
 Other peripherals stay uninitialized.
 This state does not guarantee that those peripherals are off.
 Timer waits yield to the scheduler.

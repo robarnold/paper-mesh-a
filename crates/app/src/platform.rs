@@ -6,6 +6,7 @@
 use embedded_graphics::{pixelcolor::Gray4, prelude::*};
 
 pub mod discovery;
+pub mod location;
 pub mod rotation;
 
 /// Native panel dimensions, independent of device pose.

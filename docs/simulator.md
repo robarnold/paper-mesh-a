@@ -128,6 +128,7 @@ Event bodies use a `type` field:
 | `touch_cancel`, `pause`, `resume`, `reset` | None |
 | `advance` | `ms`, limited to 1–60000 ms per request with a paused clock |
 | `scan_scenario` | `scenario`: `nearby`, `empty`, `failed`, `unavailable`, or `timeout` |
+| `location_scenario` | `scenario`: a value from the GNSS scenario table below |
 
 The browser provides equivalent buttons for device touch targets.
 Rust supplies their labels and coordinates through `/api/state`.
@@ -155,6 +156,51 @@ Other scenarios produce empty results, a failure, an unavailable adapter, or a t
 Reset restores the nearby scenario and the counter screen.
 The simulator does not access host radios or physical device radios.
 
+### GNSS screen
+
+1. Select `GNSS` on the device screen or in the browser controls.
+2. Select a GNSS scenario in the browser.
+3. If virtual time is paused, advance it with the time controls.
+4. To return to the home screen, select `Back`.
+
+The application screen shows coordinates, fix status, satellite count, and observation age.
+The simulator page labels test data outside the application screen.
+It also shows elevation, speed in km/h, course relative to true north, and UTC time of day.
+UTC shows the latest report and updates at five-second display intervals. Missing and expired values show dashes.
+The default scenario supplies a fix after three virtual seconds.
+Later observations arrive at one-second intervals.
+The scenario selector takes effect immediately and starts a new scenario interval.
+Reset restores the default scenario and the home screen.
+These intervals are test conditions, not receiver performance measurements.
+
+| Scenario | Behavior |
+| --- | --- |
+| `fix` | No fix for three seconds, then a valid fix with eight satellites |
+| `acquiring` | Reports continue without a position fix |
+| `no_signal` | The receiver reports eight satellites without signal levels or a position fix |
+| `messages_only` | Receiver messages continue without fix or satellite reports |
+| `stale_satellites` | Satellite reports stop. Fix reports and receiver messages continue. |
+| `lost_fix` | A valid fix becomes invalid after three seconds |
+| `silent` | One valid fix, then no new observations. The screen removes coordinates after five seconds. |
+| `unavailable` | No receiver data |
+| `fault` | Receiver fault without coordinates |
+| `zero_coordinates` | Valid latitude and longitude of zero |
+| `below_sea_level` | A valid position with elevation at -430.5 m above mean sea level |
+| `missing_elevation` | Valid horizontal coordinates without an elevation value |
+| `stopped` | Zero speed with a valid fix and UTC. The screen hides course. |
+| `missing_motion` | Valid position and UTC without speed or course |
+| `missing_utc` | Valid position and motion without UTC |
+| `stale_motion` | Motion reports stop. Position, UTC, and receiver messages continue. |
+| `stale_utc` | UTC reports stop. Position, motion, and receiver messages continue. |
+
+Native tests cover acquisition, fix loss, expiry, faults, recovery, zero coordinates, navigation, and updates during display refresh.
+They also cover receiver activity, signal levels without a fix, independent satellite expiry, and message counts.
+Elevation tests cover signed values, zero, missing values, fix loss, expiry, and invalid units.
+Motion and UTC tests cover unit conversion, direction limits, stops, midnight, invalid fields, fix loss, faults, and independent expiry.
+Large and small time advances produce the same location state and completed frame.
+Separate native tests execute the firmware decoder and baud selection code.
+The simulator does not model satellite reception or verify the physical receiver.
+
 The browser converts pointer positions into portrait display coordinates.
 `Simulation::touch_portrait` converts those positions into native contacts.
 It passes them to `touch_native`.
@@ -176,5 +222,5 @@ lists portable contract scenarios.
 Board profiles add physical control mappings.
 The current Reset action resets the test fixture.
 It does not model hardware reset, power controls, or persistence across power
-transitions. GNSS, SD, battery, charger, frontlight, RTC, packet radio, and physical
+transitions. SD, battery, charger, frontlight, RTC, packet radio, and physical
 buttons have no simulator implementations yet.
