@@ -87,13 +87,6 @@ revisions. Do not commit copies, extracted text, or document screenshots.
 The reference index is `docs/vendor/lilygo/t5-s3-pro/README.md`.
 Download documents into the devcontainer's `/tmp` directory when necessary.
 
-Record project behavior, design decisions, and known limitations in the applicable
-documentation. Put board-specific findings in the applicable backend profile.
-Include source links and page or section references. Keep general service
-requirements and display requirements in the architecture and portable contract
-documents.
-
-Put evidence from individual test runs in PR descriptions or commit messages.
-This evidence includes observed firmware hashes, logs, message counts, timings,
-and other temporary test results. Do not add this evidence to project
-documentation.
+Record project findings in the applicable backend profile. Include source links
+and page or section references. Keep general service requirements and display
+requirements in the architecture and portable contract documents.

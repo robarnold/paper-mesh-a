@@ -1,9 +1,7 @@
 //! Optional diagnostic scans before the application loop starts.
 
 use embassy_time::{Instant, Timer};
-use paper_mesh_app::platform::discovery::{
-    Discovery, RadioKind, SCAN_TIMEOUT_MS, ScanCompletion, ScanRequest, ScanResults,
-};
+use paper_mesh_app::platform::discovery::*;
 use static_cell::ConstStaticCell;
 
 static RESULTS: ConstStaticCell<ScanResults> = ConstStaticCell::new(ScanResults::new());

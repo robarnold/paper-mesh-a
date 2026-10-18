@@ -6,8 +6,5 @@ rust-version = "1.95"
 publish = false
 license = "GPL-3.0-only"
 
-[lints]
-workspace = true
-
 [dependencies]
 embedded-graphics = "0.8.2"

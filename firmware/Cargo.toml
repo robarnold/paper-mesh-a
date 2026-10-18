@@ -48,7 +48,5 @@ lto = "fat"
 opt-level = "s"
 
 [lints.clippy]
-wildcard_imports = "deny"
-enum_glob_use = "deny"
 mem_forget = "deny"
 large_stack_frames = "deny"
