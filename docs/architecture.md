@@ -302,9 +302,9 @@ Changes that arrive while busy combine into the next frame.
 Drawing errors or submission errors leave the application dirty for a retry.
 The platform controls driver recovery and retry delays.
 
-The current interface has no separate notification for asynchronous failure
-after acceptance. A driver must recover an accepted frame.
-Otherwise, an extension to the contract is necessary.
+The current interface has no shared notification for asynchronous failure after acceptance.
+The firmware runtime receives these failures through its completion channel and disables the display.
+Input and heartbeat service continue. Shared application recovery stays planned work.
 
 Native drivers own all buffers.
 They keep transfer data valid until completion, including work through DMA or
@@ -318,8 +318,9 @@ strategy. It must obey the submission and busy-state contract.
 ## Scheduling and implementation status
 
 The platform serializes calls into `App`.
-The current design uses no shared mutable application state or cross-core
-locks. Each wakeup uses this sequence:
+Application state stays on one core.
+The firmware transfers exclusive panel ownership through channels between cores.
+Each wakeup uses this sequence:
 
 1. Process driver completion and input events.
 2. Call `tick(clock)`.
@@ -329,9 +330,29 @@ locks. Each wakeup uses this sequence:
 The application has a 30-second heartbeat.
 A late poll produces at most one heartbeat and keeps the initial schedule.
 The simulator advances virtual time through application and refresh deadlines
-in order. The first firmware backend uses Embassy time.
-It schedules the shared heartbeat on core 0.
-It does not initialize display or touch drivers.
+in order. The firmware backend uses Embassy time.
+The application, heartbeat, and touch service run on core 0.
+A worker on core 1 executes display refreshes.
+Submission transfers the panel and both framebuffers to that worker.
+The client reports busy until completion returns ownership.
+Thus, the application cannot change a frame during its scan.
+
+Touch interrupts wake a separate executor on core 0.
+The application consumes touch events during display work and combines changes into the next frame.
+A mutex serializes I2C access for touch reports and display controls.
+It leaves interrupts enabled during transfers and releases the bus before display scans or supply waits.
+The GPIO handler only records the interrupt time and wakes the touch worker.
+
+The application renders each new image through the same display contract.
+The adapter compares it with the last completed image to select full or partial updates.
+Only changed pixels receive active commands during a partial update.
+The adapter saves the new image only after the update succeeds.
+
+The application waits for touch events, display completion, discovery changes, or its next deadline.
+Read failures or event queue overflow cancel the active gesture.
+A display error stops further display updates and reports the fault through USB.
+Heartbeat output continues after a display error.
+These changes preserve the existing application contracts.
 
 The [simulator guide](simulator.md) and [backend profiles](hardware.md) give information about
 each implementation. The code does not yet implement the full separation.
@@ -358,7 +379,7 @@ automatic observations, and manual locks.
 The [device interface design](device-interfaces.md) specifies planned service
 observations, operations, lifecycles, failures, and acceptance scenarios.
 Each contract must have a consumer, a backend, and deterministic simulator
-scenarios. OTA and multicore work queues stay separate design decisions.
+scenarios. OTA stays a separate design decision.
 Shared code controls protocol and state decisions.
 Drivers control peripheral operations.
 

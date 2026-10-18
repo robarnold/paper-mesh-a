@@ -44,12 +44,14 @@ rotation, scheduling, and ownership contracts shared with hardware.
 The simulator implements these contracts without ESP registers or an executor
 dependency.
 
-Firmware uses `Clock`, the shared heartbeat state machine, and physical scan adapters.
-Native tests also exercise the firmware's request state and Bluetooth advertisement conversion.
+Firmware uses the same clock, touch, display, and portrait contracts.
+Its panel driver controls PSRAM, scan output, and display power.
+A native test compares every packed hardware pixel with the simulator frame.
+The test covers initial output and two heartbeat updates.
+Physical checks remain necessary for optical output and touch alignment.
+Firmware also supplies passive radio scans through the shared discovery contract.
+Native tests exercise firmware requests and Bluetooth advertisement conversion.
 These tests do not verify radio hardware.
-It has no placeholder display or touch drivers that report incorrect hardware
-success. Cross-compilation includes the shared renderer.
-Physical rendering must have a panel driver, buffers, and power sequences.
 
 ## Scenario profiles and board conformance
 

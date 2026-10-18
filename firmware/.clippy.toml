@@ -1,1 +1,3 @@
-stack-size-threshold = 1024
+# HAL initialization needs approximately 2.7 KiB of local storage.
+# Keep both framebuffers in PSRAM.
+stack-size-threshold = 4096

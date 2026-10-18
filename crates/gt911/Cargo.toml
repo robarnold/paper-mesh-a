@@ -1,0 +1,9 @@
+[package]
+name = "paper-mesh-gt911"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+publish = false
+
+[dependencies]
+embedded-hal = "1.0.0"

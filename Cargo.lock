@@ -123,6 +123,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "embedded-hal"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "361a90feb7004eca4019fb28352a9465666b24f840f5c3cddf0ff13920590b89"
+
+[[package]]
 name = "embedded-io"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -284,12 +290,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "paper-mesh-ed047tc1"
+version = "0.1.0"
+dependencies = [
+ "embedded-graphics",
+]
+
+[[package]]
+name = "paper-mesh-gt911"
+version = "0.1.0"
+dependencies = [
+ "embedded-hal",
+]
+
+[[package]]
 name = "paper-mesh-simulator"
 version = "0.1.0"
 dependencies = [
  "bt-hci",
  "embedded-graphics",
  "paper-mesh-app",
+ "paper-mesh-ed047tc1",
  "png",
  "serde",
  "serde_json",

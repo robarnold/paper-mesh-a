@@ -7,9 +7,117 @@ They are not universal application requirements.
 
 The evidence review date is **2026-10-12**.
 The review covers the ED047TC1 panel and reference drivers.
-The project has no physical Rust display driver or hardware benchmark yet.
-The examples below are calculations, not measured performance.
+The Rust driver passed an initial physical check on **2026-10-17**.
+The implementation section records that check.
+The other numerical examples are calculations, not measured performance.
 The simulator's 250 ms refresh is an artificial test delay.
+
+## Current Rust implementation
+
+[`firmware/src/display.rs`](../../firmware/src/display.rs) controls physical scans.
+[`firmware/src/display_worker.rs`](../../firmware/src/display_worker.rs) implements asynchronous submission to core 1.
+[`crates/ed047tc1`](../../crates/ed047tc1/README.md) supplies pixel storage and scan encoding.
+The application uses the same renderer and portrait transform as the simulator.
+Native storage contains two Gray4 pixels per byte.
+One reserved PSRAM region supplies two framebuffers without a heap, with 518,400 bytes total.
+One holds the new image. The other holds the last completed image.
+
+LCD DMA sends source data at 20 MHz through a 248-byte internal buffer.
+RMT supplies the gate clock with 0.1 µs timing units.
+Startup and changes to gray pixels require a full refresh.
+A full refresh applies 32 clearing scans and 15 black-on-white grayscale scans.
+Black-to-white and white-to-black changes use five partial scans, with 100 µs drive time per scan.
+Unchanged pixels receive neutral commands, including unchanged gray pixels.
+The driver traverses all gate rows during each scan.
+
+Each tap changes only the counter pixels.
+A heartbeat changes the uptime pixels. A combined update can change both fields.
+The driver skips unchanged images and saves each completed image after supply shutdown.
+An interrupted update invalidates the previous image and requires a full refresh before further partial updates.
+The client returns after submission and reports busy until core 1 completes the scan and supply shutdown.
+Exclusive panel ownership passes through channels between cores.
+The application cannot change either framebuffer during a refresh.
+
+The scan sequence and phase times derive from the
+[Rust reference at `c9cf0be`](https://github.com/azw413/lilygo-t5s3paperpro-rs/tree/c9cf0be45a33c4b2574aa3dde6dc128bb7ed7233).
+The driver sources retain its GPL-3.0-only license and attribution.
+The reference's `DU_FRAME_TIMES` and `DU_LUT_PHASE` define the partial waveform in
+[`src/display.rs`, lines 65–83](https://github.com/azw413/lilygo-t5s3paperpro-rs/blob/c9cf0be45a33c4b2574aa3dde6dc128bb7ed7233/src/display.rs#L65-L83).
+The implementation uses esp-hal 1.2.2 APIs and fixed buffers.
+It does not initialize the reference's unrelated board services.
+
+The display adapter owns PCA9535 port 1 output state.
+Display controls and touch reports share I2C through a mutex that leaves interrupts enabled during transfers.
+The display adapter releases that mutex before pixel transfers and supply waits.
+It preserves port 0, which controls the shared LoRa/GNSS supply.
+Power sequencing follows the vendor's
+[`epd_board_v7.c`](https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/lib/epdiy/src/board/epd_board_v7.c)
+and [`tps65185.c`](https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/lib/epdiy/src/board/tps65185.c).
+The profile selects −1.60 V VCOM without EEPROM programming.
+
+I2C transactions have a 20 ms timeout.
+RMT and LCD transfers have 20 ms timeouts.
+Power-good and temperature checks have 500 ms deadlines.
+The driver rejects sensor readings outside 0–50 °C.
+Every refresh attempts supply shutdown, including after an error.
+A display fault stops further updates while USB heartbeat output continues.
+
+### Physical check, 2026-10-17
+
+Espflash verified the write to the connected ESP32-S3, revision v0.2.
+USB output identified 8 MB OPI PSRAM and TPS65185 revision `0x66`.
+The temperature register reported 24 °C.
+The supply reported power-good mask `0xFA` before scans and a low PWRGOOD signal after shutdown.
+The first three display refreshes took 1.576–1.585 seconds.
+The build with touch polling completed its initial refresh in 1.599 seconds.
+Two count updates completed in 1.605 and 1.594 seconds.
+
+The initial hardware framebuffer and two heartbeat frames matched the simulator:
+
+| Application uptime | Packed-frame FNV-1a |
+| --- | --- |
+| 0 seconds | `2948532d` |
+| 30 seconds | `6bf2b72c` |
+| 60 seconds | `17333f05` |
+
+A native test compares all 518,400 pixel values for these frames.
+The user confirmed clear text, the black button, and gray swatches on the physical screen.
+This observation verifies the interface's visible output.
+It does not establish calibrated shade accuracy, electrical timing margins, or long-term image retention.
+
+### Partial update check, 2026-10-17
+
+All 23 native tests and the complete `just ci` checks passed before the flash.
+The partial scan test reconstructs simulator images through count 12, including the change from 9 to 10.
+It checks every pixel and rejects active commands outside the counter area.
+Other tests cover unchanged gray pixels, grayscale fallback, and invalid history.
+
+Espflash verified the new firmware write.
+The monitor reset interrupted initialization. The next boot reported an I2C error.
+A separate reset restored operation without another flash.
+The full startup refresh completed in 1.634 seconds.
+USB then reported ten complete taps and ten partial updates, with no faults.
+
+Each tap update took 881–888 ms at 24 °C.
+The reported native bounds stayed inside the counter area.
+The change from 9 to 10 changed 426 pixels in a 13 × 108 native rectangle.
+Earlier tap updates changed 15–61 pixels each.
+The heartbeat also used partial updates, with frame hashes that matched the simulator at 30 and 60 seconds.
+
+The user confirmed clean counter changes through count 10 on the physical screen.
+No flashes appeared elsewhere, and no old digits remained during this check.
+
+The later [multicore rapid tap check](lilygo-t5-s3-pro.md#rapid-tap-check-2026-10-17) retained all 20 taps during concurrent display work.
+The user confirmed a clear final count of 20.
+
+### Current limits
+
+Temperature-dependent waveform selection stays planned work.
+Partial updates do not skip inactive gate rows.
+Repeated partial updates need further checks for residual images and contrast loss.
+Touch interrupts receive service on core 0 during display scans on core 1.
+The adapter retains up to 32 touch events until the application can process them.
+These measurements do not establish performance for other panels, temperatures, or waveform modes.
 
 ## Panel facts and terminology
 

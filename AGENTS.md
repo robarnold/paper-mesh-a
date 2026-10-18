@@ -55,11 +55,15 @@ messages. Do not flash a connected device unless the user requests it.
 The intended device is the LILYGO T5 S3 E-Paper Pro with LoRa. The firmware in
 `firmware/` uses Rust, esp-hal, and Embassy on esp-rtos. Run Cargo from that
 directory to load the target configuration and the `esp` toolchain.
-Display drivers, touch drivers, power management, and multicore control stay
-planned work. The design does not use ESPHome or an ESP-IDF application runtime.
+The firmware implements display output and single-contact touch input.
+Display refresh runs on core 1. Touch interrupts and the application run on core 0.
+System power management stays planned work.
+The design does not use ESPHome or an ESP-IDF application runtime.
 
 The root Cargo workspace builds the shared `no_std` application in `crates/app/`
-and the native Rust simulator in `simulator/`. Firmware stays outside that
+and the native Rust simulator in `simulator/`.
+It also tests the ED047TC1 encoder and GT911 protocol in separate crates.
+Firmware stays outside that
 workspace to isolate Xtensa settings and ESP dependency features.
 
 Keep application behavior and rendering in the shared crate. Keep simulator

@@ -1568,6 +1568,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "paper-mesh-ed047tc1"
+version = "0.1.0"
+dependencies = [
+ "embedded-graphics",
+]
+
+[[package]]
 name = "paper-mesh-firmware"
 version = "0.1.0"
 dependencies = [
@@ -1576,6 +1583,7 @@ dependencies = [
  "embassy-futures",
  "embassy-sync 0.8.0",
  "embassy-time",
+ "embedded-graphics",
  "esp-alloc",
  "esp-backtrace",
  "esp-bootloader-esp-idf",
@@ -1583,9 +1591,19 @@ dependencies = [
  "esp-println",
  "esp-radio",
  "esp-rtos",
+ "heapless 0.9.3",
  "log",
  "paper-mesh-app",
+ "paper-mesh-ed047tc1",
+ "paper-mesh-gt911",
  "static_cell",
+]
+
+[[package]]
+name = "paper-mesh-gt911"
+version = "0.1.0"
+dependencies = [
+ "embedded-hal 1.0.0",
 ]
 
 [[package]]

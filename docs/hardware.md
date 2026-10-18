@@ -9,8 +9,8 @@ They do not select behavior by board name or chip model.
 
 | Backend profile | Contents | Status |
 | --- | --- | --- |
-| [LILYGO T5 S3 E-Paper Pro](boards/lilygo-t5-s3-pro.md) | H752-01 inventory, controls, wiring, power limits, wake limits, service mapping, and initial hardware checks | Initial firmware target. Peripheral drivers stay planned work. |
-| [LILYGO display evidence](boards/lilygo-t5-s3-pro-display.md) | Panel timing, scan geometry, reference-driver behavior, and numerical examples | Research and calibration plan. No measured Rust-driver performance. |
+| [LILYGO T5 S3 E-Paper Pro](boards/lilygo-t5-s3-pro.md) | H752-01 inventory, controls, wiring, power limits, wake limits, service mapping, and hardware checks | Display and GT911 adapters. Other peripheral drivers stay planned work. |
+| [LILYGO display evidence](boards/lilygo-t5-s3-pro-display.md) | Panel timing, scan geometry, driver behavior, and numerical examples | Initial physical display check and remaining calibration work. |
 
 The [native simulator](simulator.md) implements the same service contracts.
 Its current display preset uses the first board's geometry.

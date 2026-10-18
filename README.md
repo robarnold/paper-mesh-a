@@ -4,15 +4,22 @@ This project provides shared Rust application software for e-paper devices.
 It includes a native simulator and an initial firmware backend for the
 LILYGO T5 S3 E-Paper Pro with LoRa.
 The firmware uses `no_std` Rust, esp-hal, and Embassy on esp-rtos.
-It initializes core 0 at 80 MHz and starts the asynchronous timer.
+It uses both cores at 240 MHz and starts the asynchronous timer.
 It sends a boot message and a heartbeat every 30 seconds through USB Serial/JTAG.
 It supplies passive Wi-Fi and Bluetooth LE scans through the shared discovery interface.
 An optional diagnostic build requests both scans and prints their results through USB Serial/JTAG.
+It renders the shared portrait interface on the ED047TC1 panel.
+Two framebuffers use 518,400 bytes of PSRAM.
 
-Hardware display drivers, touch drivers, PSRAM allocation, power management,
-second-core tasks, radio protocols, and OTA stay planned work.
+GT911 input supplies taps to the shared counter.
+GPIO interrupts service touch on core 0 while core 1 executes display refreshes.
+Count changes and heartbeat updates use partial display refreshes.
+Each tap changes only the counter pixels. Startup requires a full refresh.
+Rapid taps combine into the next frame while the current refresh completes.
+System power management, packet radio protocols, and OTA stay planned work.
 The [LILYGO backend profile](docs/boards/lilygo-t5-s3-pro.md) gives information about the board
-and initial hardware checks. Hardware operation stays unverified.
+and hardware checks. USB boot, heartbeat, display, and basic touch checks passed on 2026-10-17.
+Other hardware checks appear in that profile.
 
 The native Rust simulator runs the shared application with a grayscale display,
 touch input, and a controllable clock. It runs in the devcontainer.
@@ -76,8 +83,11 @@ If an existing container predates this port setting, recreate it with
 The browser transports input and displays PNG frames. Rust code in the
 container controls application behavior, hit testing, rendering, and simulated
 hardware. The simulator does not execute Xtensa or ULP instructions.
-It does not emulate ESP registers. Firmware supplies the shared application's
-clock and physical scan adapters. Physical display and touch drivers stay uninitialized.
+It does not emulate ESP registers.
+Firmware uses the same application, renderer, and portrait transform.
+Hardware drivers supply display output, touch input, and passive radio scans.
+
+The [display driver notice](crates/ed047tc1/README.md) records its source and GPL license.
 
 ```sh
 # Run native Clippy and deterministic application and device scenarios.
@@ -119,7 +129,7 @@ configuration from the repository root.
 
 - `paper-mesh-firmware.elf`: firmware with debug symbols for diagnostics.
 - `paper-mesh-firmware.bin`: merged bootloader, partition table, and application.
-  The image starts at flash offset `0x0`. It uses 16 MB QIO flash at 80 MHz.
+  The image starts at flash offset `0x0`. It selects DIO mode for 16 MB flash at 80 MHz.
 - `SHA256SUMS`: checksums for both artifacts.
 
 The image uses espflash's supplied bootloader and default single-factory
@@ -131,7 +141,7 @@ There is no `cargo run` flash runner. No recipe flashes a device.
 The [radio backend profile](docs/boards/lilygo-t5-s3-pro.md#radio-discovery)
 specifies scan behavior, limits, and the optional `radio-scan-demo` feature.
 The default build waits for application requests.
-Display and touch drivers remain necessary for physical screen controls.
+The screen controls request scans through the same shared application.
 
 ### Linker configuration
 
@@ -180,8 +190,30 @@ If build time becomes a problem, add a shared CI image cache.
 ## Hardware access
 
 The default container operates without a connected device and also operates in CI.
-When hardware arrives, add an ignored `.devcontainer/devcontainer.local.json`
+When hardware arrives, add an ignored `.devcontainer/local/devcontainer.json`
 with USB and serial passthrough for the host.
 Select that file with the CLI's `--config` option.
 Do not install flashing tools on the host.
 Hardware setup and serial permissions must pass checks with the actual device.
+
+For Linux, map only the selected serial device into the container.
+Add its numeric group ID with Docker's `--group-add` option.
+The ignored local configuration can use `PAPER_MESH_SERIAL_PORT` and
+`PAPER_MESH_SERIAL_GID` for these values.
+Keep the actual `/dev/ttyACM*` name inside the container.
+Espflash uses this name to identify the USB interface.
+Use the default container for the simulator on host port 8080.
+After device identification, run these commands on the host:
+
+```sh
+export PAPER_MESH_SERIAL_PORT=$(readlink -f /dev/serial/by-id/REPLACE_WITH_CONFIRMED_DEVICE)
+export PAPER_MESH_SERIAL_GID=$(stat -Lc '%g' "$PAPER_MESH_SERIAL_PORT")
+devcontainer up --workspace-folder . --config .devcontainer/local/devcontainer.json
+devcontainer exec --workspace-folder . --config .devcontainer/local/devcontainer.json \
+  espflash list-ports --list-all-ports --skip-update-check
+```
+
+If USB reconnection changes the device node, recreate the local container.
+Keep the same `--config` option and add `--remove-existing-container` to `devcontainer up`.
+
+Before the first flash, follow the [factory backup procedure](docs/boards/lilygo-t5-s3-pro.md#factory-backup).

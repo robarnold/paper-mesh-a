@@ -455,6 +455,90 @@ mod tests {
         assert_eq!(sim.debugger().state(), ScanState::Complete);
     }
 
+    #[test]
+    fn partial_tap_updates_match_simulator_and_preserve_pixels_outside_counter() {
+        use embedded_graphics::primitives::Rectangle;
+        use paper_mesh_ed047tc1::{
+            FRAME_BYTES, FrameHistory, Framebuffer, ROW_BYTES, Update, WIDTH,
+        };
+
+        let mut sim = Simulation::default();
+        sim.advance(REFRESH_MS);
+        let mut staging = vec![0; FRAME_BYTES];
+        let mut previous = vec![0; FRAME_BYTES];
+        let mut frame = Framebuffer::new(staging.as_mut_slice().try_into().unwrap());
+        let mut history = FrameHistory::new(previous.as_mut_slice().try_into().unwrap());
+        sim.app
+            .render(&mut PortraitDisplay::new(&mut frame))
+            .unwrap();
+        history.commit(&frame);
+        let mut visible = sim.display.pixels().to_vec();
+        let counter = Rectangle::new(Point::new(48, 490), Size::new(444, 30));
+        // Include 9 -> 10. The centered label moves when its width changes.
+        for count in 1..=12 {
+            tap(&mut sim);
+            sim.advance(REFRESH_MS);
+            sim.app
+                .render(&mut PortraitDisplay::new(&mut frame))
+                .unwrap();
+            let Update::Partial(damage) = history.plan(&frame) else {
+                panic!("tap {count} did not select partial refresh");
+            };
+            assert!(damage.pixels > 0);
+            let mut driven = 0;
+            let mut row = [0xff; ROW_BYTES];
+            for y in 0..540 {
+                assert!(history.encode_partial_row(&frame, y, &mut row));
+                for x in 0..WIDTH {
+                    let drive = (row[x / 4] >> (2 * (x % 4))) & 3;
+                    if drive == 0 {
+                        continue;
+                    }
+                    let logical = ROTATION
+                        .to_portrait(Point::new(x as i32, y as i32))
+                        .unwrap();
+                    assert!(
+                        counter.contains(logical),
+                        "tap {count}: changed {logical:?}"
+                    );
+                    visible[y * WIDTH + x] = match drive {
+                        1 => 0,
+                        2 => 255,
+                        _ => panic!("invalid drive command"),
+                    };
+                    driven += 1;
+                }
+            }
+            assert_eq!(driven, damage.pixels);
+            assert_eq!(visible, sim.display.pixels(), "tap {count}");
+            history.commit(&frame);
+            assert_eq!(history.plan(&frame), Update::Unchanged);
+        }
+    }
+
+    #[test]
+    fn hardware_framebuffer_matches_every_simulator_pixel() {
+        use paper_mesh_ed047tc1::{FRAME_BYTES, Framebuffer};
+
+        let mut sim = Simulation::default();
+        sim.advance(REFRESH_MS);
+        let mut storage = vec![0; FRAME_BYTES];
+        let mut frame = Framebuffer::new(storage.as_mut_slice().try_into().unwrap());
+        for uptime in [0, 30, 60] {
+            if uptime > 0 {
+                sim.advance(30_000);
+            }
+            sim.app
+                .render(&mut PortraitDisplay::new(&mut frame))
+                .unwrap();
+            for (index, pixel) in sim.display.pixels().iter().enumerate() {
+                let shade = (frame.bytes()[index / 2] >> (4 * (index & 1))) & 15;
+                assert_eq!(shade * 17, *pixel, "native pixel {index}, uptime {uptime}");
+            }
+            println!("uptime={uptime}s frame_fnv1a={:08x}", frame.checksum());
+        }
+    }
+
     fn tap(sim: &mut Simulation) {
         // Native (480, 269) maps to portrait (270, 480), in the button.
         let point = Point::new(480, 269);
@@ -488,6 +572,27 @@ mod tests {
         sim.advance(REFRESH_MS);
         assert_eq!(sim.snapshot().completed_refreshes, 2);
         assert!(!sim.snapshot().display_busy);
+        let mut expected = SimDisplay::default();
+        sim.app
+            .render(&mut PortraitDisplay::new(&mut expected))
+            .unwrap();
+        assert_eq!(sim.display.pixels(), expected.drawing);
+    }
+
+    #[test]
+    fn rapid_taps_survive_multiple_pending_refreshes() {
+        let mut sim = Simulation::default();
+        let point = Point::new(270, 480);
+        for count in 1..=40 {
+            sim.touch_portrait(TouchEvent::Down(point));
+            sim.advance(30);
+            sim.touch_portrait(TouchEvent::Up(point));
+            assert_eq!(sim.snapshot().taps, count);
+            sim.advance(30);
+        }
+        sim.advance(2 * REFRESH_MS);
+        assert!(!sim.snapshot().display_busy);
+        assert!(sim.snapshot().completed_refreshes < 40);
         let mut expected = SimDisplay::default();
         sim.app
             .render(&mut PortraitDisplay::new(&mut expected))

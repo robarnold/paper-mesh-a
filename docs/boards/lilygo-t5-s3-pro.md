@@ -24,10 +24,10 @@ waveform limits, driver limits, and necessary performance measurements.
 | --- | --- |
 | SoC | ESP32-S3, dual Xtensa LX7 |
 | Rust target | `xtensa-esp32s3-none-elf` |
-| Flash | 16 MB, QIO, 80 MHz |
-| PSRAM | 8 MB OPI. Current firmware does not enable or allocate it. |
-| Application CPU clock | 80 MHz |
-| Executor | Embassy through esp-rtos on core 0. Core 1 stays inactive. |
+| Flash | 16 MB. The boot image selects DIO at 80 MHz. |
+| PSRAM | 8 MB OPI at 40 MHz. Two framebuffers use a reserved region of 518,400 bytes. |
+| Application CPU clock | 240 MHz |
+| Executor | Application and touch on core 0. Display refresh on core 1. Embassy through esp-rtos. |
 | Application logging | USB Serial/JTAG only |
 | Display | ED047TC1, 960 × 540, 4.7-inch grayscale e-paper |
 | Radio | SX1262. Driver and protocol selection stay undecided. |
@@ -39,11 +39,136 @@ gives information about models and component variations.
 Touch and GPS parts can differ between units.
 Driver selection depends on identification of the actual parts.
 
+The ESP32-S3 ROM cannot load a bootloader with a QIO header.
+Use DIO for the boot image.
+Espressif's [boot log reference][boot-header] explains this requirement in
+"Software Bootloader Header Info".
+The second-stage bootloader can select another flash mode after ROM startup.
+
+[boot-header]: https://docs.espressif.com/projects/esptool/en/release-v4/esp32s3/advanced-topics/boot-mode-selection.html#software-bootloader-header-info
+
+### USB bootstrap check, 2026-10-17
+
+The QIO image caused repeated `ets_loader.c 78` errors before application startup.
+The factory backup had a DIO boot header.
+The DIO image started the same application ELF successfully.
+
+Espflash 4.6.0 verified the flash write on the connected ESP32-S3, revision v0.2.
+USB output showed the `paper-mesh-a 0.1.0` boot message and an 80 MHz CPU clock.
+The application sent heartbeat messages at 30 and 60 seconds.
+These checks do not verify display, touch, power management, or radio operation.
+
+### Display and touch implementation
+
+The later display build uses a 240 MHz CPU clock and initializes OPI PSRAM.
+The [display evidence](lilygo-t5-s3-pro-display.md#current-rust-implementation) records its implementation and physical checks.
+The user confirmed that the shared interface appeared clearly on the panel.
+
+[`crates/gt911`](../../crates/gt911/src/lib.rs) implements the GT911 report protocol.
+[`firmware/src/touch.rs`](../../firmware/src/touch.rs) adapts reports to the shared touch contract.
+The driver probes both documented addresses and checks the product identity.
+If neither probe succeeds, it applies the documented reset sequence and selects address `0x5D`.
+It records the existing configuration through USB without configuration writes.
+
+The connected controller reported GT911 firmware `0x1060`, vendor ID 2, and 540 × 960 coordinates at address `0x5D`.
+The initial probes received no address acknowledgement.
+The reset sequence made the controller available to the subsequent boot.
+The saved USB log contains all 186 bytes from `0x8047` through `0x8100`.
+
+USB output recorded complete taps at logical positions `(345, 482)` and `(359, 480)`.
+The shared counter advanced to 1 and 2, with a completed refresh after each change.
+The user confirmed that the physical screen showed the increased count.
+These checks establish basic single-contact operation, not complete edge calibration or gesture coverage.
+
+Reports must have the ready flag before the driver reads coordinates.
+The driver acknowledges each report after the required reads succeed.
+It emits one press and one release for each single-contact gesture.
+Multiple contacts, invalid coordinates, I2C failures, or event queue overflow cancel the gesture.
+The Home key and pen input stay unimplemented.
+
+[Goodix Programming Guide Rev.10][gt911-guide], sections 3.3, 4.2, and 5, defines identity, reset timing, and report handling.
+The adapter converts the fitted portrait coordinates through the shared native-to-portrait transform.
+
+### Rapid tap investigation, 2026-10-17
+
+The user reported missed taps during rapid input after the partial update check.
+The rebase and flash onto `main` commit `ac2a3af9` preceded this investigation.
+The rebased build passed all 38 native tests and the complete `just ci` checks.
+USB confirmed startup, touch detection, display completion, and heartbeats at 30 and 60 seconds without faults.
+
+The previous touch adapter polled every 20 ms while idle, but only after each complete display scan during refresh.
+Each partial scan sends 541 rows, including the final neutral row.
+Each row requires a 100 µs high pulse and a 5 µs low pulse.
+These pulses alone require 56.805 ms between touch polls.
+Encoding, transfers, rendering, and supply waits add further delays.
+
+The saved controller configuration sets `Refresh_Rate` at `0x8056` to `0x0F`, which selects a 20 ms report period.
+[Goodix Programming Guide Rev.10][gt911-guide], sections 3.2 and 5, defines this period and the acknowledgment requirement.
+The controller retains an unread report instead of replacing it with new coordinates.
+Thus, rapid release and press changes can occur before the host acknowledges the previous report.
+This timing gap can explain missed taps. The software queue cannot recover reports that never reached the host.
+
+### Interrupt and multicore implementation
+
+The display worker runs on core 1 with an 8 KiB stack.
+The application transfers exclusive panel ownership through a channel before each refresh.
+Completion returns ownership and any error to core 0.
+The two existing PSRAM buffers remain sufficient. No frame copies occur during ownership transfer.
+
+GPIO3 uses the existing GT911 low-level interrupt mode from register `0x804D`.
+The GPIO handler records the interrupt time, disables that interrupt, and signals the touch worker.
+The worker uses a priority-2 interrupt executor on core 0.
+It reads and acknowledges the report, then enables the GPIO interrupt after a 1 ms delay.
+A low level that remains pending triggers another interrupt.
+The driver does not change the controller configuration or poll it during idle periods.
+
+An asynchronous mutex protects I2C0. Interrupts remain enabled during bus transactions.
+Display control operations release the mutex after each transaction.
+Pixel transfers use LCD DMA and RMT without the I2C mutex.
+Touch reports therefore proceed during display scans.
+The touch queue holds 32 events. Overflow cancels the gesture and increments an error counter.
+
+USB reports the core assignment, interrupt times, service duration, bus wait, and events received during refresh.
+Service duration starts at GPIO handler entry and ends after the report read and acknowledgment attempt.
+It excludes interrupt latency before handler entry.
+The native burst test verifies all 40 taps across multiple pending refreshes and compares the final image pixel by pixel.
+
+The implementation follows esp-rtos 0.4.0
+[`start_second_core`](https://github.com/esp-rs/esp-hal/blob/63e97be553f435f29171f7ae5f37a41ad737a75a/esp-rtos/src/lib.rs#L440-L458)
+and [`InterruptExecutor`](https://github.com/esp-rs/esp-hal/blob/63e97be553f435f29171f7ae5f37a41ad737a75a/esp-rtos/src/embassy/mod.rs#L308-L419).
+The first API pins the display thread to core 1.
+The second API starts touch service on the core that installs its software interrupt.
+
+### Rapid tap check, 2026-10-17
+
+The complete `just ci` checks passed, including 39 native tests.
+Espflash verified the firmware write to the same ESP32-S3 device.
+USB confirmed touch service on core 0 and display refresh on core 1.
+Startup completed a full refresh in 1,598 ms. Heartbeats continued at 30 and 60 seconds.
+The GT911 responded at `0x14` on this boot, with the same 186 configuration bytes as earlier touch checks.
+
+The user supplied exactly 20 rapid taps without waits for display completion.
+USB recorded 20 presses, 20 releases, and consecutive counts from 1 through 20.
+The burst lasted 4.231 seconds, with press intervals of 187–251 ms and contact durations of 62–84 ms.
+The average press rate was 4.557 taps per second.
+Thirty-six of the 40 contact events received service during display refresh.
+The user confirmed a final count of 20 with clear digits.
+
+The maximum measured service duration was 2.224 ms. The maximum bus wait was 0.701 ms.
+The log contained no I2C errors, queue overflows, display faults, or additional boots.
+Partial refreshes took 879–903 ms at 24 °C.
+Counts that arrived during refresh combined into later frames without losing gestures.
+Repeated low-level interrupts included 1 ms retries while the pin remained asserted.
+The idle interrupt counter stayed at 1,677 at the 60-second and 90-second heartbeats.
+
+This check verifies the reported rapid tap case at the measured rate.
+It does not establish a maximum input rate or latency before GPIO handler entry.
+
 ## Device inventory
 
 The [device interface design](../device-interfaces.md) defines proposed shared
 services and simulator scenarios.
-Current hardware firmware connects the clock, heartbeat, and passive radio scans.
+Current hardware firmware connects the clock, display, single-contact touch input, and passive radio scans.
 The simulator implements display and single-contact touch services.
 Other services in this inventory stay design work.
 
@@ -63,7 +188,7 @@ Other services in this inventory stay design work.
 | USB-C | VBUS power, ESP32-S3 D−/D+ on GPIO19/20 | Independent power connection and USB data or diagnostic session |
 | Wi-Fi / Bluetooth LE | Built into ESP32-S3 | Passive discovery on request. No connection or pairing service. |
 | Internal flash | 16 MB, also stores executable firmware | Durable settings and internal data. The backend controls partitions and updates. |
-| PSRAM | 8 MB OPI, currently uninitialized | Volatile memory, not persistent storage |
+| PSRAM | 8 MB OPI, display storage enabled | Volatile memory, not persistent storage |
 | Expansion connections | P3 exposes I2C/power. P5 exposes radio IRQ/reset/power nets. | Board profile extensions, not independent application devices |
 
 Sources include [schematic][schematic] sheets 1–4, the
@@ -295,7 +420,7 @@ backup-power details. The schematic and examples supply those inventory details.
 Unnamed definitions do not prove more peripherals or usable board
 connections.
 
-## Pins for later driver bring-up
+## Peripheral pins
 
 The following ESP32 GPIO numbers come from the
 [factory pin definitions](https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/examples/factory/main/utilities.h).
@@ -303,6 +428,8 @@ The following ESP32 GPIO numbers come from the
 | Interface | Pins |
 | --- | --- |
 | I2C | SDA 39, SCL 40 |
+| E-paper data D0–D7 | 5, 6, 7, 15, 16, 17, 18, 8 |
+| E-paper clocks and controls | CKH 4, CKV 48, STH 41, STV 45, LEH 42 |
 | Shared SPI | SCK 14, MOSI 13, MISO 21 |
 | SX1262 | CS 46, IRQ 10, reset 1, busy 47 |
 | microSD | CS 12 |
@@ -340,8 +467,8 @@ The firmware reserves 128 KiB of internal RAM for radio drivers and RTOS tasks.
 Radio futures also use this heap to limit temporary stack storage.
 Application results and worker results use separate static buffers, each with 24 entries.
 The shared application does not allocate heap memory.
-The CPU stays at 80 MHz, the driver's minimum CPU frequency for radio operation.
-PSRAM and core 1 stay uninitialized.
+The CPU operates at 240 MHz for display scans.
+Display storage uses PSRAM. Core 1 executes display refreshes.
 
 | Radio | Scan configuration | Result conversion |
 | --- | --- | --- |
@@ -392,7 +519,7 @@ The compile checks and native tests do not establish physical operation or heap 
 ### Diagnostic build
 
 The default firmware waits for shared application requests.
-Hardware display and touch drivers remain planned work.
+The display and touch adapters connect the shared debugger to the physical screen.
 The optional `radio-scan-demo` feature performs one Wi-Fi scan and one Bluetooth LE scan at boot.
 It prints the result order, addresses, names, RSSI, errors, and result-limit indication through USB Serial/JTAG.
 
@@ -405,6 +532,29 @@ devcontainer exec --workspace-folder . bash -lc 'cd firmware && cargo build --lo
 This command writes the ELF under `firmware/target/xtensa-esp32s3-none-elf/release/`.
 `just ci` checks this feature, then produces the default firmware image.
 Neither command flashes a device.
+
+## Factory backup
+
+1. Confirm the board revision and USB device identity.
+2. Configure serial access in the local devcontainer.
+3. Run `espflash board-info` with the explicit port and `--after no-reset`.
+4. Check the reported chip, flash size, and security state.
+5. If the chip is not ESP32-S3 or the flash size differs from 16 MB, stop.
+6. If security settings restrict flash access, stop.
+7. Create a new backup directory under `backups/` with access limited to the owner.
+8. Save the device information and espflash version in that directory.
+9. Read all `0x1000000` bytes from address `0x0` with `espflash read-flash`.
+10. Read the same region into a second file.
+11. Compare both files with `cmp`.
+12. Check that each file contains 16,777,216 bytes.
+13. Create SHA-256 checksums for both files.
+
+Use the explicit port and `--after no-reset` for both reads.
+This option keeps the device in the bootloader between reads.
+The read commands do not erase or write flash memory.
+The backup contains the bootloader, partition table, applications, and stored data.
+Git ignores `backups/`. This directory is separate from build output.
+Backup completion requires two identical reads of the full flash memory.
 
 ## First hardware checks
 
@@ -421,13 +571,14 @@ Neither command flashes a device.
 11. Compare shutdown with USB power and battery-only power.
 12. Check recovery after reset during I/O.
 
-Current firmware leaves external board peripherals uninitialized.
-This state does not guarantee that peripherals are off.
+Current firmware initializes display storage, display output, GT911 input, and requested radio scans.
+Other peripherals stay uninitialized.
+This state does not guarantee that those peripherals are off.
 Timer waits yield to the scheduler.
 Automatic light sleep and deep sleep stay unconfigured.
 Battery-life estimates must use measurements on the physical board.
 
-MeshCore integration, multicore work allocation, persistent storage, and OTA
+MeshCore integration, persistent storage, and OTA
 partitions and updates stay separate work.
 
 ## Backend conformance scenarios

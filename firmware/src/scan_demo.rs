@@ -1,4 +1,4 @@
-//! Optional diagnostic scans before display and touch drivers are available.
+//! Optional diagnostic scans before the application loop starts.
 
 use embassy_time::{Instant, Timer};
 use paper_mesh_app::platform::discovery::*;
