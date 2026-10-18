@@ -5,5 +5,8 @@ edition = "2024"
 rust-version = "1.95"
 publish = false
 
+[lints]
+workspace = true
+
 [dependencies]
 embedded-hal = "1.0.0"

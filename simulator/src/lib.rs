@@ -271,7 +271,13 @@ impl Simulation {
     }
 
     pub fn snapshot(&self) -> Snapshot {
-        use paper_mesh_app::{TAP_TARGET, debugger::*};
+        use paper_mesh_app::{
+            TAP_TARGET,
+            debugger::{
+                BACK_TARGET, BLUETOOTH_TARGET, DEBUGGER_TARGET, NEXT_TARGET, PREVIOUS_TARGET,
+                SCAN_TARGET, ScanState, WIFI_TARGET,
+            },
+        };
         let debugger = self.app.debugger();
         let targets: &[(&str, embedded_graphics::primitives::Rectangle)] = if debugger.is_open() {
             &[
@@ -330,7 +336,13 @@ impl Simulation {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use paper_mesh_app::{debugger::*, platform::discovery::*};
+    use paper_mesh_app::{
+        debugger::{
+            BACK_TARGET, BLUETOOTH_TARGET, DEBUGGER_TARGET, NEXT_TARGET, PREVIOUS_TARGET,
+            SCAN_TARGET, ScanState,
+        },
+        platform::discovery::{SCAN_TIMEOUT_MS, ScanError},
+    };
 
     fn press(sim: &mut Simulation, target: embedded_graphics::primitives::Rectangle) {
         sim.touch_portrait(TouchEvent::Down(target.center()));
