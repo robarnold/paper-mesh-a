@@ -28,6 +28,10 @@
     dt { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #667060; }
     dd { font-family: ui-monospace, monospace; font-size: 19px; margin: 8px 0 0; }
     .note { font-size: 12px; line-height: 1.7; color: #687060; margin-top: 24px; }
+    h2 { font-size: 15px; margin: 24px 0 12px; font-weight: 600; }
+    #device-controls { display: flex; flex-wrap: wrap; gap: 8px; }
+    label { display: block; font-size: 13px; margin-bottom: 8px; }
+    select { width: 100%; padding: 10px; border: 1px solid #c6cabe; border-radius: 7px; background: #fafaf6; color: inherit; font: inherit; font-size: 13px; }
     #error { color: #963b28; min-height: 20px; font-size: 13px; }
     @media (max-width: 650px) { body { padding: 18px; } .workspace { grid-template-columns: 1fr; gap: 0; } .device { width: min(100%, 380px); margin: auto; padding: 14px; border-radius: 14px; } header { align-items: start; flex-wrap: wrap; } }
   </style>
@@ -36,7 +40,7 @@
   <main>
     <header><div><div class="eyebrow">Development environment</div><h1>Paper Mesh</h1></div><div class="badge">T5 S3 Pro · 540 × 960</div></header>
     <div class="workspace">
-    <div class="device"><img id="screen" src="/frame.png" width="540" height="960" draggable="false" tabindex="0" role="button" aria-label="Simulated touch display. Press Enter to tap the counter."></div>
+    <div class="device"><img id="screen" src="/frame.png" width="540" height="960" draggable="false" aria-label="Simulated touch display. Equivalent buttons follow the display."></div>
     <aside>
     <div class="controls">
       <button id="play" class="primary">Pause</button>
@@ -51,8 +55,20 @@
       <div><dt>Refreshes</dt><dd id="refreshes">0</dd></div>
       <div><dt>Heartbeats</dt><dd id="heartbeats">0</dd></div>
     </dl>
-    <p class="note">Click the screen to send touch input. Pause to advance time deterministically.<br>
-      Refreshes take a simulated 250 ms; the previous image stays visible until completion. This delay does not represent measured panel timing.</p>
+    <h2>Device controls</h2>
+    <div id="device-controls" role="group" aria-label="Device controls"></div>
+    <h2>Radio scenario</h2>
+    <label for="scan-scenario">Results for the next scan</label>
+    <select id="scan-scenario">
+      <option value="nearby">Nearby networks</option>
+      <option value="empty">No results</option>
+      <option value="failed">Scan failure</option>
+      <option value="unavailable">Adapter unavailable</option>
+      <option value="timeout">Scan timeout</option>
+    </select>
+    <p class="note">The simulator uses test data for Wi-Fi and Bluetooth LE. It does not scan nearby radios.</p>
+    <p class="note">Click the screen or use the device controls. Pause to advance virtual time.<br>
+      A scan takes 1.5 simulated seconds. A display refresh takes 250 simulated milliseconds.</p>
     <p id="error" role="status"></p>
     </aside>
     </div>
@@ -62,7 +78,7 @@
     const screen = document.querySelector('#screen');
     const error = document.querySelector('#error');
     const play = document.querySelector('#play');
-    let running = true, frameKey = '', frameUrl = null, queue = Promise.resolve();
+    let running = true, frameKey = '', frameUrl = null, controlsKey = '', queue = Promise.resolve();
     let activePointer = null;
     function send(event) {
       queue = queue.then(async () => {
@@ -78,7 +94,6 @@
     screen.addEventListener('pointerdown', event => {
       if (activePointer !== null || event.button !== 0) return;
       event.preventDefault();
-      screen.focus();
       activePointer = event.pointerId;
       screen.setPointerCapture(activePointer);
       send({type: 'touch_down', ...point(event)});
@@ -93,17 +108,10 @@
       if (activePointer !== null) send({type: 'touch_cancel'});
       activePointer = null;
     });
-    screen.addEventListener('keydown', event => {
-      if (!event.repeat && (event.key === 'Enter' || event.key === ' ')) {
-        event.preventDefault();
-        const x = Math.floor(screen.naturalWidth / 2), y = Math.floor(screen.naturalHeight / 2);
-        send({type: 'touch_down', x, y});
-        send({type: 'touch_up', x, y});
-      }
-    });
     play.addEventListener('click', () => send({type: running ? 'pause' : 'resume'}));
     document.querySelectorAll('.step').forEach(button => button.addEventListener('click', () => send({type: 'advance', ms: Number(button.dataset.ms)})));
     document.querySelector('#reset').addEventListener('click', () => send({type: 'reset'}));
+    document.querySelector('#scan-scenario').addEventListener('change', event => send({type: 'scan_scenario', scenario: event.target.value}));
     async function poll() {
       try {
         const response = await fetch('/api/state');
@@ -116,6 +124,21 @@
         document.querySelector('#display').textContent = state.display_busy ? 'Refreshing' : 'Ready';
         document.querySelector('#refreshes').textContent = state.completed_refreshes;
         document.querySelector('#heartbeats').textContent = state.heartbeats;
+        document.querySelector('#scan-scenario').value = state.scan_scenario;
+        const nextControlsKey = JSON.stringify(state.controls);
+        if (nextControlsKey !== controlsKey) {
+          const controls = document.querySelector('#device-controls');
+          controls.replaceChildren(...state.controls.map(control => {
+            const button = document.createElement('button');
+            button.textContent = control.label;
+            button.addEventListener('click', () => {
+              send({type: 'touch_down', x: control.x, y: control.y});
+              send({type: 'touch_up', x: control.x, y: control.y});
+            });
+            return button;
+          }));
+          controlsKey = nextControlsKey;
+        }
         const key = `${state.generation}:${state.completed_refreshes}`;
         if (key !== frameKey) {
           const image = await fetch('/frame.png');

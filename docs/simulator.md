@@ -3,6 +3,7 @@
 The simulator runs the application with native implementations of device
 services. It does not emulate ESP32-S3 instructions or registers.
 The first screen contains a touch counter and a 30-second heartbeat.
+Its `Radio debugger` button opens Wi-Fi and Bluetooth LE scans with test data.
 It uses the same state machine and rendering code available to firmware.
 
 The current demonstration uses a 540 × 960 portrait coordinate space.
@@ -21,6 +22,9 @@ and rotation state associated with frames.
 | --- | --- |
 | `crates/app` | `no_std` application state, touch handling, deadlines, rendering |
 | `crates/app/src/platform.rs` | Clock and display contracts, normalized touch events |
+| `crates/app/src/platform/discovery.rs` | Scan contract and bounded result order |
+| `crates/app/src/debugger.rs` | Shared debugger controls and rendering |
+| `simulator/src/discovery.rs` | Deterministic scan results and failures |
 | `crates/app/src/platform/rotation.rs` | Shared pixel and touch transforms |
 | `simulator/src/lib.rs` | Virtual clock, grayscale display, refresh completion, deterministic scenarios |
 | `simulator/src/main.rs` | Native HTTP server, input checks, optional wall-clock pacing |
@@ -40,7 +44,9 @@ rotation, scheduling, and ownership contracts shared with hardware.
 The simulator implements these contracts without ESP registers or an executor
 dependency.
 
-Firmware currently uses only `Clock` and the shared heartbeat state machine.
+Firmware uses `Clock`, the shared heartbeat state machine, and physical scan adapters.
+Native tests also exercise the firmware's request state and Bluetooth advertisement conversion.
+These tests do not verify radio hardware.
 It has no placeholder display or touch drivers that report incorrect hardware
 success. Cross-compilation includes the shared renderer.
 Physical rendering must have a panel driver, buffers, and power sequences.
@@ -119,6 +125,33 @@ Event bodies use a `type` field:
 | `touch_down`, `touch_up` | `x`, `y` |
 | `touch_cancel`, `pause`, `resume`, `reset` | None |
 | `advance` | `ms`, limited to 1–60000 ms per request with a paused clock |
+| `scan_scenario` | `scenario`: `nearby`, `empty`, `failed`, `unavailable`, or `timeout` |
+
+The browser provides equivalent buttons for device touch targets.
+Rust supplies their labels and coordinates through `/api/state`.
+These buttons also permit keyboard input.
+
+### Radio debugger
+
+1. Select `Radio debugger` on the device screen or in the browser controls.
+2. Select `Wi-Fi` or `Bluetooth LE`.
+3. If virtual time is paused, advance it by two seconds.
+4. Use `Next` and `Previous` to see more results.
+5. To repeat the scan, select `Scan again`.
+6. To return to the counter, select `Back`.
+
+The debugger shows RSSI in dBm, with the strongest measured signal first.
+Unknown RSSI appears last.
+The scan time identifies the completed results.
+Wi-Fi names can repeat across different access points.
+Bluetooth LE results show devices that advertise.
+The debugger does not support Bluetooth Classic discovery.
+
+The `Radio scenario` selector changes the next scan.
+The nearby scenario has seven entries for each radio, including an empty name and unknown RSSI.
+Other scenarios produce empty results, a failure, an unavailable adapter, or a timeout.
+Reset restores the nearby scenario and the counter screen.
+The simulator does not access host radios or physical device radios.
 
 The browser converts pointer positions into portrait display coordinates.
 `Simulation::touch_portrait` converts those positions into native contacts.
@@ -141,5 +174,5 @@ lists portable contract scenarios.
 Board profiles add physical control mappings.
 The current Reset action resets the test fixture.
 It does not model hardware reset, power controls, or persistence across power
-transitions. GNSS, SD, battery, charger, frontlight, RTC, radio, and physical
+transitions. GNSS, SD, battery, charger, frontlight, RTC, packet radio, and physical
 buttons have no simulator implementations yet.

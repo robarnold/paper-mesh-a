@@ -4,9 +4,11 @@
 //! This crate operates without ESP registers, an OS, a heap, or an executor.
 //! Each platform delivers input and schedules application polls.
 
+pub mod debugger;
 pub mod platform;
 
 use core::fmt::Write;
+use debugger::{DEBUGGER_TARGET, Debugger};
 use embedded_graphics::{
     mono_font::{MonoTextStyle, ascii::FONT_10X20},
     pixelcolor::Gray4,
@@ -15,6 +17,7 @@ use embedded_graphics::{
     text::{Alignment, Text},
 };
 use heapless::String;
+use platform::discovery::Discovery;
 use platform::{Clock, Display, SCREEN_SIZE, TouchEvent};
 
 pub const HEARTBEAT_MS: u64 = 30_000;
@@ -30,18 +33,26 @@ pub struct App {
     uptime_seconds: u64,
     taps: u32,
     touch_armed: bool,
+    debugger_armed: bool,
+    debugger: Debugger,
     dirty: bool,
 }
 
 impl App {
     pub fn new(clock: &impl Clock) -> Self {
-        let now = clock.now_ms();
+        Self::new_at(clock.now_ms())
+    }
+
+    /// This constructor permits static storage with a specified start time in the platform epoch.
+    pub const fn new_at(now: u64) -> Self {
         Self {
             started_at_ms: now,
             last_heartbeat_ms: now,
             uptime_seconds: 0,
             taps: 0,
             touch_armed: false,
+            debugger_armed: false,
+            debugger: Debugger::new(),
             dirty: true,
         }
     }
@@ -62,6 +73,13 @@ impl App {
     }
 
     pub fn next_deadline_ms(&self) -> u64 {
+        self.debugger
+            .next_deadline_ms()
+            .unwrap_or(u64::MAX)
+            .min(self.next_heartbeat_ms())
+    }
+
+    pub fn next_heartbeat_ms(&self) -> u64 {
         self.last_heartbeat_ms.saturating_add(HEARTBEAT_MS)
     }
 
@@ -69,17 +87,40 @@ impl App {
         self.taps
     }
 
+    pub fn debugger(&self) -> &Debugger {
+        &self.debugger
+    }
+
+    pub fn poll_discovery(&mut self, clock: &impl Clock, discovery: &mut impl Discovery) {
+        self.dirty |= self.debugger.poll(clock.now_ms(), discovery);
+    }
+
     pub fn touch(&mut self, event: TouchEvent) {
+        if self.debugger.is_open() {
+            self.dirty |= self.debugger.touch(event);
+            return;
+        }
         match event {
-            TouchEvent::Down(point) => self.touch_armed = TAP_TARGET.contains(point),
+            TouchEvent::Down(point) => {
+                self.touch_armed = TAP_TARGET.contains(point);
+                self.debugger_armed = DEBUGGER_TARGET.contains(point);
+            }
             TouchEvent::Up(point) => {
+                if self.debugger_armed && DEBUGGER_TARGET.contains(point) {
+                    self.debugger.open();
+                    self.dirty = true;
+                }
                 if self.touch_armed && TAP_TARGET.contains(point) {
                     self.taps = self.taps.saturating_add(1);
                     self.dirty = true;
                 }
                 self.touch_armed = false;
+                self.debugger_armed = false;
             }
-            TouchEvent::Cancel => self.touch_armed = false,
+            TouchEvent::Cancel => {
+                self.touch_armed = false;
+                self.debugger_armed = false;
+            }
         }
     }
 
@@ -97,11 +138,15 @@ impl App {
     }
 
     pub fn render<D: DrawTarget<Color = Gray4>>(&self, display: &mut D) -> Result<(), D::Error> {
+        if self.debugger.is_open() {
+            return self.debugger.render(display);
+        }
         display.clear(Gray4::WHITE)?;
         let black = MonoTextStyle::new(&FONT_10X20, Gray4::BLACK);
         let muted = MonoTextStyle::new(&FONT_10X20, Gray4::new(6));
         Text::new("PAPER MESH", Point::new(48, 60), black).draw(display)?;
         Text::new("Hello from shared Rust", Point::new(48, 110), muted).draw(display)?;
+        debugger::button(display, DEBUGGER_TARGET, "Radio debugger", false, true)?;
         Rectangle::new(Point::new(48, 144), Size::new(TAP_TARGET.size.width, 2))
             .into_styled(PrimitiveStyle::with_fill(Gray4::new(11)))
             .draw(display)?;
