@@ -1,6 +1,12 @@
 //! Shared discovery controls and grayscale rendering.
 
-use crate::platform::{TouchEvent, discovery::*};
+use crate::platform::{
+    TouchEvent,
+    discovery::{
+        AddressKind, Discovery, RadioKind, SCAN_TIMEOUT_MS, ScanError, ScanRequest, ScanResults,
+        ScanSource,
+    },
+};
 use core::fmt::Write;
 use embedded_graphics::{
     mono_font::{MonoTextStyle, ascii::FONT_10X20},
@@ -395,6 +401,7 @@ pub(crate) fn button<D: DrawTarget<Color = Gray4>>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::platform::discovery::{ScanCompletion, UnavailableDiscovery};
 
     #[derive(Default)]
     struct Adapter {

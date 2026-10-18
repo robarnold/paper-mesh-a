@@ -5,6 +5,9 @@ edition = "2024"
 rust-version = "1.95"
 publish = false
 
+[lints]
+workspace = true
+
 [dependencies]
 paper-mesh-app = { path = "../crates/app" }
 embedded-graphics = "0.8.2"
