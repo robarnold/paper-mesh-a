@@ -11,6 +11,10 @@ use paper_mesh_app::{
     },
 };
 use serde::Serialize;
+pub mod discovery;
+use discovery::{ScanScenario, SimDiscovery};
+use paper_mesh_app::debugger::Debugger;
+use paper_mesh_app::platform::discovery::{RadioKind, ScanSource};
 
 // This artificial delay exercises asynchronous refresh.
 // It is not a panel measurement.
@@ -146,12 +150,28 @@ pub struct Snapshot {
     pub next_heartbeat_ms: u64,
     pub display_busy: bool,
     pub completed_refreshes: u64,
+    pub debugger_open: bool,
+    pub scan_kind: &'static str,
+    pub scan_state: &'static str,
+    pub scan_source: Option<&'static str>,
+    pub scan_results: usize,
+    pub scan_observed_at_ms: Option<u64>,
+    pub scan_scenario: ScanScenario,
+    pub controls: Vec<Control>,
+}
+
+#[derive(Serialize)]
+pub struct Control {
+    label: &'static str,
+    x: i32,
+    y: i32,
 }
 
 pub struct Simulation {
     app: App,
     clock: VirtualClock,
     display: SimDisplay,
+    discovery: SimDiscovery,
     heartbeats: u64,
     last_heartbeat_seconds: Option<u64>,
 }
@@ -163,6 +183,7 @@ impl Default for Simulation {
             app: App::new(&clock),
             clock,
             display: SimDisplay::default(),
+            discovery: SimDiscovery::default(),
             heartbeats: 0,
             last_heartbeat_seconds: None,
         };
@@ -174,6 +195,7 @@ impl Default for Simulation {
 impl Simulation {
     fn poll(&mut self) {
         self.display.advance_to(self.clock.now_ms());
+        self.app.poll_discovery(&self.clock, &mut self.discovery);
         if let Some(uptime) = self.app.tick(&self.clock) {
             self.heartbeats += 1;
             self.last_heartbeat_seconds = Some(uptime);
@@ -189,6 +211,9 @@ impl Simulation {
         let end = self.clock.0.saturating_add(duration_ms);
         while self.clock.0 < end {
             let mut next = end.min(self.app.next_deadline_ms());
+            if let Some(deadline) = self.discovery.next_deadline_ms() {
+                next = next.min(deadline);
+            }
             if self.display.is_busy() {
                 next = next.min(self.display.ready_at_ms);
             }
@@ -237,15 +262,67 @@ impl Simulation {
         &self.display
     }
 
+    pub fn debugger(&self) -> &Debugger {
+        self.app.debugger()
+    }
+
+    pub fn set_scan_scenario(&mut self, scenario: ScanScenario) {
+        self.discovery.scenario = scenario;
+    }
+
     pub fn snapshot(&self) -> Snapshot {
+        use paper_mesh_app::{TAP_TARGET, debugger::*};
+        let debugger = self.app.debugger();
+        let targets: &[(&str, embedded_graphics::primitives::Rectangle)] = if debugger.is_open() {
+            &[
+                ("Back", BACK_TARGET),
+                ("Wi-Fi", WIFI_TARGET),
+                ("Bluetooth LE", BLUETOOTH_TARGET),
+                ("Scan again", SCAN_TARGET),
+                ("Previous", PREVIOUS_TARGET),
+                ("Next", NEXT_TARGET),
+            ]
+        } else {
+            &[
+                ("Tap counter", TAP_TARGET),
+                ("Radio debugger", DEBUGGER_TARGET),
+            ]
+        };
         Snapshot {
             now_ms: self.clock.now_ms(),
             taps: self.app.taps(),
             heartbeats: self.heartbeats,
             last_heartbeat_seconds: self.last_heartbeat_seconds,
-            next_heartbeat_ms: self.app.next_deadline_ms(),
+            next_heartbeat_ms: self.app.next_heartbeat_ms(),
             display_busy: self.display.is_busy(),
             completed_refreshes: self.display.completed_refreshes,
+            debugger_open: debugger.is_open(),
+            scan_kind: match debugger.kind() {
+                RadioKind::Wifi => "wifi",
+                RadioKind::BluetoothLe => "bluetooth_le",
+            },
+            scan_state: match debugger.state() {
+                ScanState::Idle => "idle",
+                ScanState::Requested => "requested",
+                ScanState::Active => "active",
+                ScanState::Complete => "complete",
+                ScanState::Error(_) => "error",
+            },
+            scan_source: debugger.source().map(|source| match source {
+                ScanSource::Simulated => "simulated",
+                ScanSource::Device => "device",
+            }),
+            scan_results: debugger.results().networks().len(),
+            scan_observed_at_ms: debugger.observed_at_ms(),
+            scan_scenario: self.discovery.scenario,
+            controls: targets
+                .iter()
+                .map(|(label, target)| Control {
+                    label,
+                    x: target.center().x,
+                    y: target.center().y,
+                })
+                .collect(),
         }
     }
 }
@@ -253,6 +330,130 @@ impl Simulation {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use paper_mesh_app::{debugger::*, platform::discovery::*};
+
+    fn press(sim: &mut Simulation, target: embedded_graphics::primitives::Rectangle) {
+        sim.touch_portrait(TouchEvent::Down(target.center()));
+        sim.touch_portrait(TouchEvent::Up(target.center()));
+    }
+
+    #[test]
+    fn debugger_scans_both_radios_and_pages_without_changing_the_counter() {
+        let mut sim = Simulation::default();
+        sim.advance(REFRESH_MS);
+        let home = sim.display.pixels().to_vec();
+        press(&mut sim, DEBUGGER_TARGET);
+        assert_eq!(sim.debugger().state(), ScanState::Active);
+        assert_eq!(sim.debugger().source(), Some(ScanSource::Simulated));
+        sim.advance(discovery::SCAN_MS - 1);
+        assert!(sim.debugger().results().networks().is_empty());
+        sim.advance(1);
+        assert_eq!(sim.debugger().state(), ScanState::Complete);
+        assert_eq!(
+            sim.debugger().observed_at_ms(),
+            Some(REFRESH_MS + discovery::SCAN_MS)
+        );
+        assert_eq!(sim.debugger().results().networks()[0].rssi_dbm, Some(-38));
+        assert_eq!(
+            sim.debugger().results().networks().last().unwrap().rssi_dbm,
+            None
+        );
+        sim.advance(REFRESH_MS);
+        assert_ne!(sim.display.pixels(), home);
+        press(&mut sim, NEXT_TARGET);
+        assert_eq!(sim.debugger().page(), 1);
+        press(&mut sim, NEXT_TARGET);
+        assert_eq!(sim.debugger().page(), 1);
+        press(&mut sim, PREVIOUS_TARGET);
+        assert_eq!(sim.debugger().page(), 0);
+        press(&mut sim, BLUETOOTH_TARGET);
+        assert!(sim.debugger().results().networks().is_empty());
+        sim.advance(discovery::SCAN_MS + REFRESH_MS);
+        assert_eq!(sim.debugger().kind(), RadioKind::BluetoothLe);
+        assert_eq!(sim.debugger().results().networks()[0].name, "Sensor");
+        assert_eq!(sim.snapshot().taps, 0);
+        press(&mut sim, BACK_TARGET);
+        assert!(!sim.debugger().is_open());
+        tap(&mut sim);
+        assert_eq!(sim.snapshot().taps, 1);
+    }
+
+    #[test]
+    fn scan_scenarios_clear_old_results_and_allow_recovery() {
+        let mut sim = Simulation::default();
+        press(&mut sim, DEBUGGER_TARGET);
+        sim.advance(discovery::SCAN_MS);
+        for (scenario, expected, duration) in [
+            (ScanScenario::Empty, ScanState::Complete, discovery::SCAN_MS),
+            (
+                ScanScenario::Failed,
+                ScanState::Error(ScanError::Failed),
+                discovery::SCAN_MS,
+            ),
+            (
+                ScanScenario::Unavailable,
+                ScanState::Error(ScanError::Unsupported),
+                1,
+            ),
+            (
+                ScanScenario::Timeout,
+                ScanState::Error(ScanError::Timeout),
+                SCAN_TIMEOUT_MS,
+            ),
+        ] {
+            sim.set_scan_scenario(scenario);
+            press(&mut sim, SCAN_TARGET);
+            assert!(sim.debugger().results().networks().is_empty());
+            sim.advance(duration);
+            assert_eq!(sim.debugger().state(), expected);
+        }
+        sim.set_scan_scenario(ScanScenario::Nearby);
+        press(&mut sim, SCAN_TARGET);
+        sim.advance(discovery::SCAN_MS);
+        assert_eq!(sim.debugger().state(), ScanState::Complete);
+        assert_eq!(sim.debugger().results().networks().len(), 7);
+    }
+
+    #[test]
+    fn scan_deadlines_and_frames_match_across_time_step_sizes() {
+        let mut fast = Simulation::default();
+        let mut slow = Simulation::default();
+        press(&mut fast, DEBUGGER_TARGET);
+        press(&mut slow, DEBUGGER_TARGET);
+        fast.advance(30_500);
+        for _ in 0..305 {
+            slow.advance(100);
+        }
+        assert_eq!(fast.debugger().results(), slow.debugger().results());
+        assert_eq!(
+            fast.debugger().observed_at_ms(),
+            slow.debugger().observed_at_ms()
+        );
+        assert_eq!(fast.display.pixels(), slow.display.pixels());
+        assert_eq!(
+            fast.snapshot().completed_refreshes,
+            slow.snapshot().completed_refreshes
+        );
+    }
+
+    #[test]
+    fn a_tab_change_or_back_cancels_the_old_scan() {
+        let mut sim = Simulation::default();
+        press(&mut sim, DEBUGGER_TARGET);
+        sim.advance(500);
+        press(&mut sim, BLUETOOTH_TARGET);
+        sim.advance(1_000);
+        assert_eq!(sim.debugger().state(), ScanState::Active);
+        sim.advance(500);
+        assert_eq!(sim.debugger().state(), ScanState::Complete);
+        assert_eq!(sim.debugger().results().networks()[0].name, "Sensor");
+        press(&mut sim, SCAN_TARGET);
+        press(&mut sim, BACK_TARGET);
+        assert_eq!(sim.discovery.next_deadline_ms(), None);
+        press(&mut sim, DEBUGGER_TARGET);
+        sim.advance(discovery::SCAN_MS);
+        assert_eq!(sim.debugger().state(), ScanState::Complete);
+    }
 
     fn tap(sim: &mut Simulation) {
         // Native (480, 269) maps to portrait (270, 480), in the button.

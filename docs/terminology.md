@@ -13,6 +13,7 @@ standard's dictionary or permit other meanings and parts of speech.
 | Application | Shared state, behavior, and rendering in `crates/app` |
 | Availability | Current readiness or fault state of a service |
 | Backend | Implementation of platform services for hardware or the simulator |
+| BSSID | Address that identifies a Wi-Fi access point in discovery results |
 | Backpressure | A limit on new requests when a service cannot accept more work |
 | Board profile | Backend description of fitted hardware, wiring, calibration, and resource dependencies |
 | Capability | Supported service operation or limit |
@@ -20,6 +21,7 @@ standard's dictionary or permit other meanings and parts of speech.
 | Contract | Required behavior at a service boundary, including ownership and failure results |
 | Damage | Region whose target image differs from the last application image |
 | Devcontainer | Container that contains and runs the project's development tools |
+| Discovery | Radio operation that finds Wi-Fi access points or Bluetooth LE devices |
 | Epoch | Time origin for one application session |
 | Framebuffer | Memory that stores pixel values for a frame |
 | Gesture | Input action that shared policy derives from a sequence of control or contact events |
@@ -30,7 +32,10 @@ standard's dictionary or permit other meanings and parts of speech.
 | Platform | Resources and execution environment that supply application services |
 | Presented snapshot | State associated with the last completed display frame |
 | Resource coordinator | Backend owner that controls access to shared buses, interrupts, and power domains |
+| RSSI | Received signal strength indicator, expressed in dBm for discovery results |
+| Radio debugger | Shared screen that shows discovery results and scan controls |
 | Scenario profile | Simulator configuration for capabilities, timing, and faults |
+| SSID | Name that identifies a Wi-Fi network |
 | Staging buffer | Pixel storage that accepts drawing before refresh submission |
 | Waveform | Sequence of electrical drive commands that changes an e-paper pixel's shade |
 

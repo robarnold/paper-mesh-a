@@ -71,7 +71,7 @@ It must not silently discard a release event.
 | DEV-TIME | Time → timers, timestamps, wake planner | Monotonic clock, optional UTC observations, time correction policy, persistent alarm capability |
 | DEV-POWER | Power and lifecycle → all services | Valid measurements, bounded charge requests, suspend and off outcomes, wake plans, boot report |
 | DEV-RADIO | Packet radio → shared communications protocol | Supported PHY configuration, receive, transmit, cancel, standby, identified results, link metadata |
-| DEV-CONNECTIVITY | Optional host and network transports → shared services | Session state, bounded transfers, disconnect, diagnostics |
+| DEV-CONNECTIVITY | Optional host and network transports → shared services | Discovery scans, session state, bounded transfers, disconnect, diagnostics |
 | DEV-ORIENTATION | Orientation policy → layout, input, output | Manual orientation and lock, optional orientation observations |
 
 These are logical boundaries.
@@ -84,7 +84,7 @@ Packet-radio consumers operate below application messaging.
 UI components can operate without physical radio configuration.
 
 The implemented interfaces cover the clock, single-contact touch, display
-submission, busy state, and fixed rotation.
+submission, busy state, fixed rotation, and discovery scans.
 Capability descriptors and other catalog entries stay planned work.
 Backend profiles and the [simulator guide](simulator.md) record implementation
 status.
@@ -267,6 +267,25 @@ Features that depend on a connection stay unavailable without that connection.
 File export must control media ownership.
 Host and local filesystem writers must not write the same media at the same time.
 OTA and update policy stay separate design work.
+
+`Discovery` implements the scan operation for Wi-Fi and Bluetooth LE.
+The [radio debugger](architecture.md#radio-debugger) defines its current limits and consumer.
+It returns names, addresses, address types, and optional RSSI in dBm.
+A completion includes its request and observation time.
+The adapter identifies simulated or physical observations when it accepts a request.
+Current adapters provide simulated observations, physical observations, and unsupported operation reports.
+
+The adapter writes completed results into storage that the consumer supplies.
+It leaves that storage unchanged when no completion is available.
+Errors clear that storage.
+Cancellation invalidates a request immediately.
+The adapter releases resources before completion delivery or the next physical scan.
+Resource release can finish asynchronously after cancellation.
+It must discard completions from an earlier application session.
+The consumer accepts only completions for its active request.
+Busy, unsupported, failure, and timeout results are separate errors.
+An empty successful scan is not an error.
+Connection, pairing, and application data transfer stay outside this operation.
 
 `Orientation` supports manual selection and an optional automatic source.
 It reports unavailable sources explicitly.

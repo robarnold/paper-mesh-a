@@ -56,12 +56,13 @@ Drivers implement the contracts. The platform loop supplies them to `App`.
 | `TouchEvent` | `Down`, `Up`, or `Cancel`, with logical viewport coordinates. The current viewport is portrait. | Decode contacts. Calibrate and align axes. Rotate coordinates. Deliver events in order. |
 | `Display` | `DrawTarget<Color = Gray4>`, `is_busy()`, and `refresh()` | Control native storage, pixel packing, refresh submission, completion, and errors. |
 | `App::next_deadline_ms()` | Next application timer deadline in the clock's epoch | Wait for the deadline or earlier input or driver events. Select the executor and core. |
+| `Discovery` | Identified Wi-Fi or Bluetooth LE scans, bounded results, source, completion time, cancellation, and errors | Supply observations. Control radio resources. Report a missing adapter as unsupported. |
 
 The code implements these interfaces. Shared orientation snapshots and viewport
 change notifications stay planned work.
 `SCREEN_SIZE` and application layout currently use a fixed portrait orientation.
 
-The remaining catalog entries are proposed contracts.
+The remaining catalog operations are proposed contracts.
 Their implementation must have consumers and backends that validate their
 behavior. Devices can omit optional services or implement multiple services
 with one adapter. Capabilities give information about supported behavior.
@@ -76,6 +77,54 @@ SPI, I2C, GPIO, DMA, and interrupts stay below this boundary.
 Native targets also implement `OriginDimensions`.
 Their origin is `(0, 0)`.
 Their reported size is the stable native panel size.
+
+## Radio debugger
+
+The shared application controls the debugger, touch targets, result order, and rendering.
+Wi-Fi results identify access points by BSSID.
+Bluetooth LE results identify devices by address and address type.
+The debugger does not connect to networks or pair with devices.
+The simulator uses test data and shows `SIMULATED DATA` on the device screen.
+Firmware supplies physical observations through its radio worker.
+The [backend profile](boards/lilygo-t5-s3-pro.md#radio-discovery) specifies its drivers and limits.
+
+Firmware stores the application and scan results in static RAM.
+`ConstStaticCell` supplies exclusive access to this storage without heap allocation.
+`App::new_at(0)` uses the platform epoch as the firmware start time.
+
+`ScanResults` stores up to 24 entries without heap allocation.
+It sorts measured RSSI from highest to lowest, then puts unknown RSSI last.
+Thus, -38 dBm precedes -73 dBm.
+Equal values use address order, then address type.
+A new report replaces the previous report for the same address and address type.
+Different addresses keep separate entries, even when names are the same.
+
+The debugger shows five entries per page.
+An empty name appears as `Hidden network` or `Unnamed device`.
+The adapter replaces name bytes outside printable ASCII with question marks for the display font.
+Names have a maximum length of 32 bytes.
+The screen shows the scan time and the result limit when overflow occurs.
+
+The platform calls `App::poll_discovery` for requests, completions, and deadlines.
+Each scan has an ID, a radio kind, and a deadline in the application epoch.
+The consumer supplies a result buffer to `Discovery::poll`.
+The adapter replaces that buffer only when it returns a completion.
+An error completion clears the buffer.
+This interface avoids a complete result buffer on the firmware stack.
+The application rejects a completion for a different request.
+It cancels a scan after 10 seconds without a valid completion.
+The next application deadline includes this timeout.
+
+A tab change or exit cancels the active scan.
+Cancellation invalidates the request immediately.
+An asynchronous adapter releases its resources before the next physical scan starts.
+Accepted replacement requests keep their original deadline while they wait for resource release.
+The backend notifies the platform loop when results are ready.
+A new scan clears previous results and resets pagination.
+The adapter reports its source when it accepts a request.
+Scan errors stay visible until another request.
+The simulator completes a scan after 1.5 virtual seconds.
+These delays are test conditions, not hardware measurements.
 
 ## Orientation state and coordinate spaces
 

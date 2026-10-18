@@ -4,7 +4,7 @@ default:
     @just --list
 
 # Run the same checks locally and on GitHub-hosted runners.
-ci: lint toolchain-check native-check firmware-check image simulator-snapshot
+ci: lint toolchain-check native-check firmware-check firmware-demo-check image simulator-snapshot
 
 lint:
     bash scripts/require-container.sh
@@ -38,7 +38,11 @@ simulator-snapshot:
 # Cargo must run here to load firmware/.cargo/config.toml and the esp toolchain.
 firmware-check:
     bash scripts/require-container.sh
-    cd firmware && cargo clippy --locked --all-targets -- -D warnings
+    cd firmware && cargo clippy --locked --all-targets --all-features -- -D warnings
+
+firmware-demo-check:
+    bash scripts/require-container.sh
+    cd firmware && cargo build --locked --release --features radio-scan-demo
 
 firmware-build:
     bash scripts/require-container.sh

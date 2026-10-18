@@ -7,6 +7,7 @@ use std::{
 
 use embedded_graphics::prelude::*;
 use paper_mesh_app::platform::{SCREEN_SIZE, TouchEvent};
+use paper_mesh_simulator::discovery::ScanScenario;
 use paper_mesh_simulator::{REFRESH_MS, Simulation, Snapshot};
 use serde::{Deserialize, Serialize};
 use tiny_http::{Header, Method, Request, Response, Server};
@@ -24,6 +25,7 @@ enum Command {
     Resume,
     Advance { ms: u64 },
     Reset,
+    ScanScenario { scenario: ScanScenario },
 }
 
 #[derive(Serialize)]
@@ -80,6 +82,7 @@ impl Session {
                 self.simulation = Simulation::default();
                 self.generation += 1;
             }
+            Command::ScanScenario { scenario } => self.simulation.set_scan_scenario(scenario),
         }
         Ok(())
     }

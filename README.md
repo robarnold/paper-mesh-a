@@ -6,6 +6,8 @@ LILYGO T5 S3 E-Paper Pro with LoRa.
 The firmware uses `no_std` Rust, esp-hal, and Embassy on esp-rtos.
 It initializes core 0 at 80 MHz and starts the asynchronous timer.
 It sends a boot message and a heartbeat every 30 seconds through USB Serial/JTAG.
+It supplies passive Wi-Fi and Bluetooth LE scans through the shared discovery interface.
+An optional diagnostic build requests both scans and prints their results through USB Serial/JTAG.
 
 Hardware display drivers, touch drivers, PSRAM allocation, power management,
 second-core tasks, radio protocols, and OTA stay planned work.
@@ -59,8 +61,11 @@ Cargo and Rustup keep write access after the ID change.
 devcontainer exec --workspace-folder . just sim
 ```
 
-Open [localhost:8080](http://localhost:8080). Click the screen button.
-Alternatively, focus the display and press Enter.
+Open [localhost:8080](http://localhost:8080).
+Click the screen or use the equivalent device controls.
+Select `Radio debugger` to see simulated Wi-Fi and Bluetooth LE results.
+The debugger sorts results by signal strength.
+The simulator guide describes the [scan scenarios](docs/simulator.md#radio-debugger).
 Use Pause and the time controls to inspect refreshes and heartbeats.
 To stop the server, press Ctrl+C.
 
@@ -71,8 +76,8 @@ If an existing container predates this port setting, recreate it with
 The browser transports input and displays PNG frames. Rust code in the
 container controls application behavior, hit testing, rendering, and simulated
 hardware. The simulator does not execute Xtensa or ULP instructions.
-It does not emulate ESP registers. Firmware currently connects only the shared
-application's clock. Physical display and touch drivers stay uninitialized.
+It does not emulate ESP registers. Firmware supplies the shared application's
+clock and physical scan adapters. Physical display and touch drivers stay uninitialized.
 
 ```sh
 # Run native Clippy and deterministic application and device scenarios.
@@ -122,6 +127,11 @@ partition table. This development image has no OTA slots or update transport.
 The `esp-bootloader-esp-idf` crate supplies image metadata and bootloader support.
 The application does not run ESP-IDF or FreeRTOS.
 There is no `cargo run` flash runner. No recipe flashes a device.
+
+The [radio backend profile](docs/boards/lilygo-t5-s3-pro.md#radio-discovery)
+specifies scan behavior, limits, and the optional `radio-scan-demo` feature.
+The default build waits for application requests.
+Display and touch drivers remain necessary for physical screen controls.
 
 ### Linker configuration
 

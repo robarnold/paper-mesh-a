@@ -43,7 +43,7 @@ Driver selection depends on identification of the actual parts.
 
 The [device interface design](../device-interfaces.md) defines proposed shared
 services and simulator scenarios.
-Current hardware firmware connects only the clock and heartbeat.
+Current hardware firmware connects the clock, heartbeat, and passive radio scans.
 The simulator implements display and single-contact touch services.
 Other services in this inventory stay design work.
 
@@ -61,7 +61,7 @@ Other services in this inventory stay design work.
 | Fuel gauge | BQ27220, I2C `0x55`, battery sense resistor | Battery measurements with timestamps, validity, and calibration status |
 | I/O expander | PCA9535, I2C `0x20`, IRQ GPIO38 | Internal resource owner for buttons, auxiliary power, and display control |
 | USB-C | VBUS power, ESP32-S3 D−/D+ on GPIO19/20 | Independent power connection and USB data or diagnostic session |
-| Wi-Fi / Bluetooth LE | Built into ESP32-S3 | Optional connectivity. Current firmware initializes neither service. |
+| Wi-Fi / Bluetooth LE | Built into ESP32-S3 | Passive discovery on request. No connection or pairing service. |
 | Internal flash | 16 MB, also stores executable firmware | Durable settings and internal data. The backend controls partitions and updates. |
 | PSRAM | 8 MB OPI, currently uninitialized | Volatile memory, not persistent storage |
 | Expansion connections | P3 exposes I2C/power. P5 exposes radio IRQ/reset/power nets. | Board profile extensions, not independent application devices |
@@ -327,6 +327,85 @@ Multiple display control signals use the PCA9535 expander and TPS65185 supply.
 The BQ25896 charger and BQ27220 gauge must also have deliberate configuration.
 Unconfigured devices do not establish managed battery operation.
 
+## Radio discovery
+
+`firmware/src/discovery/` implements the shared `Discovery` interface.
+One Embassy worker owns `WIFI` and `BT` on core 0.
+It initializes only the radio for the active request.
+It destroys that controller before it delivers results or starts another scan.
+Cancellation invalidates observations immediately and wakes the worker for resource release.
+The request deadline includes initialization, the scan, and resource release.
+
+The firmware reserves 128 KiB of internal RAM for radio drivers and RTOS tasks.
+Radio futures also use this heap to limit temporary stack storage.
+Application results and worker results use separate static buffers, each with 24 entries.
+The shared application does not allocate heap memory.
+The CPU stays at 80 MHz, the driver's minimum CPU frequency for radio operation.
+PSRAM and core 1 stay uninitialized.
+
+| Radio | Scan configuration | Result conversion |
+| --- | --- | --- |
+| Wi-Fi | Passive scan, 120 ms per channel, hidden SSIDs included, default driver country configuration | BSSID, SSID, signed RSSI. The adapter requests up to 25 records and retains 24. An extra record sets the result-limit indication. |
+| Bluetooth LE | Passive legacy scan, 1M PHY, 100 ms interval and window, four-second observation period, duplicate filtering disabled | Public or random address, advertised local name, signed RSSI. RSSI 127 means unavailable. Addresses use display byte order. |
+
+The Wi-Fi driver supplies its records in signal order.
+The shared result buffer applies the final order and address tie-break.
+The Wi-Fi API exposes only the valid UTF-8 prefix of an SSID.
+The adapter replaces unavailable suffix bytes with question marks.
+An empty SSID stays a hidden network.
+
+Bluetooth reports update RSSI for the same address and address type.
+An omitted name preserves a previous name from the same scan.
+A complete local name takes precedence over a shortened name within one advertisement.
+Malformed advertising data produces an unnamed observation.
+Malformed HCI reports produce a scan failure and discard partial results.
+The adapter does not resolve private addresses into stable identities.
+
+Passive scans do not send probe requests or scan requests.
+Thus, a device name that appears only in a scan response can stay unavailable.
+The Bluetooth adapter does not request extended or coded-PHY advertisements.
+Wi-Fi discovery covers the ESP32-S3's 2.4 GHz radio.
+These scans do not establish a connection, pair a device, or transmit application data.
+LoRa stays uninitialized.
+
+The implementation pins `esp-radio` to `1.0.0-beta.1` and uses `bt-hci` 0.9.
+The lockfile fixes the resolved dependencies.
+These upstream sources define the adapter assumptions:
+
+| Source | Applicable sections |
+| --- | --- |
+| [esp-radio Wi-Fi source][radio-wifi] | `WifiController::new`, `scan_async`, `WifiRefGuard::drop`, `wifi_deinit`, and `Ssid::as_str` |
+| [esp-radio scan source][radio-scan] | `ScanConfig`, `ScanTypeConfig::Passive`, and `ScanResults` |
+| [esp-radio Bluetooth source][radio-ble] | `BleConnector::new`, `Drop`, and the HCI transport implementation |
+| [esp-radio runtime source][radio-runtime] | Allocator requirement, `init`, and minimum CPU frequency |
+| [bt-hci controller source][hci-controller] | Concurrent command acknowledgment and event reception in `ExternalController` |
+| [bt-hci command source][hci-commands] | `LeSetScanParams`, `LeSetScanEnable`, and Bluetooth specification references |
+| [Espressif Wi-Fi reference][wifi-records] | `esp_wifi_scan_get_ap_records` signal order and scan record lifecycle |
+
+The pinned Wi-Fi wrapper does not expose `ScanDone.status` to its caller.
+The adapter reports errors that the wrapper returns.
+It cannot distinguish every failure inside the driver from an empty result.
+Controller destruction also handles shutdown errors inside the driver.
+Physical tests must therefore check repeated scans, cancellation, and radio changes for resource leaks or continued radio activity.
+The compile checks and native tests do not establish physical operation or heap capacity under radio traffic.
+
+### Diagnostic build
+
+The default firmware waits for shared application requests.
+Hardware display and touch drivers remain planned work.
+The optional `radio-scan-demo` feature performs one Wi-Fi scan and one Bluetooth LE scan at boot.
+It prints the result order, addresses, names, RSSI, errors, and result-limit indication through USB Serial/JTAG.
+
+To build this diagnostic firmware without device access, run:
+
+```sh
+devcontainer exec --workspace-folder . bash -lc 'cd firmware && cargo build --locked --release --features radio-scan-demo'
+```
+
+This command writes the ELF under `firmware/target/xtensa-esp32s3-none-elf/release/`.
+`just ci` checks this feature, then produces the default firmware image.
+Neither command flashes a device.
+
 ## First hardware checks
 
 1. Confirm the board revision.
@@ -342,7 +421,7 @@ Unconfigured devices do not establish managed battery operation.
 11. Compare shutdown with USB power and battery-only power.
 12. Check recovery after reset during I/O.
 
-Current firmware leaves board peripherals uninitialized.
+Current firmware leaves external board peripherals uninitialized.
 This state does not guarantee that peripherals are off.
 Timer waits yield to the scheduler.
 Automatic light sleep and deep sleep stay unconfigured.
@@ -396,3 +475,10 @@ application behavior.
 [sleep]: https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-reference/system/sleep_modes.html
 [gnss]: https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/examples/GPS/main/main.ino#L80-L96
 [gauge]: https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/examples/bq27220/main/main.ino
+[radio-wifi]: https://github.com/esp-rs/esp-hal/blob/f769fcd27056b0837febe4209f3bae78ed764561/esp-radio/src/wifi/mod.rs
+[radio-scan]: https://github.com/esp-rs/esp-hal/blob/f769fcd27056b0837febe4209f3bae78ed764561/esp-radio/src/wifi/scan.rs
+[radio-ble]: https://github.com/esp-rs/esp-hal/blob/f769fcd27056b0837febe4209f3bae78ed764561/esp-radio/src/ble/controller/mod.rs
+[radio-runtime]: https://github.com/esp-rs/esp-hal/blob/f769fcd27056b0837febe4209f3bae78ed764561/esp-radio/src/lib.rs
+[hci-controller]: https://github.com/embassy-rs/bt-hci/blob/d0f7558ff205313c2c473046adec0ffdc00d919b/src/controller.rs
+[hci-commands]: https://github.com/embassy-rs/bt-hci/blob/d0f7558ff205313c2c473046adec0ffdc00d919b/src/cmd/le.rs
+[wifi-records]: https://docs.espressif.com/projects/esp-idf/en/v5.2.6/esp32s3/api-reference/network/esp_wifi.html#_CPPv428esp_wifi_scan_get_ap_recordsP8uint16_tP16wifi_ap_record_t
