@@ -84,7 +84,7 @@ Packet-radio consumers operate below application messaging.
 UI components can operate without physical radio configuration.
 
 The implemented interfaces cover the clock, single-contact touch, display
-submission, busy state, fixed rotation, and discovery scans.
+submission, busy state, fixed rotation, discovery scans, and basic location observations.
 Capability descriptors and other catalog entries stay planned work.
 Backend profiles and the [simulator guide](simulator.md) record implementation
 status.
@@ -123,9 +123,17 @@ observe. Backend conformance tests give information about particular boot sequen
 
 ## Location and time
 
+The implemented `Location` interface supplies availability, optional WGS84 coordinates, optional elevation, motion, UTC time of day, receiver activity, and satellite signals.
+Elevation uses signed millimeters above mean sea level.
+Speed uses millimeters per second. Course uses thousandths of a degree clockwise from true north.
+Position, motion, UTC, satellite data, and receiver activity have independent receipt times and validity.
+UTC supplies hours, minutes, and seconds without a date or an accuracy estimate. The clock readout does not set a system clock.
+The [location screen contract](architecture.md#location-screen) specifies units, validity, observation age, and display deadlines.
+The remaining fields and operations below stay proposed work.
+
 `Location` separates provider availability, acquisition state, and fix validity.
-Observations can include latitude, longitude, altitude, speed, course, accuracy,
-and measurement time. Altitude must have a reference.
+Observations can include latitude, longitude, elevation, speed, course, accuracy,
+and measurement time. Elevation must have a reference.
 Provider metadata is optional.
 Each field must have units and validity.
 `(0, 0)` is valid data, not a missing-fix marker.

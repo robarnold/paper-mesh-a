@@ -38,7 +38,7 @@
 </head>
 <body>
   <main>
-    <header><div><div class="eyebrow">Development environment</div><h1>Paper Mesh</h1></div><div class="badge">T5 S3 Pro · 540 × 960</div></header>
+    <header><div><div class="eyebrow">Simulated device data</div><h1>Paper Mesh</h1></div><div class="badge">T5 S3 Pro · 540 × 960</div></header>
     <div class="workspace">
     <div class="device"><img id="screen" src="/frame.png" width="540" height="960" draggable="false" aria-label="Simulated touch display. Equivalent buttons follow the display."></div>
     <aside>
@@ -67,6 +67,28 @@
       <option value="timeout">Scan timeout</option>
     </select>
     <p class="note">The simulator uses test data for Wi-Fi and Bluetooth LE. It does not scan nearby radios.</p>
+    <h2>GNSS scenario</h2>
+    <label for="location-scenario">Location observations</label>
+    <select id="location-scenario">
+      <option value="fix">Fix after 3 seconds</option>
+      <option value="acquiring">No position fix</option>
+      <option value="no_signal">Satellites listed, no signal levels</option>
+      <option value="messages_only">Receiver active, no fix or satellite reports</option>
+      <option value="stale_satellites">Satellite reports stop, receiver stays active</option>
+      <option value="lost_fix">Fix loss after 3 seconds</option>
+      <option value="silent">Input stops after first fix</option>
+      <option value="unavailable">No receiver data</option>
+      <option value="fault">Receiver fault</option>
+      <option value="zero_coordinates">Valid zero coordinates</option>
+      <option value="below_sea_level">Elevation below sea level</option>
+      <option value="missing_elevation">Valid position without elevation</option>
+      <option value="stopped">Stopped with a valid fix</option>
+      <option value="missing_motion">Valid position without speed or course</option>
+      <option value="missing_utc">Valid position without UTC</option>
+      <option value="stale_motion">Speed and course reports stop</option>
+      <option value="stale_utc">UTC reports stop</option>
+    </select>
+    <p class="note">GNSS observations use test data. Select GNSS to see coordinates, satellite signals, and receiver activity.</p>
     <p class="note">Click the screen or use the device controls. Pause to advance virtual time.<br>
       A scan takes 1.5 simulated seconds. A display refresh takes 250 simulated milliseconds.</p>
     <p id="error" role="status"></p>
@@ -112,6 +134,7 @@
     document.querySelectorAll('.step').forEach(button => button.addEventListener('click', () => send({type: 'advance', ms: Number(button.dataset.ms)})));
     document.querySelector('#reset').addEventListener('click', () => send({type: 'reset'}));
     document.querySelector('#scan-scenario').addEventListener('change', event => send({type: 'scan_scenario', scenario: event.target.value}));
+    document.querySelector('#location-scenario').addEventListener('change', event => send({type: 'location_scenario', scenario: event.target.value}));
     async function poll() {
       try {
         const response = await fetch('/api/state');
@@ -125,6 +148,7 @@
         document.querySelector('#refreshes').textContent = state.completed_refreshes;
         document.querySelector('#heartbeats').textContent = state.heartbeats;
         document.querySelector('#scan-scenario').value = state.scan_scenario;
+        document.querySelector('#location-scenario').value = state.location_scenario;
         const nextControlsKey = JSON.stringify(state.controls);
         if (nextControlsKey !== controlsKey) {
           const controls = document.querySelector('#device-controls');

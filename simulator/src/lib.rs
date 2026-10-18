@@ -12,8 +12,11 @@ use paper_mesh_app::{
 };
 use serde::Serialize;
 pub mod discovery;
+pub mod location;
 use discovery::{ScanScenario, SimDiscovery};
+use location::{LocationScenario, SimLocation};
 use paper_mesh_app::debugger::Debugger;
+use paper_mesh_app::location::LocationScreen;
 use paper_mesh_app::platform::discovery::{RadioKind, ScanSource};
 
 // This artificial delay exercises asynchronous refresh.
@@ -157,7 +160,32 @@ pub struct Snapshot {
     pub scan_results: usize,
     pub scan_observed_at_ms: Option<u64>,
     pub scan_scenario: ScanScenario,
+    pub location_open: bool,
+    pub location_status: &'static str,
+    pub latitude_microdegrees: Option<i32>,
+    pub longitude_microdegrees: Option<i32>,
+    pub elevation_mm: Option<i32>,
+    pub speed_mm_s: Option<u32>,
+    pub course_millidegrees: Option<u32>,
+    pub utc_time: Option<[u8; 3]>,
+    pub satellites_used: Option<u8>,
+    pub location_age_seconds: Option<u64>,
+    pub receiver_status: &'static str,
+    pub receiver_age_seconds: Option<u64>,
+    pub receiver_messages: u32,
+    pub satellites_in_view: Option<u16>,
+    pub satellites_with_signal: Option<u16>,
+    pub satellite_age_seconds: Option<u64>,
+    pub satellite_signals: Vec<SatelliteSnapshot>,
+    pub location_scenario: LocationScenario,
     pub controls: Vec<Control>,
+}
+
+#[derive(Serialize)]
+pub struct SatelliteSnapshot {
+    pub system: &'static str,
+    pub id: u16,
+    pub cn0_db_hz: Option<u8>,
 }
 
 #[derive(Serialize)]
@@ -172,6 +200,7 @@ pub struct Simulation {
     clock: VirtualClock,
     display: SimDisplay,
     discovery: SimDiscovery,
+    location: SimLocation,
     heartbeats: u64,
     last_heartbeat_seconds: Option<u64>,
 }
@@ -184,6 +213,7 @@ impl Default for Simulation {
             clock,
             display: SimDisplay::default(),
             discovery: SimDiscovery::default(),
+            location: SimLocation::default(),
             heartbeats: 0,
             last_heartbeat_seconds: None,
         };
@@ -196,6 +226,7 @@ impl Simulation {
     fn poll(&mut self) {
         self.display.advance_to(self.clock.now_ms());
         self.app.poll_discovery(&self.clock, &mut self.discovery);
+        self.app.poll_location(&self.clock, &mut self.location);
         if let Some(uptime) = self.app.tick(&self.clock) {
             self.heartbeats += 1;
             self.last_heartbeat_seconds = Some(uptime);
@@ -212,6 +243,9 @@ impl Simulation {
         while self.clock.0 < end {
             let mut next = end.min(self.app.next_deadline_ms());
             if let Some(deadline) = self.discovery.next_deadline_ms() {
+                next = next.min(deadline);
+            }
+            if let Some(deadline) = self.location.next_deadline_ms(self.clock.now_ms()) {
                 next = next.min(deadline);
             }
             if self.display.is_busy() {
@@ -270,10 +304,29 @@ impl Simulation {
         self.discovery.scenario = scenario;
     }
 
+    pub fn location(&self) -> &LocationScreen {
+        self.app.location()
+    }
+
+    pub fn set_location_scenario(&mut self, scenario: LocationScenario) {
+        self.location.set_scenario(scenario, self.clock.now_ms());
+        self.poll();
+    }
+
     pub fn snapshot(&self) -> Snapshot {
-        use paper_mesh_app::{TAP_TARGET, debugger::*};
+        use paper_mesh_app::{
+            TAP_TARGET,
+            debugger::{
+                BACK_TARGET, BLUETOOTH_TARGET, DEBUGGER_TARGET, NEXT_TARGET, PREVIOUS_TARGET,
+                SCAN_TARGET, ScanState, WIFI_TARGET,
+            },
+        };
         let debugger = self.app.debugger();
-        let targets: &[(&str, embedded_graphics::primitives::Rectangle)] = if debugger.is_open() {
+        let location = self.app.location();
+        let view = location.view();
+        let targets: &[(&str, embedded_graphics::primitives::Rectangle)] = if location.is_open() {
+            &[("Back", BACK_TARGET)]
+        } else if debugger.is_open() {
             &[
                 ("Back", BACK_TARGET),
                 ("Wi-Fi", WIFI_TARGET),
@@ -286,6 +339,7 @@ impl Simulation {
             &[
                 ("Tap counter", TAP_TARGET),
                 ("Radio debugger", DEBUGGER_TARGET),
+                ("GNSS", paper_mesh_app::location::LOCATION_TARGET),
             ]
         };
         Snapshot {
@@ -315,6 +369,35 @@ impl Simulation {
             scan_results: debugger.results().networks().len(),
             scan_observed_at_ms: debugger.observed_at_ms(),
             scan_scenario: self.discovery.scenario,
+            location_open: location.is_open(),
+            location_status: view.status.label(),
+            latitude_microdegrees: view.coordinates.map(|value| value.latitude_microdegrees()),
+            longitude_microdegrees: view.coordinates.map(|value| value.longitude_microdegrees()),
+            elevation_mm: view.elevation_mm,
+            speed_mm_s: view.speed_mm_s,
+            course_millidegrees: view.course_millidegrees,
+            utc_time: view
+                .utc
+                .map(|time| [time.hour(), time.minute(), time.second()]),
+            satellites_used: view.satellites_used,
+            location_age_seconds: view.age_seconds,
+            receiver_status: view.receiver_status.label(),
+            receiver_age_seconds: view.response_age_seconds,
+            receiver_messages: view.valid_messages,
+            satellites_in_view: view.satellites.map(|value| value.satellites_in_view),
+            satellites_with_signal: view.satellites.map(|value| value.satellites_with_signal),
+            satellite_age_seconds: view.satellite_age_seconds,
+            satellite_signals: view
+                .satellites
+                .into_iter()
+                .flat_map(|value| value.strongest.into_iter().flatten())
+                .map(|value| SatelliteSnapshot {
+                    system: value.system.label(),
+                    id: value.id,
+                    cn0_db_hz: value.cn0_db_hz,
+                })
+                .collect(),
+            location_scenario: self.location.scenario,
             controls: targets
                 .iter()
                 .map(|(label, target)| Control {
@@ -330,7 +413,13 @@ impl Simulation {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use paper_mesh_app::{debugger::*, platform::discovery::*};
+    use paper_mesh_app::{
+        debugger::{
+            BACK_TARGET, BLUETOOTH_TARGET, DEBUGGER_TARGET, NEXT_TARGET, PREVIOUS_TARGET,
+            SCAN_TARGET, ScanState,
+        },
+        platform::discovery::{SCAN_TIMEOUT_MS, ScanError},
+    };
 
     fn press(sim: &mut Simulation, target: embedded_graphics::primitives::Rectangle) {
         sim.touch_portrait(TouchEvent::Down(target.center()));

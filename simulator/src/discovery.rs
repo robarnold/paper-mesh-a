@@ -1,6 +1,9 @@
 //! Deterministic scan fixtures. This adapter does not access host radios.
 
-use paper_mesh_app::platform::discovery::*;
+use paper_mesh_app::platform::discovery::{
+    AddressKind, Discovery, Network, RadioKind, ScanCompletion, ScanError, ScanRequest,
+    ScanResults, ScanSource,
+};
 use serde::{Deserialize, Serialize};
 
 pub const SCAN_MS: u64 = 1_500;

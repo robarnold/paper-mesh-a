@@ -1,6 +1,8 @@
 //! Request identity and bounded storage for the radio worker.
 
-use paper_mesh_app::platform::discovery::*;
+use paper_mesh_app::platform::discovery::{
+    Network, ScanCompletion, ScanError, ScanRequest, ScanResults, ScanSource,
+};
 
 pub struct ScanState {
     active: Option<ScanRequest>,

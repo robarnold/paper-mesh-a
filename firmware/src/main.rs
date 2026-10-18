@@ -7,19 +7,20 @@ mod bus;
 mod discovery;
 mod display;
 mod display_worker;
+mod gnss;
 #[cfg(feature = "radio-scan-demo")]
 mod scan_demo;
 mod touch;
 
 use embassy_executor::Spawner;
-use embassy_futures::select::select4;
+use embassy_futures::select::{select, select4};
 use embassy_time::{Instant, Timer};
 use esp_backtrace as _;
 use esp_hal::{clock::CpuClock, system::Stack, timer::timg::TimerGroup};
 use log::{error, info};
 use paper_mesh_app::{
     App,
-    platform::{Clock, rotation::PortraitDisplay},
+    platform::{Clock, location::Location, rotation::PortraitDisplay},
 };
 
 use static_cell::{ConstStaticCell, StaticCell};
@@ -63,8 +64,18 @@ fn initialize(spawner: Spawner) -> Option<display_worker::Client> {
     );
 
     let bus = bus::initialize(peripherals.I2C0, peripherals.GPIO39, peripherals.GPIO40)
-        .map_err(|error| error!("I2C: initialization failed: {:?}", error))
+        .map_err(|error| {
+            error!("I2C: initialization failed: {:?}", error);
+            gnss::fault();
+        })
         .ok()?;
+    gnss::start(
+        bus,
+        peripherals.UART1,
+        peripherals.GPIO44,
+        peripherals.GPIO43,
+        peripherals.FROM_CPU_INTR3,
+    );
     let panel = display::Panel::new(
         display::Pins {
             data0: peripherals.GPIO5,
@@ -114,10 +125,12 @@ async fn run_app(mut panel: Option<display_worker::Client>) -> ! {
     // The application and its scan results use static RAM instead of the task stack.
     let app = APP.take();
     let mut discovery = discovery::FirmwareDiscovery;
+    let mut location = gnss::FirmwareLocation;
     #[cfg(feature = "radio-scan-demo")]
     scan_demo::run(&mut discovery).await;
     loop {
         app.poll_discovery(&clock, &mut discovery);
+        app.poll_location(&clock, &mut location);
         while let Some(sample) = touch::next_event() {
             info!(
                 "touch: {:?}; irq_ms={}; service_us={}; bus_wait_us={}; refresh={}",
@@ -152,13 +165,33 @@ async fn run_app(mut panel: Option<display_worker::Client>) -> ! {
         select4(
             touch::changed(),
             display_worker::changed(),
-            discovery::changed(),
+            select(discovery::changed(), gnss::changed()),
             Timer::at(Instant::from_millis(app.next_deadline_ms())),
         )
         .await;
         if let Some(uptime) = app.tick(&clock) {
             info!("heartbeat: uptime={}s", uptime);
             info!("touch: stats={:?}", touch::statistics());
+            let snapshot = location.snapshot(clock.now_ms());
+            info!(
+                "GNSS: messages={}; response_age_ms={:?}; in_view={:?}; with_signal={:?}; fix={}",
+                snapshot
+                    .activity
+                    .map_or(0, |activity| activity.valid_messages),
+                snapshot
+                    .activity
+                    .map(|activity| clock.now_ms().saturating_sub(activity.received_at_ms)),
+                snapshot
+                    .satellites
+                    .map(|satellites| satellites.satellites_in_view),
+                snapshot
+                    .satellites
+                    .map(|satellites| satellites.satellites_with_signal),
+                snapshot
+                    .observation
+                    .is_some_and(|observation| observation.coordinates.is_some()
+                        && clock.now_ms().saturating_sub(observation.observed_at_ms) < 5_000),
+            );
         }
     }
 }

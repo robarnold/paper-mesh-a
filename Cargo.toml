@@ -3,3 +3,7 @@ members = ["crates/app", "crates/ed047tc1", "crates/gt911", "simulator"]
 # Keep the Xtensa toolchain, target settings, and dependency features isolated.
 exclude = ["firmware"]
 resolver = "3"
+
+[workspace.lints.clippy]
+wildcard_imports = "deny"
+enum_glob_use = "deny"

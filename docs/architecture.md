@@ -57,6 +57,7 @@ Drivers implement the contracts. The platform loop supplies them to `App`.
 | `Display` | `DrawTarget<Color = Gray4>`, `is_busy()`, and `refresh()` | Control native storage, pixel packing, refresh submission, completion, and errors. |
 | `App::next_deadline_ms()` | Next application timer deadline in the clock's epoch | Wait for the deadline or earlier input or driver events. Select the executor and core. |
 | `Discovery` | Identified Wi-Fi or Bluetooth LE scans, bounded results, source, completion time, cancellation, and errors | Supply observations. Control radio resources. Report a missing adapter as unsupported. |
+| `Location` | Position, motion, UTC, receiver activity, satellite signals, availability, and receipt times | Decode receiver messages. Control the transport and supply. Keep receipt times when the application reads observations again. |
 
 The code implements these interfaces. Shared orientation snapshots and viewport
 change notifications stay planned work.
@@ -125,6 +126,69 @@ The adapter reports its source when it accepts a request.
 Scan errors stay visible until another request.
 The simulator completes a scan after 1.5 virtual seconds.
 These delays are test conditions, not hardware measurements.
+
+## Location screen
+
+The shared application controls the GNSS screen, touch targets, observation validity, and display deadlines.
+The home screen has a `GNSS` button. The location screen has a `Back` button.
+Both hardware and simulator backends implement `Location::snapshot(now_ms)`.
+The method returns a copied `LocationSnapshot` without a wait or an allocation.
+The location contract does not identify hardware or simulator providers.
+The simulator page labels test data outside the application screen.
+Availability distinguishes startup, a ready provider, unavailable data, and a fault.
+
+The fix observation contains optional WGS84 coordinates and the optional number of satellites used.
+It also contains optional elevation above mean sea level in signed millimeters.
+The screen shows elevation in meters, rounded to one decimal place, with the reference `MSL`.
+Elevation requires a fresh, valid position fix. Missing elevation does not invalidate horizontal coordinates.
+
+Coordinates use signed millionths of a degree.
+`Coordinates::new` rejects values outside the latitude and longitude limits.
+Zero coordinates are valid. An absent coordinate value means no position fix.
+`observed_at_ms` uses the monotonic application epoch and records local receipt time.
+It does not specify UTC or the source measurement time.
+
+`MotionObservation` supplies optional speed over ground in millimeters per second and optional course in thousandths of a degree.
+Course increases clockwise from true north and must be less than 360 degrees.
+The screen shows speed in km/h and course in degrees, each rounded to one decimal place.
+Course also has an eight-point compass direction. The screen shows course only when reported speed is greater than zero.
+Course describes direction of travel. It does not indicate device orientation or guarantee a reliable direction at low speed.
+
+`UtcObservation` supplies a validated UTC time of day and its local receipt time.
+The screen shows the last reported time as `HH:MM:SS`. Midnight is valid.
+UTC and motion have independent validity and receipt times. Neither requires a GGA position observation in shared policy.
+The clock readout does not extrapolate time, supply a date, or change the monotonic clock.
+It does not set the RTC or establish clock accuracy.
+
+The screen shows coordinates only for a ready provider with an observation less than five seconds old.
+It rejects observation times after the current application time.
+Expired data, faults, and unavailable data remove the affected readouts from the screen.
+The same five-second age limit applies independently to position, motion, UTC, receiver activity, and satellite data.
+Observation age stays visible for expired data.
+The screen updates values at five-second intervals to limit e-paper refreshes.
+Fix status, receiver status, and changes in readout availability update immediately.
+Display changes combine while a refresh is pending.
+
+`ReceiverActivity` supplies the last valid message time and a cumulative message count.
+The count saturates at `u32::MAX`. It does not reset after a transport fault.
+A recent valid message makes the receiver active, including messages without a position fix.
+After five seconds without a valid message, the screen shows `No recent response`.
+This status proves recent receiver output. It does not prove a satellite fix or command acknowledgement.
+
+`SatelliteObservation` supplies satellites in view, satellites with positive C/N0, and up to eight satellites in descending signal order.
+Each satellite has a system, an identifier, and an optional C/N0 value in dB-Hz.
+An absent signal level differs from a reported zero. Neither adds to the count of satellites with a signal.
+The adapter combines complete reports and counts each satellite once across signal types.
+The summary uses the oldest receipt time among its reports.
+The screen expires satellite data independently of fix data and receiver activity.
+If storage capacity is insufficient, `truncated` marks the counts as lower bounds. The screen adds `+` to these counts.
+Satellites in view can include satellites without measured signal levels.
+
+The application includes position, motion, UTC, activity, and satellite expiry in `App::next_deadline_ms()`.
+The backend notifies the platform loop when its latest observation changes.
+The location screen does not cause periodic display refreshes while another screen is open.
+The [simulator guide](simulator.md#gnss-screen) defines deterministic location scenarios.
+UTC date, clock synchronization, accuracy estimates, and acquisition requests stay planned work.
 
 ## Orientation state and coordinate spaces
 

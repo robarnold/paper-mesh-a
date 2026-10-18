@@ -309,6 +309,7 @@ version = "0.1.0"
 dependencies = [
  "bt-hci",
  "embedded-graphics",
+ "embedded-hal",
  "paper-mesh-app",
  "paper-mesh-ed047tc1",
  "png",

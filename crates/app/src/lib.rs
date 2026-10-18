@@ -5,6 +5,7 @@
 //! Each platform delivers input and schedules application polls.
 
 pub mod debugger;
+pub mod location;
 pub mod platform;
 
 use core::fmt::Write;
@@ -17,7 +18,9 @@ use embedded_graphics::{
     text::{Alignment, Text},
 };
 use heapless::String;
+use location::{LOCATION_TARGET, LocationScreen};
 use platform::discovery::Discovery;
+use platform::location::Location;
 use platform::{Clock, Display, SCREEN_SIZE, TouchEvent};
 
 pub const HEARTBEAT_MS: u64 = 30_000;
@@ -34,7 +37,9 @@ pub struct App {
     taps: u32,
     touch_armed: bool,
     debugger_armed: bool,
+    location_armed: bool,
     debugger: Debugger,
+    location: LocationScreen,
     dirty: bool,
 }
 
@@ -52,7 +57,9 @@ impl App {
             taps: 0,
             touch_armed: false,
             debugger_armed: false,
+            location_armed: false,
             debugger: Debugger::new(),
+            location: LocationScreen::new(),
             dirty: true,
         }
     }
@@ -77,6 +84,7 @@ impl App {
             .next_deadline_ms()
             .unwrap_or(u64::MAX)
             .min(self.next_heartbeat_ms())
+            .min(self.location.next_deadline_ms().unwrap_or(u64::MAX))
     }
 
     pub fn next_heartbeat_ms(&self) -> u64 {
@@ -95,7 +103,19 @@ impl App {
         self.dirty |= self.debugger.poll(clock.now_ms(), discovery);
     }
 
+    pub fn location(&self) -> &LocationScreen {
+        &self.location
+    }
+
+    pub fn poll_location(&mut self, clock: &impl Clock, location: &mut impl Location) {
+        self.dirty |= self.location.poll(clock.now_ms(), location);
+    }
+
     pub fn touch(&mut self, event: TouchEvent) {
+        if self.location.is_open() {
+            self.dirty |= self.location.touch(event);
+            return;
+        }
         if self.debugger.is_open() {
             self.dirty |= self.debugger.touch(event);
             return;
@@ -104,8 +124,13 @@ impl App {
             TouchEvent::Down(point) => {
                 self.touch_armed = TAP_TARGET.contains(point);
                 self.debugger_armed = DEBUGGER_TARGET.contains(point);
+                self.location_armed = LOCATION_TARGET.contains(point);
             }
             TouchEvent::Up(point) => {
+                if self.location_armed && LOCATION_TARGET.contains(point) {
+                    self.location.open();
+                    self.dirty = true;
+                }
                 if self.debugger_armed && DEBUGGER_TARGET.contains(point) {
                     self.debugger.open();
                     self.dirty = true;
@@ -116,10 +141,12 @@ impl App {
                 }
                 self.touch_armed = false;
                 self.debugger_armed = false;
+                self.location_armed = false;
             }
             TouchEvent::Cancel => {
                 self.touch_armed = false;
                 self.debugger_armed = false;
+                self.location_armed = false;
             }
         }
     }
@@ -138,6 +165,9 @@ impl App {
     }
 
     pub fn render<D: DrawTarget<Color = Gray4>>(&self, display: &mut D) -> Result<(), D::Error> {
+        if self.location.is_open() {
+            return self.location.render(display);
+        }
         if self.debugger.is_open() {
             return self.debugger.render(display);
         }
@@ -147,6 +177,7 @@ impl App {
         Text::new("PAPER MESH", Point::new(48, 60), black).draw(display)?;
         Text::new("Hello from shared Rust", Point::new(48, 110), muted).draw(display)?;
         debugger::button(display, DEBUGGER_TARGET, "Radio debugger", false, true)?;
+        debugger::button(display, LOCATION_TARGET, "GNSS", false, true)?;
         Rectangle::new(Point::new(48, 144), Size::new(TAP_TARGET.size.width, 2))
             .into_styled(PrimitiveStyle::with_fill(Gray4::new(11)))
             .draw(display)?;
