@@ -279,35 +279,11 @@ Multiple display control signals use the PCA9535 expander and TPS65185 supply.
 The BQ25896 charger and BQ27220 gauge must also have deliberate configuration.
 Unconfigured devices do not establish managed battery operation.
 
-## Factory backup
-
-1. Confirm the board revision and USB device identity.
-2. Configure serial access in the local devcontainer.
-3. Run `espflash board-info` with the explicit port and `--after no-reset`.
-4. Check the reported chip, flash size, and security state.
-5. If the chip is not ESP32-S3 or the flash size differs from 16 MB, stop.
-6. If security settings restrict flash access, stop.
-7. Create a new backup directory under `backups/` with access limited to the owner.
-8. Save the device information and espflash version in that directory.
-9. Read all `0x1000000` bytes from address `0x0` with `espflash read-flash`.
-10. Read the same region into a second file.
-11. Compare both files with `cmp`.
-12. Check that each file contains 16,777,216 bytes.
-13. Create SHA-256 checksums for both files.
-
-Use the explicit port and `--after no-reset` for both reads.
-This option keeps the device in the bootloader between reads.
-The read commands do not erase or write flash memory.
-
-The backup contains the bootloader, partition table, applications, and stored data.
-Git ignores `backups/`. This directory is separate from build output.
-Backup completion requires two identical reads of the full flash memory.
-
 ## First hardware checks
 
 1. Confirm the board revision.
 2. Check USB and serial passthrough into the devcontainer.
-3. When flashing is requested, save the factory firmware before replacement.
+3. When flashing is requested, confirm the device identity and flash the selected image.
 4. Check the boot banner and heartbeat through USB.
 5. Check recovery after reset and USB disconnection and reconnection.
 6. Establish I2C identification, battery measurements, and controlled peripheral power before display, touch, or radio operation.

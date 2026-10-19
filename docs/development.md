@@ -87,5 +87,3 @@ devcontainer exec --workspace-folder . --config .devcontainer/local/devcontainer
 
 If USB reconnection changes the device node, recreate the local container.
 Keep the same `--config` option and add `--remove-existing-container` to `devcontainer up`.
-
-Before the first flash, follow the [factory backup procedure](boards/lilygo-t5-s3-pro.md#factory-backup).
