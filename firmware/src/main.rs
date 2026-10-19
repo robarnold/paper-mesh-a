@@ -138,14 +138,16 @@ async fn run_app(mut panel: Option<display_worker::Client>) -> ! {
         while let Some(sample) = touch::next_event() {
             log::debug!(
                 "touch: {:?}; irq_ms={}; service_us={}; bus_wait_us={}; refresh={}",
-                sample.event,
+                sample.frame,
                 sample.irq_ms,
                 sample.service_us,
                 sample.bus_wait_us,
                 sample.during_refresh
             );
             let previous = app.taps();
-            app.touch(sample.event);
+            for event in sample.frame.events() {
+                app.touch(event);
+            }
             if app.taps() != previous {
                 info!(
                     "touch: count={}; stats={:?}",

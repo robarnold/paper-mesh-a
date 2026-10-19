@@ -19,7 +19,7 @@ Event bodies use a `type` field:
 
 | Type | More fields |
 | --- | --- |
-| `touch_down`, `touch_move`, `touch_up` | `x`, `y` |
+| `touch_down`, `touch_move`, `touch_up` | `x`, `y`, optional `id` from 0 through 15. The default ID is 0. |
 | `hardware_button` | `id`: 0 for BOOT, 1 for Function, or 2 for Home. `pressed`: boolean. |
 | `touch_cancel`, `pause`, `resume`, `reset` | None |
 | `advance` | `ms`, limited to 1–60000 ms per request with a paused clock |
@@ -44,6 +44,7 @@ The device screen shows the complete power details.
 ## Pointer conversion
 
 The browser converts pointer positions into portrait display coordinates.
+It retains up to five concurrent pointer IDs. `contacts` in the state response lists active IDs and logical coordinates.
 `Simulation::touch_portrait` converts those positions into native contacts.
 It passes them to `touch_native`.
 This method applies shared input rotation before application hit testing.

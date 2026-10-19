@@ -21,18 +21,44 @@ type HttpResponse = Response<Cursor<Vec<u8>>>;
 #[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 enum Command {
-    HardwareButton { id: u8, pressed: bool },
-    TouchDown { x: i32, y: i32 },
-    TouchMove { x: i32, y: i32 },
-    TouchUp { x: i32, y: i32 },
+    HardwareButton {
+        id: u8,
+        pressed: bool,
+    },
+    TouchDown {
+        #[serde(default)]
+        id: u8,
+        x: i32,
+        y: i32,
+    },
+    TouchMove {
+        #[serde(default)]
+        id: u8,
+        x: i32,
+        y: i32,
+    },
+    TouchUp {
+        #[serde(default)]
+        id: u8,
+        x: i32,
+        y: i32,
+    },
     TouchCancel,
     Pause,
     Resume,
-    Advance { ms: u64 },
+    Advance {
+        ms: u64,
+    },
     Reset,
-    ScanScenario { scenario: ScanScenario },
-    LocationScenario { scenario: LocationScenario },
-    PowerScenario { scenario: PowerScenario },
+    ScanScenario {
+        scenario: ScanScenario,
+    },
+    LocationScenario {
+        scenario: LocationScenario,
+    },
+    PowerScenario {
+        scenario: PowerScenario,
+    },
 }
 
 #[derive(Serialize)]
@@ -63,18 +89,21 @@ impl Session {
             Command::HardwareButton { id, pressed } => {
                 self.simulation.hardware_button(id, pressed)?
             }
-            Command::TouchDown { x, y }
-            | Command::TouchMove { x, y }
-            | Command::TouchUp { x, y } => {
+            Command::TouchDown { id, x, y }
+            | Command::TouchMove { id, x, y }
+            | Command::TouchUp { id, x, y } => {
+                if id > 15 {
+                    return Err("Contact ID must be between 0 and 15.");
+                }
                 if x < 0 || y < 0 || x >= SCREEN_SIZE.width as i32 || y >= SCREEN_SIZE.height as i32
                 {
                     return Err("Touch must be inside the display.");
                 }
                 let point = Point::new(x, y);
                 let event = if !matches!(command, Command::TouchUp { .. }) {
-                    TouchEvent::touch(0, point)
+                    TouchEvent::touch(id, point)
                 } else {
-                    TouchEvent::release(0, point)
+                    TouchEvent::release(id, point)
                 };
                 self.simulation.touch_portrait(event);
             }
@@ -247,20 +276,44 @@ mod tests {
         assert!(session.command(Command::Advance { ms: 60_001 }).is_err());
         assert!(
             session
-                .command(Command::TouchDown { x: 540, y: 20 })
+                .command(Command::TouchDown {
+                    id: 0,
+                    x: 540,
+                    y: 20
+                })
                 .is_err()
         );
         assert!(
             session
-                .command(Command::TouchDown { x: 20, y: 960 })
+                .command(Command::TouchDown {
+                    id: 0,
+                    x: 20,
+                    y: 960
+                })
                 .is_err()
         );
-        assert!(session.command(Command::TouchUp { x: -1, y: 20 }).is_err());
+        assert!(
+            session
+                .command(Command::TouchUp {
+                    id: 0,
+                    x: -1,
+                    y: 20
+                })
+                .is_err()
+        );
         session
-            .command(Command::TouchDown { x: 539, y: 959 })
+            .command(Command::TouchDown {
+                id: 0,
+                x: 539,
+                y: 959,
+            })
             .unwrap();
         session
-            .command(Command::TouchUp { x: 539, y: 959 })
+            .command(Command::TouchUp {
+                id: 0,
+                x: 539,
+                y: 959,
+            })
             .unwrap();
         assert_eq!(session.state().device.now_ms, 0);
         session.command(Command::Advance { ms: 30_250 }).unwrap();

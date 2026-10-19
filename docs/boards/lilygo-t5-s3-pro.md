@@ -62,7 +62,7 @@ The second-stage bootloader can select another flash mode after ROM startup.
 
 The [device interface design](../device-interfaces.md) defines proposed shared
 services and simulator scenarios.
-Current firmware connects the clock, display, single-contact touch input, passive radio scans, GNSS observations, and power observations.
+Current firmware connects the clock, display, contact frames, hardware buttons, passive radio scans, GNSS observations, and power observations.
 The [simulator guide](../simulator.md) describes the native backend.
 Other services in this inventory stay design work.
 

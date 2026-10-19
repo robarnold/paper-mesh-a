@@ -16,6 +16,10 @@ Each contact has a stable ID and a position. IDs range from 0 through 15.
 `Release` retains the last valid position for that ID.
 `Cancel` invalidates all contacts without a successful gesture.
 The platform's `TapGesture` recognizes taps without filtering the raw stream for other consumers.
+`TouchFrame` groups one observation with its timestamp and up to ten contact changes.
+It permits five releases and five replacement contacts in one frame.
+`ContactState` applies a frame atomically and retains up to five active contacts.
+An invalid frame cancels the complete state.
 
 A backend supplies stable control identities, labels, and supported event kinds.
 An identity is separate from an action binding such as back, select, or sleep.

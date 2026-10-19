@@ -120,7 +120,8 @@
     const error = document.querySelector('#error');
     const play = document.querySelector('#play');
     let running = true, frameKey = '', frameUrl = null, controlsKey = '', queue = Promise.resolve();
-    let activePointer = null, hardwareKey = '';
+    const activePointers = new Map();
+    let hardwareKey = '';
     function send(event) {
       queue = queue.then(async () => {
         const response = await fetch('/api/event', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(event)});
@@ -133,26 +134,31 @@
       return {x: Math.floor((event.clientX - box.left) * screen.naturalWidth / box.width), y: Math.floor((event.clientY - box.top) * screen.naturalHeight / box.height)};
     }
     screen.addEventListener('pointerdown', event => {
-      if (activePointer !== null || event.button !== 0) return;
+      if (activePointers.has(event.pointerId) || activePointers.size >= 5 || event.button !== 0) return;
       event.preventDefault();
-      activePointer = event.pointerId;
-      screen.setPointerCapture(activePointer);
-      send({type: 'touch_down', ...point(event)});
+      const id = Array.from({length: 16}, (_, i) => i).find(i => ![...activePointers.values()].includes(i));
+      activePointers.set(event.pointerId, id);
+      screen.setPointerCapture(event.pointerId);
+      send({type: 'touch_down', id, ...point(event)});
     });
     screen.addEventListener('pointerup', event => {
-      if (event.pointerId !== activePointer) return;
+      if (!activePointers.has(event.pointerId)) return;
+      const id = activePointers.get(event.pointerId);
       const p = point(event);
-      send(p.x >= 0 && p.x < screen.naturalWidth && p.y >= 0 && p.y < screen.naturalHeight ? {type: 'touch_up', ...p} : {type: 'touch_cancel'});
-      activePointer = null;
+      send(p.x >= 0 && p.x < screen.naturalWidth && p.y >= 0 && p.y < screen.naturalHeight ? {type: 'touch_up', id, ...p} : {type: 'touch_cancel'});
+      activePointers.delete(event.pointerId);
     });
     screen.addEventListener('pointermove', event => {
-      if (event.pointerId !== activePointer) return;
+      if (!activePointers.has(event.pointerId)) return;
+      const id = activePointers.get(event.pointerId);
       const p = point(event);
-      send(p.x >= 0 && p.x < screen.naturalWidth && p.y >= 0 && p.y < screen.naturalHeight ? {type: 'touch_move', ...p} : {type: 'touch_cancel'});
+      send(p.x >= 0 && p.x < screen.naturalWidth && p.y >= 0 && p.y < screen.naturalHeight ? {type: 'touch_move', id, ...p} : {type: 'touch_cancel'});
     });
-    screen.addEventListener('lostpointercapture', () => {
-      if (activePointer !== null) send({type: 'touch_cancel'});
-      activePointer = null;
+    screen.addEventListener('lostpointercapture', event => {
+      if (activePointers.has(event.pointerId)) {
+        send({type: 'touch_cancel'});
+        activePointers.clear();
+      }
     });
     play.addEventListener('click', () => send({type: running ? 'pause' : 'resume'}));
     document.querySelectorAll('.step').forEach(button => button.addEventListener('click', () => send({type: 'advance', ms: Number(button.dataset.ms)})));

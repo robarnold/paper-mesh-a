@@ -5,6 +5,7 @@ use embedded_graphics::prelude::Point;
 use crate::TouchEvent;
 
 pub mod buttons;
+pub mod contacts;
 
 /// A tap requires one contact that stays on the same control through release.
 /// The caller supplies hit testing and control identities.

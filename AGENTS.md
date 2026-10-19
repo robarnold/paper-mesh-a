@@ -31,7 +31,7 @@ The intended device is the LILYGO T5 S3 E-Paper Pro with LoRa. The firmware in
 `firmware/` uses Rust, esp-hal, and Embassy on esp-rtos. Run Cargo from that
 directory to load the target configuration and the `esp` toolchain.
 
-The firmware implements display output and single-contact touch input.
+The firmware implements display output and contact frames with up to five touchpoints.
 Display refresh runs on core 1. Touch interrupts and the application run on core 0.
 System power management stays planned work.
 The design does not use ESPHome or an ESP-IDF application runtime.

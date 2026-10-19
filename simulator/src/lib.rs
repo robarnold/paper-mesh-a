@@ -163,6 +163,7 @@ fn encode_png(size: Size, pixels: &[u8]) -> Result<Vec<u8>, png::EncodingError> 
 
 #[derive(Serialize)]
 pub struct Snapshot {
+    pub contacts: Vec<ContactSnapshot>,
     pub hardware_buttons: Vec<buttons::ButtonSnapshot>,
     pub now_ms: u64,
     pub utc_datetime: Option<String>,
@@ -225,7 +226,15 @@ pub struct Control {
     y: i32,
 }
 
+#[derive(Serialize)]
+pub struct ContactSnapshot {
+    pub id: u8,
+    pub x: i32,
+    pub y: i32,
+}
+
 pub struct Simulation {
+    contacts: paper_mesh_platform::input::contacts::ContactState,
     buttons: buttons::SimButtons,
     app: App,
     clock: VirtualClock,
@@ -241,6 +250,7 @@ impl Default for Simulation {
     fn default() -> Self {
         let clock = VirtualClock::default();
         let mut simulation = Self {
+            contacts: paper_mesh_platform::input::contacts::ContactState::new(),
             buttons: buttons::SimButtons::default(),
             app: App::new(&clock),
             clock,
@@ -317,7 +327,24 @@ impl Simulation {
     /// Accepts input aligned with native panel axes from a calibrated touch driver.
     /// Uses the shared rotation path from hardware to application coordinates.
     pub fn touch_native(&mut self, event: TouchEvent) {
-        self.app.touch(ROTATION.touch_to_portrait(event));
+        self.touch_frame_native(paper_mesh_platform::input::contacts::TouchFrame::single(
+            event,
+            self.clock.now_ms(),
+        ));
+    }
+
+    pub fn touch_frame_native(&mut self, frame: paper_mesh_platform::input::contacts::TouchFrame) {
+        let mut normalized = paper_mesh_platform::input::contacts::TouchFrame::new(frame.at_ms);
+        for event in frame.events() {
+            normalized.push(ROTATION.touch_to_portrait(event));
+        }
+        if self.contacts.apply(&normalized) {
+            for event in normalized.events() {
+                self.app.touch(event);
+            }
+        } else {
+            self.app.touch(TouchEvent::Cancel);
+        }
         self.poll();
     }
 
@@ -426,6 +453,15 @@ impl Simulation {
             ]
         };
         Snapshot {
+            contacts: self
+                .contacts
+                .contacts()
+                .map(|c| ContactSnapshot {
+                    id: c.id,
+                    x: c.position.x,
+                    y: c.position.y,
+                })
+                .collect(),
             hardware_buttons: self.buttons.snapshot(),
             power_open: power.is_open(),
             power_charger_tab: power.charger_tab(),

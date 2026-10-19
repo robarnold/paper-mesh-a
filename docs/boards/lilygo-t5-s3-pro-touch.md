@@ -15,7 +15,9 @@ Reports must have the ready flag before the driver reads coordinates.
 The driver acknowledges each report after the required reads succeed.
 It emits each ready contact position with its ID, then a release with the final position.
 The driver does not recognize taps or remove movement reports.
-Multiple contacts, invalid coordinates, I2C failures, or event queue overflow cancel the gesture.
+The driver tracks up to five contact IDs, independent of their order in a report.
+Invalid coordinates, duplicate IDs, excess contacts, palm reports, I2C failures, and queue overflow cancel all contacts.
+Recovery waits for all contacts to lift.
 Ready reports also supply Home-key state through `HaveKey` in register `0x814E`.
 The adapter exposes that state as a hardware button, independent of coordinates.
 Pen input stays unimplemented.
@@ -46,7 +48,8 @@ Display control operations release the mutex after each transaction.
 Pixel transfers use LCD DMA and RMT without the I2C mutex.
 Touch reports therefore proceed during display scans.
 
-The touch queue holds 32 events. Overflow cancels the gesture and increments an error counter.
+The touch queue holds 32 complete frames. Overflow cancels input and increments an error counter.
+Each frame has an interrupt timestamp and up to ten events, including releases and replacement contacts.
 
 USB reports the core assignment, interrupt times, service duration, bus wait, and events received during refresh.
 Service duration starts at GPIO handler entry and ends after the report read and acknowledgment attempt.
@@ -62,6 +65,7 @@ The second API starts touch service on the core that installs its software inter
 ## Verification limits
 
 Physical checks established single-contact input and rapid taps during concurrent display refresh.
+Multiple-contact tracking requires further physical checks. Native protocol tests cover five contacts and changes in report order.
 Edge calibration, maximum input rate, and latency before GPIO handler entry remain unverified.
 Unread GT911 reports can delay later contact changes until the host acknowledges the report.
 Touch service must therefore continue during display scans.

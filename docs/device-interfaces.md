@@ -106,7 +106,7 @@ Neither service depends on a particular clock chip or receiver.
 Packet-radio consumers operate below application messaging.
 UI components can operate without physical radio configuration.
 
-The implemented interfaces cover the clock, single-contact touch, display
+The implemented interfaces cover the clock, contact frames, hardware buttons, display
 submission, busy state, fixed rotation, discovery scans, location observations, and power observations.
 Capability descriptors and other catalog entries stay planned work.
 Backend profiles and the [simulator guide](simulator.md) record implementation

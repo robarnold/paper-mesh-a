@@ -20,8 +20,8 @@ use esp_hal::{
 };
 use esp_rtos::embassy::InterruptExecutor;
 use log::{error, info};
-use paper_mesh_gt911::{CONFIG_BYTES, Event, Gt911};
-use paper_mesh_platform::{TouchEvent, rotation::PortraitRotation};
+use paper_mesh_gt911::{CONFIG_BYTES, Event, Frame, Gt911};
+use paper_mesh_platform::{TouchEvent, input::contacts::TouchFrame, rotation::PortraitRotation};
 use static_cell::StaticCell;
 
 use crate::bus::Bus;
@@ -38,7 +38,7 @@ static STATS: Mutex<CriticalSectionRawMutex, RefCell<Statistics>> =
 
 #[derive(Clone, Copy, Debug)]
 pub struct Sample {
-    pub event: TouchEvent,
+    pub frame: TouchFrame,
     pub irq_ms: u64,
     pub service_us: u64,
     pub bus_wait_us: u64,
@@ -205,12 +205,12 @@ impl Touch {
         ))
     }
 
-    fn poll(&mut self, bus: &mut I2c<'static, Blocking>) -> Option<TouchEvent> {
+    fn poll(&mut self, bus: &mut I2c<'static, Blocking>, at_ms: u64) -> Option<TouchFrame> {
         let result = self.driver.poll(bus);
         if let Some(pressed) = self.driver.take_key_state() {
             crate::buttons::home(Some(pressed), Instant::now().as_millis());
         }
-        let event = match result {
+        let report = match result {
             Ok(event) => {
                 self.failed = false;
                 event?
@@ -224,26 +224,30 @@ impl Touch {
                 error!("touch: report failed: {:?}; gesture canceled", error);
                 self.failed = true;
                 EVENTS.clear();
-                Event::Cancel
+                Frame::canceled()
             }
         };
-        Some(match event {
-            Event::Touch(contact) | Event::Release(contact) => {
-                let point = Point::new(i32::from(contact.x), i32::from(contact.y));
-                let native = if self.driver.width == 540 {
-                    ROTATION
-                        .to_native(point)
-                        .expect("validated portrait contact")
-                } else {
-                    point
-                };
-                ROTATION.touch_to_portrait(match event {
-                    Event::Touch(_) => TouchEvent::touch(contact.id, native),
-                    _ => TouchEvent::release(contact.id, native),
-                })
-            }
-            Event::Cancel => TouchEvent::Cancel,
-        })
+        let mut frame = TouchFrame::new(at_ms);
+        for event in report.events() {
+            frame.push(match event {
+                Event::Touch(contact) | Event::Release(contact) => {
+                    let point = Point::new(i32::from(contact.x), i32::from(contact.y));
+                    let native = if self.driver.width == 540 {
+                        ROTATION
+                            .to_native(point)
+                            .expect("validated portrait contact")
+                    } else {
+                        point
+                    };
+                    ROTATION.touch_to_portrait(match event {
+                        Event::Touch(_) => TouchEvent::touch(contact.id, native),
+                        _ => TouchEvent::release(contact.id, native),
+                    })
+                }
+                Event::Cancel => TouchEvent::Cancel,
+            });
+        }
+        Some(frame)
     }
 }
 
@@ -258,7 +262,7 @@ async fn worker(mut touch: Touch, bus: &'static Bus) {
         let mut guard = bus.lock().await;
         let bus_wait_us = wait_start.elapsed().as_micros();
         let during_refresh = crate::display_worker::is_refreshing();
-        let event = touch.poll(&mut guard);
+        let frame = touch.poll(&mut guard, irq.as_millis());
         drop(guard);
         let service_us = irq.elapsed().as_micros();
         STATS.lock(|stats| {
@@ -266,15 +270,17 @@ async fn worker(mut touch: Touch, bus: &'static Bus) {
             stats.interrupts += 1;
             stats.max_service_us = stats.max_service_us.max(service_us);
             stats.max_bus_wait_us = stats.max_bus_wait_us.max(bus_wait_us);
-            if let Some(event) = event {
-                stats.downs += u32::from(matches!(event, TouchEvent::Touch(_)));
-                stats.ups += u32::from(matches!(event, TouchEvent::Release(_)));
+            if let Some(frame) = frame {
+                for event in frame.events() {
+                    stats.downs += u32::from(matches!(event, TouchEvent::Touch(_)));
+                    stats.ups += u32::from(matches!(event, TouchEvent::Release(_)));
+                }
                 stats.during_refresh += u32::from(during_refresh);
             }
         });
-        if let Some(event) = event {
+        if let Some(frame) = frame {
             let mut sample = Sample {
-                event,
+                frame,
                 irq_ms: irq.as_millis(),
                 service_us,
                 bus_wait_us,
@@ -283,7 +289,7 @@ async fn worker(mut touch: Touch, bus: &'static Bus) {
             if EVENTS.try_send(sample).is_err() {
                 EVENTS.clear();
                 touch.driver.cancel();
-                sample.event = TouchEvent::Cancel;
+                sample.frame = TouchFrame::single(TouchEvent::Cancel, irq.as_millis());
                 EVENTS.try_send(sample).unwrap();
                 STATS.lock(|stats| stats.borrow_mut().overflows += 1);
             }
