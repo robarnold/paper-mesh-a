@@ -5,7 +5,8 @@ This includes documentation, comments, review text, commit descriptions, and age
 
 ## Development environment
 
-Run all project tools in the devcontainer. Do not install Rust, ESP tools,
+Run project tools in the devcontainer, except version control tools.
+The host can run version control tools. Do not install Rust, ESP tools,
 Python packages, or other project dependencies on the host. Do not change the
 host home directory or shell startup files.
 
