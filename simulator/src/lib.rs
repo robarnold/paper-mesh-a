@@ -9,6 +9,7 @@ use paper_mesh_platform::{
     rotation::{PortraitDisplay, PortraitRotation},
 };
 use serde::Serialize;
+pub mod buttons;
 pub mod discovery;
 pub mod location;
 pub mod power;
@@ -162,6 +163,7 @@ fn encode_png(size: Size, pixels: &[u8]) -> Result<Vec<u8>, png::EncodingError> 
 
 #[derive(Serialize)]
 pub struct Snapshot {
+    pub hardware_buttons: Vec<buttons::ButtonSnapshot>,
     pub now_ms: u64,
     pub utc_datetime: Option<String>,
     pub taps: u32,
@@ -224,6 +226,7 @@ pub struct Control {
 }
 
 pub struct Simulation {
+    buttons: buttons::SimButtons,
     app: App,
     clock: VirtualClock,
     display: SimDisplay,
@@ -238,6 +241,7 @@ impl Default for Simulation {
     fn default() -> Self {
         let clock = VirtualClock::default();
         let mut simulation = Self {
+            buttons: buttons::SimButtons::default(),
             app: App::new(&clock),
             clock,
             display: SimDisplay::default(),
@@ -253,6 +257,15 @@ impl Default for Simulation {
 }
 
 impl Simulation {
+    pub fn hardware_button(&mut self, id: u8, pressed: bool) -> Result<(), &'static str> {
+        self.buttons.sample(
+            paper_mesh_platform::input::buttons::ButtonId(id),
+            pressed,
+            self.clock.now_ms(),
+        )?;
+        self.poll();
+        Ok(())
+    }
     fn poll(&mut self) {
         self.display.advance_to(self.clock.now_ms());
         let location = self.location.snapshot(self.clock.now_ms());
@@ -418,6 +431,7 @@ impl Simulation {
             ]
         };
         Snapshot {
+            hardware_buttons: self.buttons.snapshot(),
             power_open: power.is_open(),
             power_charger_tab: power.charger_tab(),
             power_scenario: self.power.scenario,

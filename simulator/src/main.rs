@@ -21,6 +21,7 @@ type HttpResponse = Response<Cursor<Vec<u8>>>;
 #[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 enum Command {
+    HardwareButton { id: u8, pressed: bool },
     TouchDown { x: i32, y: i32 },
     TouchUp { x: i32, y: i32 },
     TouchCancel,
@@ -58,6 +59,9 @@ impl Session {
 
     fn command(&mut self, command: Command) -> Result<(), &'static str> {
         match command {
+            Command::HardwareButton { id, pressed } => {
+                self.simulation.hardware_button(id, pressed)?
+            }
             Command::TouchDown { x, y } | Command::TouchUp { x, y } => {
                 if x < 0 || y < 0 || x >= SCREEN_SIZE.width as i32 || y >= SCREEN_SIZE.height as i32
                 {

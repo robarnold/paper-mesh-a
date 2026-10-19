@@ -30,6 +30,7 @@ pub struct Gt911 {
     pub vendor: u8,
     contact: Option<Contact>,
     blocked: bool,
+    key_state: Option<bool>,
 }
 
 impl Gt911 {
@@ -55,6 +56,7 @@ impl Gt911 {
                     vendor: identity[10],
                     contact: None,
                     blocked: false,
+                    key_state: None,
                 });
             }
         }
@@ -72,6 +74,11 @@ impl Gt911 {
     pub fn cancel(&mut self) {
         self.contact = None;
         self.blocked = true;
+    }
+
+    /// Returns the key level from the last acknowledged ready report.
+    pub fn take_key_state(&mut self) -> Option<bool> {
+        self.key_state.take()
     }
 
     pub fn poll<B: I2c>(&mut self, bus: &mut B) -> Result<Option<Event>, B::Error> {
@@ -95,6 +102,7 @@ impl Gt911 {
         }
         // Acknowledge only after all required data arrived.
         bus.write(self.address, &[0x81, 0x4e, 0])?;
+        self.key_state = Some(status[0] & 0x10 != 0);
         if count == 0 {
             self.blocked = false;
             return Ok(self.contact.take().map(Event::Up));
@@ -178,6 +186,7 @@ mod tests {
             vendor: 0,
             contact: None,
             blocked: false,
+            key_state: None,
         }
     }
     fn point(x: u16, y: u16) -> Vec<u8> {
@@ -192,6 +201,26 @@ mod tests {
             0,
         ]
     }
+    #[test]
+    fn key_levels_require_ready_acknowledged_reports() {
+        let mut bus = Bus(VecDeque::from([
+            Step::Read(0x814e, vec![0x10]),
+            Step::Read(0x814e, vec![0x90]),
+            Step::Ack,
+            Step::Read(0x814e, vec![0x80]),
+            Step::Ack,
+        ]));
+        let mut driver = controller();
+        assert_eq!(driver.poll(&mut bus), Ok(None));
+        assert_eq!(driver.take_key_state(), None);
+        assert_eq!(driver.poll(&mut bus), Ok(None));
+        assert_eq!(driver.take_key_state(), Some(true));
+        assert_eq!(driver.take_key_state(), None);
+        assert_eq!(driver.poll(&mut bus), Ok(None));
+        assert_eq!(driver.take_key_state(), Some(false));
+        assert!(bus.0.is_empty());
+    }
+
     #[test]
     fn ready_reports_create_one_gesture_and_keep_the_last_position() {
         let mut bus = Bus(VecDeque::from([

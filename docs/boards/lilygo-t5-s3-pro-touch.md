@@ -15,7 +15,13 @@ Reports must have the ready flag before the driver reads coordinates.
 The driver acknowledges each report after the required reads succeed.
 It emits one press and one release for each single-contact gesture.
 Multiple contacts, invalid coordinates, I2C failures, or event queue overflow cancel the gesture.
-The Home key and pen input stay unimplemented.
+Ready reports also supply Home-key state through `HaveKey` in register `0x814E`.
+The adapter exposes that state as a hardware button, independent of coordinates.
+Pen input stays unimplemented.
+
+Firmware samples electrical buttons every 10 ms with a 20 ms debounce interval.
+GT911 ready reports supply the controller's Home-key level without another debounce interval.
+The first key observation synchronizes state. A key held at startup does not create a press event.
 
 [Goodix Programming Guide Rev.10][gt911-guide], sections 3.3, 4.2, and 5, defines identity, reset timing, and report handling.
 The adapter converts the fitted portrait coordinates through the shared native-to-portrait transform.

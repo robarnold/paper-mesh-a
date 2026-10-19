@@ -4,6 +4,8 @@ use embedded_graphics::prelude::Point;
 
 use crate::TouchEvent;
 
+pub mod buttons;
+
 /// A tap requires press and release events on the same control.
 /// The caller supplies hit testing and control identities.
 pub struct TapGesture<T> {

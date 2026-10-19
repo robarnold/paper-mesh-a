@@ -2,7 +2,14 @@
 
 [Device services](../device-interfaces.md)
 
-The control descriptors and lifecycle reports below stay planned work.
+`input::buttons` supplies hardware control descriptors, timestamped events, and a debounce component.
+Descriptors distinguish edge input, activation input, reset, and power recovery.
+Reset and power recovery descriptors do not imply readable input events.
+Firmware and simulator profiles assign identities. Applications select bindings separately.
+Initial samples and recovery synchronize the level without an invented press.
+Backends select debounce intervals from the electrical input requirements.
+
+Detailed lifecycle reports stay planned work.
 The current interface supplies single-contact `Down`, `Up`, and `Cancel` events.
 
 A backend supplies stable control identities, labels, and supported event kinds.

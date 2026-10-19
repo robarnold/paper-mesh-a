@@ -4,6 +4,7 @@
 extern crate alloc;
 
 mod bus;
+mod buttons;
 mod discovery;
 mod display;
 mod display_worker;
@@ -62,7 +63,9 @@ fn initialize(spawner: Spawner) -> Option<display_worker::Client> {
             gnss::fault();
             power::fault();
         })
-        .ok()?;
+        .ok();
+    spawner.spawn(buttons::worker(bus, peripherals.GPIO0).unwrap());
+    let bus = bus?;
     gnss::start(
         bus,
         peripherals.UART1,
@@ -126,6 +129,9 @@ async fn run_app(mut panel: Option<display_worker::Client>) -> ! {
     #[cfg(feature = "radio-scan-demo")]
     scan_demo::run(&mut discovery).await;
     loop {
+        while let Some(event) = buttons::next_event() {
+            info!("button: {:?}", event);
+        }
         app.poll_discovery(&clock, &mut discovery);
         app.poll_location(&clock, &mut location);
         app.poll_power(&clock, &mut power);
@@ -161,7 +167,7 @@ async fn run_app(mut panel: Option<display_worker::Client>) -> ! {
             panel = None;
         }
         select4(
-            touch::changed(),
+            select(touch::changed(), buttons::changed()),
             display_worker::changed(),
             select(
                 discovery::changed(),

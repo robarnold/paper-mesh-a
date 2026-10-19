@@ -20,6 +20,7 @@ Event bodies use a `type` field:
 | Type | More fields |
 | --- | --- |
 | `touch_down`, `touch_up` | `x`, `y` |
+| `hardware_button` | `id`: 0 for BOOT, 1 for Function, or 2 for Home. `pressed`: boolean. |
 | `touch_cancel`, `pause`, `resume`, `reset` | None |
 | `advance` | `ms`, limited to 1–60000 ms per request with a paused clock |
 | `scan_scenario` | `scenario`: `nearby`, `empty`, `failed`, `unavailable`, or `timeout` |
@@ -27,6 +28,9 @@ Event bodies use a `type` field:
 | `power_scenario` | `scenario`: a value from the [power scenarios](scenarios.md#power-screen) |
 
 The browser provides equivalent buttons for device touch targets.
+It also shows hardware controls from `hardware_buttons` in the state response.
+Hardware samples represent debounced input. Reset uses the existing `reset` event.
+QON has no readable input and stays disabled in the simulator.
 Rust supplies their labels and coordinates through `/api/state`.
 These buttons also permit keyboard input.
 

@@ -57,6 +57,9 @@
     </dl>
     <h2>Device controls</h2>
     <div id="device-controls" role="group" aria-label="Device controls"></div>
+    <h2>Hardware buttons</h2>
+    <div id="hardware-buttons" role="group" aria-label="Hardware buttons"></div>
+    <p class="note">Reset restarts the simulator. QON acts on the charger and has no readable button signal.</p>
     <h2>Radio scenario</h2>
     <label for="scan-scenario">Results for the next scan</label>
     <select id="scan-scenario">
@@ -117,7 +120,7 @@
     const error = document.querySelector('#error');
     const play = document.querySelector('#play');
     let running = true, frameKey = '', frameUrl = null, controlsKey = '', queue = Promise.resolve();
-    let activePointer = null;
+    let activePointer = null, hardwareKey = '';
     function send(event) {
       queue = queue.then(async () => {
         const response = await fetch('/api/event', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(event)});
@@ -157,6 +160,21 @@
         const response = await fetch('/api/state');
         if (!response.ok) throw new Error('Simulator unavailable.');
         const state = await response.json();
+        const nextHardwareKey = JSON.stringify(state.hardware_buttons);
+        if (nextHardwareKey !== hardwareKey) {
+          document.querySelector('#hardware-buttons').replaceChildren(...state.hardware_buttons.map(control => {
+            const button = document.createElement('button');
+            button.textContent = control.label;
+            button.disabled = control.capability === 'power_recovery';
+            button.addEventListener('click', () => {
+              if (control.capability === 'reset') { send({type: 'reset'}); return; }
+              send({type: 'hardware_button', id: control.id, pressed: true});
+              send({type: 'hardware_button', id: control.id, pressed: false});
+            });
+            return button;
+          }));
+          hardwareKey = nextHardwareKey;
+        }
         running = state.running;
         play.textContent = running ? 'Pause' : 'Resume';
         document.querySelectorAll('.step').forEach(button => { button.disabled = running; });

@@ -162,6 +162,12 @@ Edge capability must pass checks on the fitted panel.
 
 The demonstration's screen button is different from the physical Home key.
 
+The firmware samples BOOT on GPIO0 and Function on PCA9535 `IO1_2`.
+It preserves the expander's display outputs during input configuration.
+GPIO48 drives the display clock. It is not a button input.
+Reset and QON have no readable MCU button signal.
+The [input contract](../services/input.md) specifies synchronization and debounce behavior.
+
 QON exits battery shipping mode.
 A long hold can reset the battery power path, subject to charger configuration
 and external power. TI specifies a typical 15-second reset hold.

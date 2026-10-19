@@ -206,12 +206,17 @@ impl Touch {
     }
 
     fn poll(&mut self, bus: &mut I2c<'static, Blocking>) -> Option<TouchEvent> {
-        let event = match self.driver.poll(bus) {
+        let result = self.driver.poll(bus);
+        if let Some(pressed) = self.driver.take_key_state() {
+            crate::buttons::home(Some(pressed), Instant::now().as_millis());
+        }
+        let event = match result {
             Ok(event) => {
                 self.failed = false;
                 event?
             }
             Err(error) => {
+                crate::buttons::home(None, Instant::now().as_millis());
                 STATS.lock(|stats| stats.borrow_mut().errors += 1);
                 if self.failed {
                     return None;
