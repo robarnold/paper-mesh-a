@@ -16,10 +16,16 @@ pub mod rotation;
 pub mod time;
 pub mod ui;
 
-/// Monotonic milliseconds from an arbitrary, stable epoch.
-/// Wall-clock time and CPU frequency changes must not affect this clock.
+/// Monotonic time and optional UTC calendar time.
 pub trait Clock {
+    /// Milliseconds from a stable epoch, independent of UTC corrections.
     fn now_ms(&self) -> u64;
+
+    /// Current UTC, or None when calendar time is unknown or invalid.
+    /// This read requires no I/O, wait, or allocation.
+    fn now_utc(&self) -> Option<time::UtcDateTime> {
+        None
+    }
 }
 
 /// Coordinates use logical display orientation at the application boundary.

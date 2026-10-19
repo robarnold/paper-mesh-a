@@ -12,6 +12,7 @@ A backend can omit services from this catalog.
 | Interface | Contract | Backend responsibility |
 | --- | --- | --- |
 | `Clock::now_ms()` | Monotonic milliseconds from a stable epoch | Keep the epoch across waits. Include elapsed sleep time. |
+| `Clock::now_utc()` | Optional current UTC date and time | Validate calendar sources. Preserve monotonic deadlines during corrections. |
 | `TouchEvent` | `Down`, `Up`, or `Cancel`, with logical viewport coordinates | Decode contacts. Calibrate axes. Transform coordinates. Deliver events in order. |
 | `Display` | `DrawTarget<Color = Gray4>`, `is_busy()`, and `refresh()` | Control storage, pixel packing, submission, completion, and errors. |
 | `Discovery` | Identified scans, bounded results, source, receipt time, cancellation, and errors | Supply observations. Control radio resources. Report unsupported operations. |
@@ -115,7 +116,8 @@ status.
 | Topic | Status and scope |
 | --- | --- |
 | [Input and lifecycle controls](services/input.md) | Current pointer events and planned control capabilities |
-| [Location and time](services/location.md) | Current observations and planned time services |
+| [Location observations](services/location.md) | Current observations and planned acquisition extensions |
+| [Calendar time and timers](services/time.md) | Current UTC clock, monotonic deadlines, and planned alarms |
 | [Files and internal persistence](services/storage.md) | Planned media and durable settings contracts |
 | [Power, charging, and suspend](services/power.md) | Planned power observations and lifecycle transitions |
 | [Discovery and communications](services/connectivity.md) | Current scans and planned packet and transport services |

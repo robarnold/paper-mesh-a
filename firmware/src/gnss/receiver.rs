@@ -5,6 +5,7 @@ use paper_mesh_platform::location::{
     Coordinates, LocationAvailability, LocationObservation, LocationSnapshot, MotionObservation,
     ReceiverActivity, UtcObservation, UtcTime,
 };
+use paper_mesh_platform::time::Date;
 
 pub const PROBE_MS: u64 = 4_000;
 pub const SILENCE_MS: u64 = 10_000;
@@ -265,6 +266,7 @@ fn parse_rmc(text: &str, now_ms: u64) -> Option<(MotionObservation, Option<UtcOb
         .map(|time| UtcObservation {
             observed_at_ms: now_ms,
             time,
+            date: utc_date(fields[9]),
         });
     Some((
         MotionObservation {
@@ -274,6 +276,19 @@ fn parse_rmc(text: &str, now_ms: u64) -> Option<(MotionObservation, Option<UtcOb
         },
         utc,
     ))
+}
+
+fn utc_date(text: &str) -> Option<Date> {
+    if text.len() != 6 || !text.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    // RMC has two year digits. This backend uses the years 2000 through 2099.
+    Date::from_calendar_date(
+        2000 + decimal(&text[4..])? as i32,
+        (decimal(&text[2..4])? as u8).try_into().ok()?,
+        decimal(&text[..2])? as u8,
+    )
+    .ok()
 }
 
 fn unsigned_thousandths(text: &str) -> Option<u32> {

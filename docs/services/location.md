@@ -1,11 +1,11 @@
-# Location and time
+# Location observations
 
 [Device services](../device-interfaces.md)
 
 ## Current location interface
 
 The implemented `Location` interface supplies provider availability and observations.
-These observations include WGS84 coordinates, elevation, motion, UTC time of day, receiver activity, and satellite signals.
+These observations include WGS84 coordinates, elevation, motion, UTC time and date, receiver activity, and satellite signals.
 Coordinates and elevation are optional.
 
 Elevation uses signed millimeters above mean sea level.
@@ -13,8 +13,10 @@ Speed uses millimeters per second. Course uses thousandths of a degree clockwise
 Course must be less than 360 degrees. Zero speed and midnight UTC are valid values.
 Position, motion, UTC, satellite data, and receiver activity have independent receipt times and validity.
 
-UTC supplies hours, minutes, and seconds without a date or an accuracy estimate.
-The observation does not set a system clock.
+UTC supplies hours, minutes, seconds, and an optional date without an accuracy estimate.
+The date and time belong to the same report.
+An invalid date leaves time of day available but cannot supply a complete clock reference.
+The [time service](time.md) specifies the separate calendar clock.
 
 `Location::snapshot(now_ms)` returns a copied snapshot without a wait or an allocation.
 Repeated reads keep the original receipt times.
@@ -40,7 +42,7 @@ Satellites in view can include satellites without measured signal levels.
 
 The [location screen](../application.md#location-screen) selects age limits, display labels, and display deadlines.
 
-## Planned location and time services
+## Planned location extensions
 
 The remaining fields and operations below stay proposed work.
 
@@ -61,13 +63,4 @@ A received message does not necessarily identify an accurate clock edge.
 Adapters control protocol parsing, receiver detection, and transport settings.
 A location provider can also be remote or synthetic.
 
-`Time` separates monotonic deadlines from civil UTC.
-UTC observations identify the source, validity, and uncertainty.
-Shared policy decides whether to accept a correction.
-Unknown calendar time is not Unix epoch zero.
-Persistent timekeeping and alarms are optional capabilities.
-They must specify resolution, range, and lifecycle support.
-
-Boot must not reset persistent time to the build date.
-Simulator models must include time retention, loss, and drift where applicable.
-UTC corrections must not change the active application's monotonic schedule.
+Source uncertainty and acquisition control remain planned extensions.

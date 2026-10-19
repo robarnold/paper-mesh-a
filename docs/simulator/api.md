@@ -29,6 +29,9 @@ The browser provides equivalent buttons for device touch targets.
 Rust supplies their labels and coordinates through `/api/state`.
 These buttons also permit keyboard input.
 
+`GET /api/state` includes `utc_datetime` as a UTC timestamp string or `null` when calendar time is unknown.
+The `now_ms` value remains monotonic during calendar corrections.
+
 ## Pointer conversion
 
 The browser converts pointer positions into portrait display coordinates.

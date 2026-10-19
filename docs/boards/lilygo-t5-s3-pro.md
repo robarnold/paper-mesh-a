@@ -54,6 +54,7 @@ The second-stage bootloader can select another flash mode after ROM startup.
 | [Display](lilygo-t5-s3-pro-display.md) | Native storage, scan output, waveform evidence, and limits |
 | [Touch](lilygo-t5-s3-pro-touch.md) | Report protocol, interrupts, shared I2C, and Home-key design |
 | [GNSS](lilygo-t5-s3-pro-gnss.md) | UART, baud selection, NMEA decoding, and observation validity |
+| [RTC](lilygo-t5-s3-pro-rtc.md) | Calendar retention, validity, and GPS synchronization |
 | [Radio discovery](lilygo-t5-s3-pro-radio.md) | Passive scans, resource release, and diagnostic builds |
 
 ## Device inventory

@@ -50,7 +50,11 @@ The optional navigation status does not replace the data status. The vendor exam
 The decoder converts knots to millimeters per second and course to thousandths of a degree.
 It discards fractional precision below one thousandth before conversion. Speed conversion rounds to the nearest millimeter per second.
 
-RMC UTC supplies hours, minutes, and seconds. The decoder discards fractional seconds and does not decode the date.
+RMC UTC supplies hours, minutes, seconds, and the date from the same sentence.
+The decoder discards fractional seconds and interprets the two-digit year as 2000 through 2099.
+It validates Gregorian dates, including leap days.
+An invalid or absent date cannot supply a clock reference, but it does not discard valid time of day or motion.
+The [RTC adapter](lilygo-t5-s3-pro-rtc.md) uses complete references for synchronization.
 Invalid or absent numeric fields clear only their readout. Invalid RMC status also clears UTC, even if its time field has numbers.
 This conservative policy does not display time from invalid RMC reports before a fix.
 

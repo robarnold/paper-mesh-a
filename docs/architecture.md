@@ -44,6 +44,10 @@ Backend adapters import service types directly from `paper-mesh-platform`.
 Runtime code connects the application to backend services.
 The application crate does not export the platform API.
 
+The [clock contract](services/time.md) separates monotonic deadlines from optional UTC calendar time.
+The RTC backend consumes complete GNSS observations and controls persistent calendar access.
+The platform supplies calendar types and elapsed-time conversion without hardware dependencies.
+
 Common functionality belongs in the platform crate.
 Toolkit components accept application choices through parameters and callbacks.
 Modules group related functions by responsibility.

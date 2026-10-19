@@ -67,3 +67,15 @@ Motion and UTC tests cover unit conversion, direction limits, stops, midnight, i
 Large and small time advances produce the same location state and completed frame.
 Separate native tests execute the firmware decoder and baud selection code.
 The simulator does not model satellite reception or verify the physical receiver.
+
+## Calendar clock
+
+Complete GPS reports set the simulated clock from a fixed date of 2020-04-25 and the scenario time of day.
+Virtual elapsed time advances the calendar after receiver loss.
+No host clock supplies these values.
+`Simulation::set_utc` can supply a retained date, inject a correction, or invalidate calendar time with `None`.
+Fresh GPS observations can set the clock again.
+
+Native tests cover calendar corrections and loss without changes to monotonic deadlines or display completion.
+Firmware tests use simulated I2C registers for retention, voltage loss, malformed values, drift corrections, and bus errors.
+The browser does not expose RTC fault controls or model oscillator drift.

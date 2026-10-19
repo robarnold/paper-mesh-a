@@ -1,5 +1,7 @@
 //! Location observations use the application's monotonic epoch.
 
+use crate::time::{Date, Time, UtcDateTime, UtcReference};
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LocationAvailability {
     Starting,
@@ -91,6 +93,21 @@ impl UtcTime {
 pub struct UtcObservation {
     pub observed_at_ms: u64,
     pub time: UtcTime,
+    /// Calendar date from the same report. None means unavailable or invalid.
+    pub date: Option<Date>,
+}
+
+impl UtcObservation {
+    /// A time without its corresponding date cannot set a calendar clock.
+    pub fn reference(self) -> Option<UtcReference> {
+        Some(UtcReference {
+            datetime: UtcDateTime::new(
+                self.date?,
+                Time::from_hms(self.time.hour(), self.time.minute(), self.time.second()).ok()?,
+            ),
+            observed_at_ms: self.observed_at_ms,
+        })
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

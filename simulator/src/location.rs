@@ -5,6 +5,7 @@ use paper_mesh_platform::location::{
     MAX_SATELLITES, MotionObservation, ReceiverActivity, SatelliteObservation, SatelliteSignal,
     SatelliteSystem, UtcObservation, UtcTime,
 };
+use paper_mesh_platform::time::{Date, Month, Time, UtcDateTime, UtcReference};
 use serde::{Deserialize, Serialize};
 
 pub const ACQUISITION_MS: u64 = 3_000;
@@ -105,13 +106,18 @@ impl Location for SimLocation {
         } else {
             received_at_ms
         };
-        let utc_seconds = ((utc_received_at_ms - self.started_at_ms) / 1_000
-            + if self.scenario == LocationScenario::ZeroCoordinates {
-                0
-            } else {
-                7 * 3_600 + 15 * 60 + 56
-            })
-            % 86_400;
+        let utc = UtcReference {
+            datetime: UtcDateTime::new(
+                Date::from_calendar_date(2020, Month::April, 25).unwrap(),
+                if self.scenario == LocationScenario::ZeroCoordinates {
+                    Time::MIDNIGHT
+                } else {
+                    Time::from_hms(7, 15, 56).unwrap()
+                },
+            ),
+            observed_at_ms: self.started_at_ms,
+        }
+        .at(utc_received_at_ms);
         let mut strongest = [None; MAX_SATELLITES];
         for (index, level) in [44, 40, 37, 33, 26, 18, 0, 0].into_iter().enumerate() {
             strongest[index] = Some(SatelliteSignal {
@@ -167,17 +173,13 @@ impl Location for SimLocation {
                         .then_some(315_000),
                 },
             ),
-            utc: (ready && has_fix && self.scenario != LocationScenario::MissingUtc).then_some(
-                UtcObservation {
+            utc: utc
+                .filter(|_| ready && has_fix && self.scenario != LocationScenario::MissingUtc)
+                .map(|utc| UtcObservation {
                     observed_at_ms: utc_received_at_ms,
-                    time: UtcTime::new(
-                        (utc_seconds / 3_600) as u8,
-                        (utc_seconds / 60 % 60) as u8,
-                        (utc_seconds % 60) as u8,
-                    )
-                    .unwrap(),
-                },
-            ),
+                    time: UtcTime::new(utc.hour(), utc.minute(), utc.second()).unwrap(),
+                    date: Some(utc.date()),
+                }),
             activity: if ready {
                 Some(ReceiverActivity {
                     received_at_ms,

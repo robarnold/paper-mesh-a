@@ -11,6 +11,7 @@ use embedded_hal::i2c::{ErrorKind, ErrorType, I2c, Operation};
 use paper_mesh_platform::location::{
     Coordinates, Location, LocationAvailability, LocationSnapshot, SatelliteSystem, UtcTime,
 };
+use paper_mesh_platform::time::{Date, Month};
 use receiver::{PROBE_MS, Receiver, SILENCE_MS};
 
 fn sentence(body: &str) -> Vec<u8> {
@@ -45,6 +46,45 @@ fn vendor_rmc_example_decodes_across_arbitrary_uart_chunks() {
             UtcTime::new(7, 15, 56).unwrap()
         );
         assert_eq!(receiver.snapshot.observation, None);
+        assert_eq!(
+            receiver.snapshot.utc.unwrap().date,
+            Some(Date::from_calendar_date(2020, Month::April, 25).unwrap())
+        );
+    }
+}
+
+#[test]
+fn rmc_date_validation_never_reuses_a_previous_date() {
+    let mut receiver = Receiver::INITIAL;
+    for (date, expected) in [
+        (
+            "290224",
+            Date::from_calendar_date(2024, Month::February, 29).ok(),
+        ),
+        (
+            "010100",
+            Date::from_calendar_date(2000, Month::January, 1).ok(),
+        ),
+        (
+            "311299",
+            Date::from_calendar_date(2099, Month::December, 31).ok(),
+        ),
+        ("290223", None),
+        ("310426", None),
+        ("000126", None),
+        ("011326", None),
+        ("", None),
+        ("01012", None),
+        ("01012026", None),
+        ("01a126", None),
+    ] {
+        feed(&mut receiver, &sentence(RMC), 10);
+        feed(&mut receiver, &sentence(&RMC.replace("250420", date)), 20);
+        let utc = receiver.snapshot.utc.unwrap();
+        assert_eq!(utc.date, expected, "{date}");
+        assert_eq!(utc.reference().is_some(), expected.is_some());
+        assert_eq!(utc.observed_at_ms, 20);
+        assert_eq!(utc.time, UtcTime::new(7, 15, 56).unwrap());
     }
 }
 

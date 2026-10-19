@@ -8,6 +8,7 @@ mod discovery;
 mod display;
 mod display_worker;
 mod gnss;
+mod rtc;
 #[cfg(feature = "radio-scan-demo")]
 mod scan_demo;
 mod touch;
@@ -21,19 +22,12 @@ use log::{error, info};
 use paper_mesh_app::App;
 use paper_mesh_platform::{Clock, location::Location, rotation::PortraitDisplay};
 
+use rtc::FirmwareClock;
 use static_cell::{ConstStaticCell, StaticCell};
 
 static APP: ConstStaticCell<App> = ConstStaticCell::new(App::new_at(0));
 static DISPLAY_STACK: ConstStaticCell<Stack<8192>> = ConstStaticCell::new(Stack::new());
 static DISPLAY_EXECUTOR: StaticCell<esp_rtos::embassy::Executor> = StaticCell::new();
-
-struct FirmwareClock;
-
-impl Clock for FirmwareClock {
-    fn now_ms(&self) -> u64 {
-        Instant::now().as_millis()
-    }
-}
 
 // This metadata describes the ESP image format.
 // It does not add an ESP-IDF application runtime.
@@ -74,6 +68,7 @@ fn initialize(spawner: Spawner) -> Option<display_worker::Client> {
         peripherals.GPIO43,
         peripherals.FROM_CPU_INTR3,
     );
+    spawner.spawn(rtc::worker(bus).unwrap());
     let panel = display::Panel::new(
         display::Pins {
             data0: peripherals.GPIO5,
@@ -168,7 +163,7 @@ async fn run_app(mut panel: Option<display_worker::Client>) -> ! {
         )
         .await;
         if let Some(uptime) = app.tick(&clock) {
-            info!("heartbeat: uptime={}s", uptime);
+            info!("heartbeat: uptime={}s; utc={:?}", uptime, clock.now_utc());
             info!("touch: stats={:?}", touch::statistics());
             let snapshot = location.snapshot(clock.now_ms());
             info!(

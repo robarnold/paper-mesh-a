@@ -1,4 +1,25 @@
-//! Monotonic timers and observation age checks.
+//! UTC calendar time, monotonic timers, and observation age checks.
+
+use ::time::SignedDuration;
+pub use ::time::{Date, Month, Time, UtcDateTime};
+
+/// A UTC reference and its receipt time in the monotonic epoch.
+/// Receipt time does not specify the source accuracy or transport delay.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct UtcReference {
+    pub datetime: UtcDateTime,
+    pub observed_at_ms: u64,
+}
+
+impl UtcReference {
+    /// Advance UTC by whole elapsed seconds without a change to monotonic time.
+    /// A future reference or calendar overflow supplies no value.
+    pub fn at(self, now_ms: u64) -> Option<UtcDateTime> {
+        let seconds = now_ms.checked_sub(self.observed_at_ms)? / 1_000;
+        self.datetime
+            .checked_add(SignedDuration::seconds(i64::try_from(seconds).ok()?))
+    }
+}
 
 /// Periodic deadlines keep their original phase after a late poll.
 pub struct PeriodicTimer {
@@ -68,6 +89,40 @@ impl ObservationWindow {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn utc_reference_handles_calendar_rollover_and_invalid_elapsed_time() {
+        for (year, month, day, next_year, next_month, next_day) in [
+            (2024, Month::February, 28, 2024, Month::February, 29),
+            (2024, Month::February, 29, 2024, Month::March, 1),
+            (2100, Month::February, 28, 2100, Month::March, 1),
+            (2026, Month::December, 31, 2027, Month::January, 1),
+        ] {
+            let datetime = UtcDateTime::new(
+                Date::from_calendar_date(year, month, day).unwrap(),
+                Time::from_hms(23, 59, 59).unwrap(),
+            );
+            let reference = UtcReference {
+                datetime,
+                observed_at_ms: 500,
+            };
+            assert_eq!(reference.at(499), None);
+            assert_eq!(reference.at(1_499), Some(datetime));
+            assert_eq!(
+                reference.at(1_500),
+                Some(UtcDateTime::new(
+                    Date::from_calendar_date(next_year, next_month, next_day).unwrap(),
+                    Time::MIDNIGHT,
+                ))
+            );
+            assert_eq!(reference.at(u64::MAX), None);
+        }
+        let reference = UtcReference {
+            datetime: UtcDateTime::MAX,
+            observed_at_ms: 0,
+        };
+        assert_eq!(reference.at(1_000), None);
+    }
 
     #[test]
     fn late_polls_keep_phase_without_repeated_events() {

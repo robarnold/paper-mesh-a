@@ -460,6 +460,7 @@ mod tests {
             utc: Some(UtcObservation {
                 observed_at_ms: 1_000,
                 time: UtcTime::new(0, 0, 0).unwrap(),
+                date: None,
             }),
             activity: Some(ReceiverActivity {
                 received_at_ms: 1_000,

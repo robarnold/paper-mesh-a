@@ -1,4 +1,4 @@
-//! Shared I2C access for display controls and touch reports.
+//! Shared I2C access for display controls, touch, GNSS power, and the RTC.
 
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 use esp_hal::{

@@ -17,6 +17,10 @@ use paper_mesh_app::debugger::Debugger;
 use paper_mesh_app::location::LocationScreen;
 use paper_mesh_platform::discovery::{RadioKind, ScanSource};
 use paper_mesh_platform::ui::format::satellite_label;
+use paper_mesh_platform::{
+    location::{Location, LocationAvailability},
+    time::{ObservationWindow, UtcDateTime, UtcReference},
+};
 
 // This artificial delay exercises asynchronous refresh.
 // It is not a panel measurement.
@@ -27,11 +31,18 @@ pub const SCREEN_SIZE: Size = ROTATION.size();
 const ROTATION: PortraitRotation = PortraitRotation::new(NATIVE_SCREEN_SIZE);
 
 #[derive(Default)]
-pub struct VirtualClock(u64);
+pub struct VirtualClock {
+    now_ms: u64,
+    utc: Option<UtcReference>,
+}
 
 impl Clock for VirtualClock {
     fn now_ms(&self) -> u64 {
-        self.0
+        self.now_ms
+    }
+
+    fn now_utc(&self) -> Option<UtcDateTime> {
+        self.utc?.at(self.now_ms)
     }
 }
 
@@ -149,6 +160,7 @@ fn encode_png(size: Size, pixels: &[u8]) -> Result<Vec<u8>, png::EncodingError> 
 #[derive(Serialize)]
 pub struct Snapshot {
     pub now_ms: u64,
+    pub utc_datetime: Option<String>,
     pub taps: u32,
     pub heartbeats: u64,
     pub last_heartbeat_seconds: Option<u64>,
@@ -227,6 +239,17 @@ impl Default for Simulation {
 impl Simulation {
     fn poll(&mut self) {
         self.display.advance_to(self.clock.now_ms());
+        let location = self.location.snapshot(self.clock.now_ms());
+        if location.availability == LocationAvailability::Ready
+            && let Some(reference) = location.utc.and_then(|utc| utc.reference())
+            && ObservationWindow::new(self.clock.now_ms(), 2_000).contains(reference.observed_at_ms)
+            && self
+                .clock
+                .utc
+                .is_none_or(|previous| reference.observed_at_ms > previous.observed_at_ms)
+        {
+            self.clock.utc = Some(reference);
+        }
         self.app.poll_discovery(&self.clock, &mut self.discovery);
         self.app.poll_location(&self.clock, &mut self.location);
         if let Some(uptime) = self.app.tick(&self.clock) {
@@ -241,8 +264,8 @@ impl Simulation {
     /// Visits deadlines in order, including advances across many heartbeats.
     /// Large time advances give the same behavior as many small advances.
     pub fn advance(&mut self, duration_ms: u64) {
-        let end = self.clock.0.saturating_add(duration_ms);
-        while self.clock.0 < end {
+        let end = self.clock.now_ms.saturating_add(duration_ms);
+        while self.clock.now_ms < end {
             let mut next = end.min(self.app.next_deadline_ms());
             if let Some(deadline) = self.discovery.next_deadline_ms() {
                 next = next.min(deadline);
@@ -253,7 +276,7 @@ impl Simulation {
             if self.display.is_busy() {
                 next = next.min(self.display.ready_at_ms);
             }
-            self.clock.0 = next;
+            self.clock.now_ms = next;
             self.poll();
         }
     }
@@ -310,6 +333,18 @@ impl Simulation {
         self.app.location()
     }
 
+    pub fn clock(&self) -> &impl Clock {
+        &self.clock
+    }
+
+    /// Set or invalidate simulated calendar time without a monotonic correction.
+    pub fn set_utc(&mut self, datetime: Option<UtcDateTime>) {
+        self.clock.utc = datetime.map(|datetime| UtcReference {
+            datetime,
+            observed_at_ms: self.clock.now_ms(),
+        });
+    }
+
     pub fn set_location_scenario(&mut self, scenario: LocationScenario) {
         self.location.set_scenario(scenario, self.clock.now_ms());
         self.poll();
@@ -346,6 +381,17 @@ impl Simulation {
         };
         Snapshot {
             now_ms: self.clock.now_ms(),
+            utc_datetime: self.clock.now_utc().map(|utc| {
+                format!(
+                    "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
+                    utc.year(),
+                    utc.month() as u8,
+                    utc.day(),
+                    utc.hour(),
+                    utc.minute(),
+                    utc.second(),
+                )
+            }),
             taps: self.app.taps(),
             heartbeats: self.heartbeats,
             last_heartbeat_seconds: self.last_heartbeat_seconds,

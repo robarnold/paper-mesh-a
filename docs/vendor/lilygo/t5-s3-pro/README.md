@@ -23,6 +23,7 @@ They do not define requirements for all application targets.
 | ED047TC1 e-paper panel | [Datasheet](https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/hardware/ED047TC1.pdf) |
 | TPS65185 display power supply | [Datasheet](https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/hardware/tps65185.pdf) |
 | PCA9535 I/O expander | [Datasheet](https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/hardware/pca9535.pdf) |
+| PCF8563 RTC, revision 11.1 dated 2026-01-19 | [NXP datasheet](https://www.nxp.com/docs/en/data-sheet/PCF8563.pdf) |
 | MIA-M10Q GPS option | [Datasheet](https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/hardware/MIA-M10Q_DataSheet_UBX-22015849.pdf) |
 | L76K GPS option | [Protocol specification](https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/hardware/Quectel_L76K_GNSS_Protocol_Specification_V1.1.pdf) |
 | Mechanical drawings | [Board size](https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/DXF/H752-Board%20size.dxf), [shell size](https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/DXF/H752-Shell%20size.dwg), [H752 drawing](https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/DXF/H752.dxf) |
