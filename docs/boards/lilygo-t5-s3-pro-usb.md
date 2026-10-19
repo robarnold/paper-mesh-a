@@ -44,9 +44,13 @@ Held contacts repeat after 16 ms without a new frame to prevent Linux's 100 ms c
 Idle sessions with no contacts send no periodic reports.
 A write has a 100 ms deadline. Failure cancels the session and restarts USB.
 Queue generations prevent delivery of reports from an earlier connection.
+A failed write from an earlier generation cannot restart the current connection.
 
 Mode exit, explicit cancellation, transport failure, and resume detach the composite device.
-The adapter disables USB for 250 ms before re-enumeration.
+Resume causes detachment only after a configured connection enters the suspended state.
+The adapter restores the USB clocks and sets `DCTL.SFTDISCON` before it disables the Embassy device state.
+The resolved Synopsys driver, version 0.4.0, does not implement peripheral shutdown in its `Bus::disable()` method.
+The adapter clears `DCTL.SFTDISCON` after 250 ms to permit re-enumeration.
 This operation also disconnects CDC serial. Serial clients must reconnect.
 It removes host gesture state that release reports alone might retain.
 A held contact cannot start input again until all contacts lift.
@@ -64,6 +68,10 @@ Logging retains 32 lines with a 192-byte limit per line. A full queue drops new 
 Logging never waits for a connected terminal in application or interrupt code.
 UART logging remains unavailable because the board connects that UART path to GNSS.
 The panic handler still uses Serial/JTAG. Panic text is unavailable after the PHY switches to OTG.
+Before the panic handler prints, a hook saves up to 12 return addresses in persistent RTC memory.
+The next startup sends those addresses through the CDC log queue if the memory retains its contents.
+Decode the addresses with the ELF from the firmware that panicked.
+Power loss can erase this evidence. The hook does not detect a stall without a panic.
 
 CDC supplies logs only. It does not accept commands.
 Software recovery from USB OTG to the ROM downloader remains unsupported.
@@ -82,10 +90,13 @@ No build recipe flashes hardware.
 
 ## Verification limits
 
-Linux driver binding, libinput classification, and CDC logging have physical verification.
+Linux driver binding, libinput classification, and startup CDC logging have physical verification.
 Physical BOOT/Reset recovery and flashing through USB Serial/JTAG have verification.
 Native tests verify contact reports, releases, mode exit, backpressure, and reconnect suppression.
-Physical movement, two-finger scrolling, Home-key exit, and button debounce require human input checks.
+Physical pointer movement, two-finger scrolling, and exit through Function and Home have verification.
+USB control requests succeed after both exit paths.
+Button debounce under repeated presses, suspend recovery, and retained panic diagnostics require further physical checks.
+CDC log delivery after mode exit remains unverified.
 Five-contact decoding does not establish five-contact reporting from the fitted controller configuration.
 The [touch profile](lilygo-t5-s3-pro-touch.md) records that distinction.
 

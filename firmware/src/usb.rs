@@ -64,11 +64,15 @@ impl TouchpadHost for FirmwareTouchpad {
     }
     fn set_active(&mut self, active: bool) {
         let previous = ACTIVE.swap(active, Ordering::AcqRel);
+        if previous != active {
+            log::info!("touchpad: active={}; host={:?}", active, self.state());
+        }
         if previous && !active {
             self.cancel();
         }
     }
     fn cancel(&mut self) {
+        log::info!("touchpad: cancel; host={:?}", self.state());
         change(0);
         RESTART.signal(());
     }
@@ -99,12 +103,13 @@ impl Handler for Events {
         change(0);
     }
     fn configured(&mut self, configured: bool) {
+        log::info!("USB: configured={}", configured);
         change(u32::from(configured));
     }
     fn suspended(&mut self, suspended: bool) {
-        if suspended {
+        if suspended && STATUS.load(Ordering::Acquire) == 1 {
             change(2);
-        } else {
+        } else if !suspended && STATUS.load(Ordering::Acquire) == 2 {
             // Detach after resume so Linux cannot retain an interrupted gesture.
             FirmwareTouchpad.cancel();
         }
@@ -181,9 +186,20 @@ pub fn start(
 async fn bus_worker(mut device: UsbDevice<'static, Driver<'static>>) {
     loop {
         select(device.run(), RESTART.wait()).await;
+        // The resolved Synopsys driver's disable() does not disconnect the PHY.
+        // Keep clocks running and detach before resetting the USB stack state.
+        USB_FS::regs().pcgcctl().modify(|_, w| {
+            w.stoppclk().clear_bit();
+            w.gatehclk().clear_bit()
+        });
+        USB_FS::regs().dctl().modify(|_, w| w.sftdiscon().set_bit());
         // Embassy requires disable after cancellation of run().
         device.disable().await;
         Timer::after_millis(250).await;
+        USB_FS::regs()
+            .dctl()
+            .modify(|_, w| w.sftdiscon().clear_bit());
+        log::info!("USB: reconnect");
     }
 }
 
@@ -212,6 +228,7 @@ async fn hid_worker(mut writer: hid::HidWriter<'static, Driver<'static>, REPORT_
         if epoch != generation {
             encoder = Encoder::default();
             generation = epoch;
+            log::info!("touchpad: first report; generation={}", generation);
         }
         let reports = encoder.encode(frame);
         for packet in reports.packets() {
@@ -222,7 +239,10 @@ async fn hid_worker(mut writer: hid::HidWriter<'static, Driver<'static>, REPORT_
                 with_timeout(Duration::from_millis(100), writer.write(packet)).await,
                 Ok(Ok(()))
             ) {
-                FirmwareTouchpad.cancel();
+                if epoch == GENERATION.load(Ordering::Acquire) {
+                    log::warn!("touchpad: HID write failed or timed out");
+                    FirmwareTouchpad.cancel();
+                }
                 break;
             }
         }

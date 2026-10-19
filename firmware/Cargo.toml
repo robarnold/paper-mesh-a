@@ -30,7 +30,7 @@ embassy-sync = "0.8.0"
 embassy-time = { version = "0.5.1", features = ["log"] }
 embassy-usb = { version = "0.6.0", default-features = false, features = ["log"] }
 esp-alloc = { version = "0.11.0", features = ["esp32s3"] }
-esp-backtrace = { version = "0.20.0", default-features = false, features = ["esp32s3", "panic-handler", "println"] }
+esp-backtrace = { version = "0.20.0", default-features = false, features = ["esp32s3", "panic-handler", "println", "custom-pre-backtrace"] }
 esp-bootloader-esp-idf = { version = "0.6.0", features = ["esp32s3", "log-04"] }
 # esp-rtos uses unstable HAL APIs. Keep the compatible HAL minor release.
 esp-hal = { version = "~1.2.2", features = ["esp32s3", "log-04", "unstable"] }

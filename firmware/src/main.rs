@@ -5,6 +5,7 @@ extern crate alloc;
 
 mod bus;
 mod buttons;
+mod diagnostics;
 mod discovery;
 mod display;
 mod display_worker;
@@ -57,6 +58,7 @@ fn initialize(spawner: Spawner) -> Option<display_worker::Client> {
         peripherals.GPIO20,
         peripherals.GPIO19,
     );
+    diagnostics::report_previous_panic();
     spawner.spawn(discovery::worker(peripherals.WIFI, peripherals.BT).unwrap());
 
     info!(
@@ -154,12 +156,16 @@ async fn run_app(mut panel: Option<display_worker::Client>) -> ! {
                 sample.during_refresh
             );
             let previous = app.taps();
+            let was_touchpad_open = app.touchpad_open();
             if touchpad_session.input(&sample.frame, &mut touchpad) {
                 for event in sample.frame.events() {
                     app.touch(event);
                 }
             }
             touchpad_session.set_active(app.touchpad_open(), &mut touchpad);
+            if app.touchpad_open() != was_touchpad_open {
+                info!("touchpad: application mode={}", app.touchpad_open());
+            }
             if app.taps() != previous {
                 info!(
                     "touch: count={}; stats={:?}",

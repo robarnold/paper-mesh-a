@@ -67,7 +67,8 @@ The second API starts touch service on the core that installs its software inter
 Physical checks established single-contact input and rapid taps during concurrent display refresh.
 The fitted controller configuration can limit reporting below the protocol maximum.
 Firmware logs that limit from register `0x804C` and preserves it.
-Multiple-contact tracking requires further physical checks. Native protocol tests cover five contacts and changes in report order.
+Physical checks established two-contact tracking and two-finger scrolling through the USB touchpad.
+Native protocol tests cover five contacts and changes in report order.
 Edge calibration, maximum input rate, and latency before GPIO handler entry remain unverified.
 Unread GT911 reports can delay later contact changes until the host acknowledges the report.
 Touch service must therefore continue during display scans.

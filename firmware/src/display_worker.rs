@@ -33,6 +33,7 @@ pub async fn worker() {
     info!("display: worker started; core=1");
     loop {
         let mut panel = REQUEST.receive().await;
+        info!("display: refresh started");
         REFRESHING.store(true, Ordering::Relaxed);
         let result = panel.refresh();
         REFRESHING.store(false, Ordering::Relaxed);
