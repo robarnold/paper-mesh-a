@@ -15,6 +15,7 @@ pub mod location;
 pub mod power;
 pub mod rotation;
 pub mod time;
+pub mod touchpad;
 pub mod ui;
 
 /// Monotonic time and optional UTC calendar time.

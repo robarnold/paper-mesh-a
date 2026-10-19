@@ -14,6 +14,7 @@ mod rtc;
 #[cfg(feature = "radio-scan-demo")]
 mod scan_demo;
 mod touch;
+mod usb;
 
 use embassy_executor::Spawner;
 use embassy_futures::select::{select, select4};
@@ -22,6 +23,7 @@ use esp_backtrace as _;
 use esp_hal::{clock::CpuClock, system::Stack, timer::timg::TimerGroup};
 use log::{error, info};
 use paper_mesh_app::App;
+use paper_mesh_platform::touchpad::{TouchpadHost, TouchpadSession};
 use paper_mesh_platform::{Clock, location::Location, rotation::PortraitDisplay};
 
 use rtc::FirmwareClock;
@@ -44,12 +46,17 @@ async fn main(spawner: Spawner) -> ! {
 fn initialize(spawner: Spawner) -> Option<display_worker::Client> {
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::_240MHz);
     let peripherals = esp_hal::init(config);
-    esp_println::logger::init_logger_from_env();
 
     // Radio drivers and RTOS tasks use internal RAM.
     esp_alloc::heap_allocator!(size: 128 * 1024);
     let timers = TimerGroup::new(peripherals.TIMG0);
     esp_rtos::start(timers.timer0, peripherals.FROM_CPU_INTR0);
+    usb::start(
+        spawner,
+        peripherals.USB_FS,
+        peripherals.GPIO20,
+        peripherals.GPIO19,
+    );
     spawner.spawn(discovery::worker(peripherals.WIFI, peripherals.BT).unwrap());
 
     info!(
@@ -126,12 +133,14 @@ async fn run_app(mut panel: Option<display_worker::Client>) -> ! {
     let mut discovery = discovery::FirmwareDiscovery;
     let mut location = gnss::FirmwareLocation;
     let mut power = power::FirmwarePower;
+    let mut touchpad = usb::FirmwareTouchpad;
+    let mut touchpad_session = TouchpadSession::new();
     #[cfg(feature = "radio-scan-demo")]
     scan_demo::run(&mut discovery).await;
     loop {
-        while let Some(event) = buttons::next_event() {
-            info!("button: {:?}", event);
-        }
+        touchpad_session.set_active(app.touchpad_open(), &mut touchpad);
+        touchpad_session.poll(&touchpad);
+        app.set_touchpad_host(touchpad.state());
         app.poll_discovery(&clock, &mut discovery);
         app.poll_location(&clock, &mut location);
         app.poll_power(&clock, &mut power);
@@ -145,9 +154,12 @@ async fn run_app(mut panel: Option<display_worker::Client>) -> ! {
                 sample.during_refresh
             );
             let previous = app.taps();
-            for event in sample.frame.events() {
-                app.touch(event);
+            if touchpad_session.input(&sample.frame, &mut touchpad) {
+                for event in sample.frame.events() {
+                    app.touch(event);
+                }
             }
+            touchpad_session.set_active(app.touchpad_open(), &mut touchpad);
             if app.taps() != previous {
                 info!(
                     "touch: count={}; stats={:?}",
@@ -156,6 +168,12 @@ async fn run_app(mut panel: Option<display_worker::Client>) -> ! {
                 );
             }
         }
+        // Drain earlier touch frames before applying an exit button.
+        while let Some(event) = buttons::next_event() {
+            info!("button: {:?}", event);
+            app.hardware_button(event, &[buttons::FUNCTION, buttons::HOME]);
+        }
+        touchpad_session.set_active(app.touchpad_open(), &mut touchpad);
         if let Some(display) = panel.as_mut()
             && let Err(error) = display.complete().and_then(|()| {
                 let submitted = app.present(&mut PortraitDisplay::new(display))?;
@@ -169,7 +187,7 @@ async fn run_app(mut panel: Option<display_worker::Client>) -> ! {
             panel = None;
         }
         select4(
-            select(touch::changed(), buttons::changed()),
+            select(touch::changed(), select(buttons::changed(), usb::changed())),
             display_worker::changed(),
             select(
                 discovery::changed(),

@@ -317,6 +317,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "paper-mesh-hid-touchpad"
+version = "0.1.0"
+dependencies = [
+ "embedded-graphics",
+ "paper-mesh-platform",
+]
+
+[[package]]
 name = "paper-mesh-platform"
 version = "0.1.0"
 dependencies = [

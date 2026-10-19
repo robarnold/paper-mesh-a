@@ -15,10 +15,11 @@ The toolkit has no dependency on a particular application.
 | [`firmware/src`](../firmware/src/main.rs) adapters | Hardware services, drivers, buffers, and resource control | Platform and chip drivers |
 | [`simulator/src/lib.rs`](../simulator/src/lib.rs) | Native services and deterministic application execution | Application and platform |
 | [`simulator/src/main.rs`](../simulator/src/main.rs) | HTTP transport and wall-clock pacing | Simulator and platform |
+| [`crates/hid-touchpad`](../crates/hid-touchpad/src/lib.rs) | Host HID descriptors and contact encoding | Platform |
 | [`crates/ed047tc1`](../crates/ed047tc1/src/lib.rs), [`crates/gt911`](../crates/gt911/src/lib.rs) | Chip protocols and display encoding | None |
 
 Both shared crates use `no_std` without heap allocation.
-The root workspace also builds the simulator and tests the chip protocols.
+The root workspace also builds the simulator and tests the chip and host protocols.
 Firmware stays outside that workspace to isolate Xtensa settings and ESP dependency features.
 Its manifest uses path dependencies for both shared crates.
 

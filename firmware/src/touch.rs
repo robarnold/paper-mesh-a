@@ -190,7 +190,14 @@ impl Touch {
             "touch: GT911 address=0x{:02x}; firmware=0x{:04x}; vendor={}; raw={}x{}",
             driver.address, driver.firmware, driver.vendor, driver.width, driver.height
         );
-        info!("touch: original config 0x8047..0x8100={:02x?}", config);
+        for (index, bytes) in config.chunks(16).enumerate() {
+            info!("touch: config 0x{:04x}={:02x?}", 0x8047 + index * 16, bytes);
+        }
+        info!(
+            "touch: configured contact limit={}; key enabled={}",
+            config[5] & 15,
+            config[7] & 1 != 0
+        );
         if config[0x804d - 0x8047] & 3 != 2 {
             error!("touch: low-level interrupt mode required; configuration unchanged");
             return None;

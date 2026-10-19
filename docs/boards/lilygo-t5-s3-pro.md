@@ -28,7 +28,7 @@ waveform limits, driver limits, and necessary performance measurements.
 | PSRAM | 8 MB OPI at 40 MHz. Two framebuffers use a reserved region of 518,400 bytes. |
 | Application CPU clock | 240 MHz |
 | Executor | Application and touch on core 0. Display refresh on core 1. Embassy through esp-rtos. |
-| Application logging | USB Serial/JTAG only |
+| Application logging | USB OTG CDC serial. See the USB profile for recovery and panic limits. |
 | Display | ED047TC1, 960 × 540, 4.7-inch grayscale e-paper |
 | Radio | SX1262. Driver and protocol selection stay undecided. |
 
@@ -52,6 +52,7 @@ The second-stage bootloader can select another flash mode after ROM startup.
 | Topic | Contents |
 | --- | --- |
 | [Display](lilygo-t5-s3-pro-display.md) | Native storage, scan output, waveform evidence, and limits |
+| [USB](lilygo-t5-s3-pro-usb.md) | Host touchpad, CDC diagnostics, cancellation, and ROM recovery |
 | [Touch](lilygo-t5-s3-pro-touch.md) | Report protocol, interrupts, shared I2C, and Home-key design |
 | [GNSS](lilygo-t5-s3-pro-gnss.md) | UART, baud selection, NMEA decoding, and observation validity |
 | [RTC](lilygo-t5-s3-pro-rtc.md) | Calendar retention, validity, and GPS synchronization |

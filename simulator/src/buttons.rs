@@ -1,7 +1,7 @@
 //! Hardware controls for the native board profile.
 
 use paper_mesh_platform::input::buttons::{
-    ButtonCapability, ButtonDebouncer, ButtonDescriptor, ButtonEvent, ButtonId, ButtonState,
+    ButtonCapability, ButtonDebouncer, ButtonDescriptor, ButtonEvent, ButtonId,
 };
 use serde::Serialize;
 
@@ -97,8 +97,4 @@ impl SimButtons {
             })
             .collect()
     }
-}
-
-pub fn is_exit(event: ButtonEvent) -> bool {
-    [FUNCTION, HOME].contains(&event.id) && event.state == ButtonState::Pressed
 }

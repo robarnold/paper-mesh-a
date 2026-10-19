@@ -105,3 +105,20 @@ The [application](../application.md#power-screen) defines display intervals and 
 Native tests cover independent failures, recovery, expiry, navigation, and display updates.
 Large and small time advances produce the same state and completed frame.
 Separate native tests execute the firmware register adapter with simulated I2C responses.
+
+## USB touchpad
+
+1. Select `USB touchpad` on the device screen or in the browser controls.
+2. Drag on the display or mini touchpad.
+3. Use multiple fingers, or hold Shift during a mouse click to retain a contact.
+4. Inspect the contact IDs on the mini touchpad.
+5. Press Escape to cancel all retained contacts.
+6. Select a USB host state to exercise disconnection, suspend, or faults.
+7. Press Function or Home to exit.
+
+The mini touchpad supports up to five concurrent contacts.
+Movement changes contact observations and accepted report counts without an e-paper refresh.
+A host state change suppresses held contacts until release.
+Exit increments the detachment count. The browser cancels any retained synthetic contacts.
+Native tests cover activation tap suppression, independent releases, mode exit, cancellation, and reconnects.
+USB packet timing and physical gestures require hardware checks.

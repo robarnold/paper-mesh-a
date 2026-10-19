@@ -6,7 +6,7 @@ use std::{
 };
 
 use embedded_graphics::prelude::*;
-use paper_mesh_platform::TouchEvent;
+use paper_mesh_platform::{TouchEvent, touchpad::HostState};
 use paper_mesh_simulator::SCREEN_SIZE;
 use paper_mesh_simulator::discovery::ScanScenario;
 use paper_mesh_simulator::location::LocationScenario;
@@ -21,6 +21,9 @@ type HttpResponse = Response<Cursor<Vec<u8>>>;
 #[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 enum Command {
+    TouchpadHost {
+        state: HostScenario,
+    },
     HardwareButton {
         id: u8,
         pressed: bool,
@@ -61,6 +64,15 @@ enum Command {
     },
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum HostScenario {
+    Ready,
+    Disconnected,
+    Suspended,
+    Fault,
+}
+
 #[derive(Serialize)]
 struct State {
     #[serde(flatten)]
@@ -86,6 +98,12 @@ impl Session {
 
     fn command(&mut self, command: Command) -> Result<(), &'static str> {
         match command {
+            Command::TouchpadHost { state } => self.simulation.set_touchpad_host(match state {
+                HostScenario::Ready => HostState::Ready,
+                HostScenario::Disconnected => HostState::Disconnected,
+                HostScenario::Suspended => HostState::Suspended,
+                HostScenario::Fault => HostState::Fault,
+            }),
             Command::HardwareButton { id, pressed } => {
                 self.simulation.hardware_button(id, pressed)?
             }

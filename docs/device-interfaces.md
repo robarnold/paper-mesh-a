@@ -81,6 +81,8 @@ Wall-clock corrections must not move debounce, timeout, or display deadlines
 backward. Queue overflow must invalidate affected input state.
 It must not silently discard a release event.
 
+The [host touchpad contract](services/touchpad.md) implements raw input forwarding through an optional host connection.
+
 ## Service catalog
 
 | ID | Service / consumers | Contract scope |

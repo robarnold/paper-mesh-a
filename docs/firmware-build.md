@@ -39,6 +39,8 @@ specifies scan behavior, limits, and the optional `radio-scan-demo` feature.
 The default build waits for application requests.
 Application controls request scans through the portable discovery interface.
 
+The [USB backend profile](boards/lilygo-t5-s3-pro-usb.md#diagnostics-and-recovery) specifies CDC logs, ROM recovery, and flashing after OTG startup.
+
 ## Linker configuration
 
 `firmware/ld/esp32s3-readonly.x` is a versioned copy of the esp-hal 1.2.2 chip

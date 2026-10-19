@@ -13,12 +13,14 @@ pub mod buttons;
 pub mod discovery;
 pub mod location;
 pub mod power;
+pub mod touchpad;
 use discovery::{ScanScenario, SimDiscovery};
 use location::{LocationScenario, SimLocation};
 use paper_mesh_app::debugger::Debugger;
 use paper_mesh_app::location::LocationScreen;
 use paper_mesh_app::power::PowerScreen;
 use paper_mesh_platform::discovery::{RadioKind, ScanSource};
+use paper_mesh_platform::touchpad::{HostState, TouchpadHost, TouchpadSession};
 use paper_mesh_platform::ui::format::satellite_label;
 use paper_mesh_platform::{
     location::{Location, LocationAvailability},
@@ -163,6 +165,10 @@ fn encode_png(size: Size, pixels: &[u8]) -> Result<Vec<u8>, png::EncodingError> 
 
 #[derive(Serialize)]
 pub struct Snapshot {
+    pub touchpad_open: bool,
+    pub touchpad_host: &'static str,
+    pub touchpad_reports: u64,
+    pub touchpad_detachments: u64,
     pub contacts: Vec<ContactSnapshot>,
     pub hardware_buttons: Vec<buttons::ButtonSnapshot>,
     pub now_ms: u64,
@@ -234,7 +240,8 @@ pub struct ContactSnapshot {
 }
 
 pub struct Simulation {
-    contacts: paper_mesh_platform::input::contacts::ContactState,
+    touchpad_session: TouchpadSession,
+    touchpad: touchpad::SimTouchpad,
     buttons: buttons::SimButtons,
     app: App,
     clock: VirtualClock,
@@ -250,7 +257,8 @@ impl Default for Simulation {
     fn default() -> Self {
         let clock = VirtualClock::default();
         let mut simulation = Self {
-            contacts: paper_mesh_platform::input::contacts::ContactState::new(),
+            touchpad_session: TouchpadSession::new(),
+            touchpad: touchpad::SimTouchpad::default(),
             buttons: buttons::SimButtons::default(),
             app: App::new(&clock),
             clock,
@@ -268,15 +276,23 @@ impl Default for Simulation {
 
 impl Simulation {
     pub fn hardware_button(&mut self, id: u8, pressed: bool) -> Result<(), &'static str> {
-        self.buttons.sample(
+        let event = self.buttons.sample(
             paper_mesh_platform::input::buttons::ButtonId(id),
             pressed,
             self.clock.now_ms(),
         )?;
+        if let Some(event) = event {
+            self.app
+                .hardware_button(event, &[buttons::FUNCTION, buttons::HOME]);
+        }
         self.poll();
         Ok(())
     }
     fn poll(&mut self) {
+        self.touchpad_session
+            .set_active(self.app.touchpad_open(), &mut self.touchpad);
+        self.touchpad_session.poll(&self.touchpad);
+        self.app.set_touchpad_host(self.touchpad.state());
         self.display.advance_to(self.clock.now_ms());
         let location = self.location.snapshot(self.clock.now_ms());
         if location.availability == LocationAvailability::Ready
@@ -338,12 +354,10 @@ impl Simulation {
         for event in frame.events() {
             normalized.push(ROTATION.touch_to_portrait(event));
         }
-        if self.contacts.apply(&normalized) {
+        if self.touchpad_session.input(&normalized, &mut self.touchpad) {
             for event in normalized.events() {
                 self.app.touch(event);
             }
-        } else {
-            self.app.touch(TouchEvent::Cancel);
         }
         self.poll();
     }
@@ -374,6 +388,14 @@ impl Simulation {
 
     pub fn display(&self) -> &SimDisplay {
         &self.display
+    }
+
+    pub fn set_touchpad_host(&mut self, state: HostState) {
+        if state != self.touchpad.state {
+            self.touchpad.cancel();
+        }
+        self.touchpad.state = state;
+        self.poll();
     }
 
     pub fn debugger(&self) -> &Debugger {
@@ -427,34 +449,48 @@ impl Simulation {
         let view = location.view();
         let power = self.app.power();
         let power_view = power.view();
-        let targets: &[(&str, embedded_graphics::primitives::Rectangle)] = if power.is_open() {
-            &[
-                ("Back", BACK_TARGET),
-                ("Battery", paper_mesh_app::power::BATTERY_TAB),
-                ("Charger", paper_mesh_app::power::CHARGER_TAB),
-            ]
-        } else if location.is_open() {
-            &[("Back", BACK_TARGET)]
-        } else if debugger.is_open() {
-            &[
-                ("Back", BACK_TARGET),
-                ("Wi-Fi", WIFI_TARGET),
-                ("Bluetooth LE", BLUETOOTH_TARGET),
-                ("Scan again", SCAN_TARGET),
-                ("Previous", PREVIOUS_TARGET),
-                ("Next", NEXT_TARGET),
-            ]
-        } else {
-            &[
-                ("Tap counter", TAP_TARGET),
-                ("Radio debugger", DEBUGGER_TARGET),
-                ("GNSS", paper_mesh_app::location::LOCATION_TARGET),
-                ("Power", paper_mesh_app::power::POWER_TARGET),
-            ]
-        };
+        let targets: &[(&str, embedded_graphics::primitives::Rectangle)] =
+            if self.app.touchpad_open() {
+                &[]
+            } else if power.is_open() {
+                &[
+                    ("Back", BACK_TARGET),
+                    ("Battery", paper_mesh_app::power::BATTERY_TAB),
+                    ("Charger", paper_mesh_app::power::CHARGER_TAB),
+                ]
+            } else if location.is_open() {
+                &[("Back", BACK_TARGET)]
+            } else if debugger.is_open() {
+                &[
+                    ("Back", BACK_TARGET),
+                    ("Wi-Fi", WIFI_TARGET),
+                    ("Bluetooth LE", BLUETOOTH_TARGET),
+                    ("Scan again", SCAN_TARGET),
+                    ("Previous", PREVIOUS_TARGET),
+                    ("Next", NEXT_TARGET),
+                ]
+            } else {
+                &[
+                    ("Tap counter", TAP_TARGET),
+                    ("Radio debugger", DEBUGGER_TARGET),
+                    ("GNSS", paper_mesh_app::location::LOCATION_TARGET),
+                    ("Power", paper_mesh_app::power::POWER_TARGET),
+                    ("USB touchpad", paper_mesh_app::touchpad::TOUCHPAD_TARGET),
+                ]
+            };
         Snapshot {
+            touchpad_open: self.app.touchpad_open(),
+            touchpad_host: match self.touchpad.state() {
+                HostState::Ready => "ready",
+                HostState::Disconnected => "disconnected",
+                HostState::Suspended => "suspended",
+                HostState::Fault => "fault",
+            },
+            touchpad_reports: self.touchpad.reports,
+            touchpad_detachments: self.touchpad.detachments,
             contacts: self
-                .contacts
+                .touchpad_session
+                .contacts()
                 .contacts()
                 .map(|c| ContactSnapshot {
                     id: c.id,

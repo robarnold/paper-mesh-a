@@ -65,6 +65,8 @@ The second API starts touch service on the core that installs its software inter
 ## Verification limits
 
 Physical checks established single-contact input and rapid taps during concurrent display refresh.
+The fitted controller configuration can limit reporting below the protocol maximum.
+Firmware logs that limit from register `0x804C` and preserves it.
 Multiple-contact tracking requires further physical checks. Native protocol tests cover five contacts and changes in report order.
 Edge calibration, maximum input rate, and latency before GPIO handler entry remain unverified.
 Unread GT911 reports can delay later contact changes until the host acknowledges the report.
@@ -139,7 +141,7 @@ The vendor's [`loadConfig`/`dumpRegister` methods][gt911-config] provide a readb
 example. Reset does not necessarily restore initial settings.
 Until measurements establish extra area, Home stays a logical key and extra
 bezel controls stay unavailable.
-These findings do not implement a driver or simulator model.
+The current adapter exposes configured Home-key reports. Extra bezel area remains outside the input model.
 
 [factory-touch]: https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/examples/factory/main/main.cpp#L328-L351
 [gt911-init]: https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/lib/SensorLib/src/TouchDrvGT911.hpp#L546-L645

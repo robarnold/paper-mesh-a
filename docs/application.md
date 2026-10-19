@@ -17,7 +17,7 @@ The application uses logical coordinates for rendering and touch targets.
 It does not select native panel dimensions or a mounting transform.
 Configurable layout and viewport changes stay planned work.
 
-The home screen contains a tap counter, uptime, a grayscale sample, and three navigation buttons.
+The home screen contains a tap counter, uptime, a grayscale sample, and four navigation buttons.
 The platform supplies normalized events.
 
 The application uses the [toolkit gesture](platform/toolkit.md) for tap recognition and cancellation.
@@ -38,6 +38,20 @@ Successful submission clears the dirty flag.
 Changes during a refresh combine into the next frame.
 A drawing error or submission error keeps the frame pending for a retry.
 The platform controls completion, driver recovery, and retry delays.
+
+## USB touchpad
+
+Select `USB touchpad` on the home screen to forward raw contacts to the USB host.
+The screen shows host status and exit instructions.
+Press Function or Home to return to the home screen.
+Runtime bindings supply these control identities to the application.
+Reset remains a board restart. Charger QON has no software exit action.
+
+The [host session](services/touchpad.md) suppresses input across mode and connection changes.
+Linux owns pointer movement, tapping, and gestures.
+The application does not map finger movement to mouse reports.
+Contact changes and heartbeat updates do not refresh this static screen.
+Host status changes and mode changes can refresh it.
 
 ## Radio debugger
 

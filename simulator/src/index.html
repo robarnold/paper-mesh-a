@@ -32,6 +32,9 @@
     #device-controls { display: flex; flex-wrap: wrap; gap: 8px; }
     label { display: block; font-size: 13px; margin-bottom: 8px; }
     select { width: 100%; padding: 10px; border: 1px solid #c6cabe; border-radius: 7px; background: #fafaf6; color: inherit; font: inherit; font-size: 13px; }
+    #touchpad-panel[hidden] { display: none; }
+    #pad { display: block; width: min(100%, 216px); aspect-ratio: 9/16; background: #e0e6dc; border: 1px solid #9aa891; border-radius: 12px; touch-action: none; }
+    #pad-status { font-size: 12px; line-height: 1.7; }
     #error { color: #963b28; min-height: 20px; font-size: 13px; }
     @media (max-width: 650px) { body { padding: 18px; } .workspace { grid-template-columns: 1fr; gap: 0; } .device { width: min(100%, 380px); margin: auto; padding: 14px; border-radius: 14px; } header { align-items: start; flex-wrap: wrap; } }
   </style>
@@ -60,6 +63,17 @@
     <h2>Hardware buttons</h2>
     <div id="hardware-buttons" role="group" aria-label="Hardware buttons"></div>
     <p class="note">Reset restarts the simulator. QON acts on the charger and has no readable button signal.</p>
+    <section id="touchpad-panel" hidden>
+      <h2>Host touchpad</h2>
+      <canvas id="pad" width="540" height="960" aria-label="Touchpad with contact IDs"></canvas>
+      <p id="pad-status" role="status"></p>
+      <label for="touchpad-host">USB host state</label>
+      <select id="touchpad-host">
+        <option value="ready">Ready</option><option value="disconnected">Disconnected</option>
+        <option value="suspended">Suspended</option><option value="fault">Transport fault</option>
+      </select>
+      <p class="note">Drag on the pad or display. Touch input supports five contacts. Hold Shift to keep a mouse contact down. Press Escape to cancel all contacts.</p>
+    </section>
     <h2>Radio scenario</h2>
     <label for="scan-scenario">Results for the next scan</label>
     <select id="scan-scenario">
@@ -129,37 +143,46 @@
         error.textContent = '';
       }).catch(reason => { error.textContent = reason.message; });
     }
-    function point(event) {
-      const box = screen.getBoundingClientRect();
-      return {x: Math.floor((event.clientX - box.left) * screen.naturalWidth / box.width), y: Math.floor((event.clientY - box.top) * screen.naturalHeight / box.height)};
+    const pad = document.querySelector('#pad');
+    const held = new Map();
+    function point(event, surface) {
+      const box = surface.getBoundingClientRect();
+      return {x: Math.max(0, Math.min(539, Math.floor((event.clientX - box.left) * 540 / box.width))), y: Math.max(0, Math.min(959, Math.floor((event.clientY - box.top) * 960 / box.height)))};
     }
-    screen.addEventListener('pointerdown', event => {
-      if (activePointers.has(event.pointerId) || activePointers.size >= 5 || event.button !== 0) return;
-      event.preventDefault();
-      const id = Array.from({length: 16}, (_, i) => i).find(i => ![...activePointers.values()].includes(i));
-      activePointers.set(event.pointerId, id);
-      screen.setPointerCapture(event.pointerId);
-      send({type: 'touch_down', id, ...point(event)});
-    });
-    screen.addEventListener('pointerup', event => {
-      if (!activePointers.has(event.pointerId)) return;
-      const id = activePointers.get(event.pointerId);
-      const p = point(event);
-      send(p.x >= 0 && p.x < screen.naturalWidth && p.y >= 0 && p.y < screen.naturalHeight ? {type: 'touch_up', id, ...p} : {type: 'touch_cancel'});
-      activePointers.delete(event.pointerId);
-    });
-    screen.addEventListener('pointermove', event => {
-      if (!activePointers.has(event.pointerId)) return;
-      const id = activePointers.get(event.pointerId);
-      const p = point(event);
-      send(p.x >= 0 && p.x < screen.naturalWidth && p.y >= 0 && p.y < screen.naturalHeight ? {type: 'touch_move', id, ...p} : {type: 'touch_cancel'});
-    });
-    screen.addEventListener('lostpointercapture', event => {
-      if (activePointers.has(event.pointerId)) {
-        send({type: 'touch_cancel'});
-        activePointers.clear();
-      }
-    });
+    function cancelContacts() {
+      send({type: 'touch_cancel'});
+      activePointers.clear(); held.clear();
+    }
+    for (const surface of [screen, pad]) {
+      surface.addEventListener('pointerdown', event => {
+        if (activePointers.has(event.pointerId) || activePointers.size + held.size >= 5 || event.button !== 0) return;
+        event.preventDefault();
+        const ids = [...activePointers.values(), ...held.keys()];
+        const id = Array.from({length: 16}, (_, i) => i).find(i => !ids.includes(i));
+        activePointers.set(event.pointerId, id);
+        surface.setPointerCapture(event.pointerId);
+        send({type: 'touch_down', id, ...point(event, surface)});
+      });
+      surface.addEventListener('pointerup', event => {
+        if (!activePointers.has(event.pointerId)) return;
+        const id = activePointers.get(event.pointerId);
+        const p = point(event, surface);
+        if (event.shiftKey && event.pointerType === 'mouse') { held.set(id, p); }
+        else { send({type: 'touch_up', id, ...p}); }
+        activePointers.delete(event.pointerId);
+      });
+      surface.addEventListener('pointermove', event => {
+        if (!activePointers.has(event.pointerId)) return;
+        send({type: 'touch_move', id: activePointers.get(event.pointerId), ...point(event, surface)});
+      });
+      surface.addEventListener('pointercancel', cancelContacts);
+      surface.addEventListener('lostpointercapture', event => {
+        if (activePointers.has(event.pointerId)) cancelContacts();
+      });
+    }
+    window.addEventListener('keydown', event => { if (event.key === 'Escape') cancelContacts(); });
+    window.addEventListener('blur', () => { if (activePointers.size || held.size) cancelContacts(); });
+    document.querySelector('#touchpad-host').addEventListener('change', event => send({type: 'touchpad_host', state: event.target.value}));
     play.addEventListener('click', () => send({type: running ? 'pause' : 'resume'}));
     document.querySelectorAll('.step').forEach(button => button.addEventListener('click', () => send({type: 'advance', ms: Number(button.dataset.ms)})));
     document.querySelector('#reset').addEventListener('click', () => send({type: 'reset'}));
@@ -185,6 +208,19 @@
             return button;
           }));
           hardwareKey = nextHardwareKey;
+        }
+        const panel = document.querySelector('#touchpad-panel');
+        if (panel.hidden === state.touchpad_open && (activePointers.size || held.size)) { cancelContacts(); }
+        panel.hidden = !state.touchpad_open;
+        document.querySelector('#touchpad-host').value = state.touchpad_host;
+        document.querySelector('#pad-status').textContent = `${state.touchpad_host} · ${state.contacts.length} contacts · ${state.touchpad_reports} reports · ${state.touchpad_detachments} detachments`;
+        const ctx = pad.getContext('2d');
+        ctx.clearRect(0, 0, pad.width, pad.height);
+        for (const contact of state.contacts) {
+          ctx.beginPath(); ctx.arc(contact.x, contact.y, 40, 0, Math.PI * 2);
+          ctx.fillStyle = '#526e47'; ctx.fill();
+          ctx.fillStyle = '#fff'; ctx.font = 'bold 32px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillText(String(contact.id), contact.x, contact.y);
         }
         running = state.running;
         play.textContent = running ? 'Pause' : 'Resume';

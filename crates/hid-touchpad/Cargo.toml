@@ -1,0 +1,14 @@
+[package]
+name = "paper-mesh-hid-touchpad"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+paper-mesh-platform = { path = "../platform" }
+
+[dev-dependencies]
+embedded-graphics = "0.8.2"
+
+[lints]
+workspace = true

@@ -20,6 +20,7 @@ Event bodies use a `type` field:
 | Type | More fields |
 | --- | --- |
 | `touch_down`, `touch_move`, `touch_up` | `x`, `y`, optional `id` from 0 through 15. The default ID is 0. |
+| `touchpad_host` | `state`: `ready`, `disconnected`, `suspended`, or `fault` |
 | `hardware_button` | `id`: 0 for BOOT, 1 for Function, or 2 for Home. `pressed`: boolean. |
 | `touch_cancel`, `pause`, `resume`, `reset` | None |
 | `advance` | `ms`, limited to 1–60000 ms per request with a paused clock |
@@ -50,3 +51,11 @@ It passes them to `touch_native`.
 This method applies shared input rotation before application hit testing.
 Native scenarios can call `touch_native` directly with coordinates aligned to
 the controller.
+
+## Host touchpad observations
+
+`touchpad_open` reports the application mode. `touchpad_host` reports the simulated connection state.
+`touchpad_reports` counts accepted contact states. `touchpad_detachments` counts cancellations.
+The mini touchpad renders `contacts` with their IDs and portrait positions.
+It appears only while the application mode is open.
+It does not send input to the computer's desktop.

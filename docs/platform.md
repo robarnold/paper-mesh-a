@@ -53,6 +53,7 @@ The platform overview does not imply that all services are implemented.
 | [Runtime execution](platform/runtime.md) | Implementation boundaries and the current application loop |
 | [Orientation state and coordinate spaces](platform/orientation.md) | Coordinate transforms, orientation policy, and frame state |
 | [Display lifecycle and ownership](platform/display.md) | Frame submission, completion, buffers, and recovery boundaries |
+| [Host touchpad](services/touchpad.md) | Raw contact forwarding, input capture, and session cancellation |
 | [Device services](device-interfaces.md) | Implemented interfaces and planned portable service contracts |
 | [Display contract](display-constraints.md) | Component requirements and planned display services |
 | [Hardware backends](hardware.md) | Board profiles and hardware details |

@@ -7,6 +7,7 @@
 pub mod debugger;
 pub mod location;
 pub mod power;
+pub mod touchpad;
 
 use core::fmt::Write;
 use debugger::{DEBUGGER_TARGET, Debugger};
@@ -41,6 +42,7 @@ pub const TAP_TARGET: Rectangle = Rectangle::new(
 
 #[derive(PartialEq)]
 enum HomeAction {
+    Touchpad,
     Count,
     Debugger,
     Location,
@@ -48,6 +50,8 @@ enum HomeAction {
 }
 
 pub struct App {
+    touchpad_open: bool,
+    touchpad_host: paper_mesh_platform::touchpad::HostState,
     started_at_ms: u64,
     heartbeat: PeriodicTimer,
     uptime_seconds: u64,
@@ -67,6 +71,8 @@ impl App {
     /// This constructor permits static storage with a specified start time in the platform epoch.
     pub const fn new_at(now: u64) -> Self {
         Self {
+            touchpad_open: false,
+            touchpad_host: paper_mesh_platform::touchpad::HostState::Disconnected,
             started_at_ms: now,
             heartbeat: PeriodicTimer::new(now, HEARTBEAT_MS),
             uptime_seconds: 0,
@@ -88,7 +94,7 @@ impl App {
             return None;
         }
         self.uptime_seconds = now.saturating_sub(self.started_at_ms) / 1000;
-        self.dirty = true;
+        self.dirty |= !self.touchpad_open;
         Some(self.uptime_seconds)
     }
 
@@ -107,6 +113,38 @@ impl App {
 
     pub fn taps(&self) -> u32 {
         self.taps
+    }
+
+    /// Applies application bindings to backend control identities.
+    pub fn hardware_button(
+        &mut self,
+        event: paper_mesh_platform::input::buttons::ButtonEvent,
+        exit_controls: &[paper_mesh_platform::input::buttons::ButtonId],
+    ) {
+        if exit_controls.contains(&event.id)
+            && event.state == paper_mesh_platform::input::buttons::ButtonState::Pressed
+        {
+            self.cancel_touchpad();
+        }
+    }
+
+    pub fn touchpad_open(&self) -> bool {
+        self.touchpad_open
+    }
+
+    pub fn cancel_touchpad(&mut self) {
+        if self.touchpad_open {
+            self.touchpad_open = false;
+            self.home_gesture.cancel();
+            self.dirty = true;
+        }
+    }
+
+    pub fn set_touchpad_host(&mut self, state: paper_mesh_platform::touchpad::HostState) {
+        if state != self.touchpad_host {
+            self.touchpad_host = state;
+            self.dirty |= self.touchpad_open;
+        }
     }
 
     pub fn debugger(&self) -> &Debugger {
@@ -134,6 +172,9 @@ impl App {
     }
 
     pub fn touch(&mut self, event: TouchEvent) {
+        if self.touchpad_open {
+            return;
+        }
         if self.power.is_open() {
             self.dirty |= self.power.touch(event);
             return;
@@ -152,6 +193,7 @@ impl App {
                 (DEBUGGER_TARGET, HomeAction::Debugger),
                 (LOCATION_TARGET, HomeAction::Location),
                 (POWER_TARGET, HomeAction::Power),
+                (touchpad::TOUCHPAD_TARGET, HomeAction::Touchpad),
             ]
             .into_iter()
             .find_map(|(target, action)| target.contains(point).then_some(action))
@@ -161,6 +203,7 @@ impl App {
                 HomeAction::Debugger => self.debugger.open(),
                 HomeAction::Location => self.location.open(),
                 HomeAction::Power => self.power.open(),
+                HomeAction::Touchpad => self.touchpad_open = true,
             }
             self.dirty = true;
         }
@@ -178,6 +221,9 @@ impl App {
     }
 
     pub fn render<D: DrawTarget<Color = Gray4>>(&self, display: &mut D) -> Result<(), D::Error> {
+        if self.touchpad_open {
+            return touchpad::render(display, self.touchpad_host);
+        }
         if self.power.is_open() {
             return self.power.render(display);
         }
@@ -195,6 +241,13 @@ impl App {
         button(display, DEBUGGER_TARGET, "Radio debugger", false, true)?;
         button(display, LOCATION_TARGET, "GNSS", false, true)?;
         button(display, POWER_TARGET, "Power", false, true)?;
+        button(
+            display,
+            touchpad::TOUCHPAD_TARGET,
+            "USB touchpad",
+            false,
+            true,
+        )?;
         Rectangle::new(Point::new(48, 144), Size::new(TAP_TARGET.size.width, 2))
             .into_styled(PrimitiveStyle::with_fill(Gray4::new(11)))
             .draw(display)?;
@@ -222,7 +275,7 @@ impl App {
         let _ = write!(label, "Uptime: {}s", self.uptime_seconds);
         Text::new(
             &label,
-            Point::new(48, SCREEN_SIZE.height as i32 - 208),
+            Point::new(48, SCREEN_SIZE.height as i32 - 168),
             black,
         )
         .draw(display)?;
