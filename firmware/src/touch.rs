@@ -228,7 +228,7 @@ impl Touch {
             }
         };
         Some(match event {
-            Event::Down(contact) | Event::Up(contact) => {
+            Event::Touch(contact) | Event::Release(contact) => {
                 let point = Point::new(i32::from(contact.x), i32::from(contact.y));
                 let native = if self.driver.width == 540 {
                     ROTATION
@@ -238,8 +238,8 @@ impl Touch {
                     point
                 };
                 ROTATION.touch_to_portrait(match event {
-                    Event::Down(_) => TouchEvent::Down(native),
-                    _ => TouchEvent::Up(native),
+                    Event::Touch(_) => TouchEvent::touch(contact.id, native),
+                    _ => TouchEvent::release(contact.id, native),
                 })
             }
             Event::Cancel => TouchEvent::Cancel,
@@ -267,8 +267,8 @@ async fn worker(mut touch: Touch, bus: &'static Bus) {
             stats.max_service_us = stats.max_service_us.max(service_us);
             stats.max_bus_wait_us = stats.max_bus_wait_us.max(bus_wait_us);
             if let Some(event) = event {
-                stats.downs += u32::from(matches!(event, TouchEvent::Down(_)));
-                stats.ups += u32::from(matches!(event, TouchEvent::Up(_)));
+                stats.downs += u32::from(matches!(event, TouchEvent::Touch(_)));
+                stats.ups += u32::from(matches!(event, TouchEvent::Release(_)));
                 stats.during_refresh += u32::from(during_refresh);
             }
         });

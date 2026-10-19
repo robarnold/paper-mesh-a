@@ -18,7 +18,10 @@ Toolkit modules group related functions by responsibility.
 | [`display`](../../crates/platform/src/display.rs) | Frame submission with busy and error checks | Redraw request and rendering callback |
 | [`rotation`](../../crates/platform/src/rotation.rs) | Pixel and touch coordinate conversion | Native dimensions |
 
-`TapGesture` returns a control identity after a press and release on the same control.
+`TapGesture` returns a control identity after one contact stays on that control through release.
+Movement outside the control cancels the tap. Movement back inside does not arm it again.
+A second contact cancels the tap until all contacts lift.
+Raw contact events remain available to other consumers.
 Release and cancellation clear the armed control.
 The application maps the returned identity to an action.
 The button renderer uses no fixed screen position or action binding.

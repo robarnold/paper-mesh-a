@@ -136,7 +136,7 @@ async fn run_app(mut panel: Option<display_worker::Client>) -> ! {
         app.poll_location(&clock, &mut location);
         app.poll_power(&clock, &mut power);
         while let Some(sample) = touch::next_event() {
-            info!(
+            log::debug!(
                 "touch: {:?}; irq_ms={}; service_us={}; bus_wait_us={}; refresh={}",
                 sample.event,
                 sample.irq_ms,

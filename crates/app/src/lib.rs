@@ -280,17 +280,17 @@ mod tests {
         let mut app = App::new(&TestClock(0));
         let inside = TAP_TARGET.center();
         let outside = Point::new(0, 0);
-        app.touch(TouchEvent::Up(inside));
-        app.touch(TouchEvent::Down(outside));
-        app.touch(TouchEvent::Up(inside));
-        app.touch(TouchEvent::Down(inside));
-        app.touch(TouchEvent::Up(outside));
-        app.touch(TouchEvent::Down(inside));
+        app.touch(TouchEvent::release(0, inside));
+        app.touch(TouchEvent::touch(0, outside));
+        app.touch(TouchEvent::release(0, inside));
+        app.touch(TouchEvent::touch(0, inside));
+        app.touch(TouchEvent::release(0, outside));
+        app.touch(TouchEvent::touch(0, inside));
         app.touch(TouchEvent::Cancel);
-        app.touch(TouchEvent::Up(inside));
+        app.touch(TouchEvent::release(0, inside));
         assert_eq!(app.taps(), 0);
-        app.touch(TouchEvent::Down(inside));
-        app.touch(TouchEvent::Up(inside));
+        app.touch(TouchEvent::touch(0, inside));
+        app.touch(TouchEvent::release(0, inside));
         assert_eq!(app.taps(), 1);
     }
 }

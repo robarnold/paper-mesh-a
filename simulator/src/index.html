@@ -145,6 +145,11 @@
       send(p.x >= 0 && p.x < screen.naturalWidth && p.y >= 0 && p.y < screen.naturalHeight ? {type: 'touch_up', ...p} : {type: 'touch_cancel'});
       activePointer = null;
     });
+    screen.addEventListener('pointermove', event => {
+      if (event.pointerId !== activePointer) return;
+      const p = point(event);
+      send(p.x >= 0 && p.x < screen.naturalWidth && p.y >= 0 && p.y < screen.naturalHeight ? {type: 'touch_move', ...p} : {type: 'touch_cancel'});
+    });
     screen.addEventListener('lostpointercapture', () => {
       if (activePointer !== null) send({type: 'touch_cancel'});
       activePointer = null;

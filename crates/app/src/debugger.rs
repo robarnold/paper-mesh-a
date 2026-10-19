@@ -387,8 +387,8 @@ mod tests {
     }
 
     fn press(debugger: &mut Debugger, target: Rectangle) {
-        debugger.touch(TouchEvent::Down(target.center()));
-        debugger.touch(TouchEvent::Up(target.center()));
+        debugger.touch(TouchEvent::touch(0, target.center()));
+        debugger.touch(TouchEvent::release(0, target.center()));
     }
 
     #[test]
@@ -423,12 +423,12 @@ mod tests {
         debugger.poll(0, &mut UnavailableDiscovery);
         assert_eq!(debugger.state(), ScanState::Error(ScanError::Unsupported));
         assert_eq!(debugger.source(), None);
-        debugger.touch(TouchEvent::Up(BLUETOOTH_TARGET.center()));
-        debugger.touch(TouchEvent::Down(BLUETOOTH_TARGET.center()));
+        debugger.touch(TouchEvent::release(0, BLUETOOTH_TARGET.center()));
+        debugger.touch(TouchEvent::touch(0, BLUETOOTH_TARGET.center()));
         debugger.touch(TouchEvent::Cancel);
-        debugger.touch(TouchEvent::Up(BLUETOOTH_TARGET.center()));
-        debugger.touch(TouchEvent::Down(BLUETOOTH_TARGET.center()));
-        debugger.touch(TouchEvent::Up(WIFI_TARGET.center()));
+        debugger.touch(TouchEvent::release(0, BLUETOOTH_TARGET.center()));
+        debugger.touch(TouchEvent::touch(0, BLUETOOTH_TARGET.center()));
+        debugger.touch(TouchEvent::release(0, WIFI_TARGET.center()));
         assert_eq!(debugger.kind(), RadioKind::Wifi);
         assert!(debugger.results().networks().is_empty());
     }

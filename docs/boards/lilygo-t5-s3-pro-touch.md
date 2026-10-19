@@ -13,7 +13,8 @@ It records the existing configuration through USB without configuration writes.
 
 Reports must have the ready flag before the driver reads coordinates.
 The driver acknowledges each report after the required reads succeed.
-It emits one press and one release for each single-contact gesture.
+It emits each ready contact position with its ID, then a release with the final position.
+The driver does not recognize taps or remove movement reports.
 Multiple contacts, invalid coordinates, I2C failures, or event queue overflow cancel the gesture.
 Ready reports also supply Home-key state through `HaveKey` in register `0x814E`.
 The adapter exposes that state as a hardware button, independent of coordinates.

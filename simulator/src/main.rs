@@ -23,6 +23,7 @@ type HttpResponse = Response<Cursor<Vec<u8>>>;
 enum Command {
     HardwareButton { id: u8, pressed: bool },
     TouchDown { x: i32, y: i32 },
+    TouchMove { x: i32, y: i32 },
     TouchUp { x: i32, y: i32 },
     TouchCancel,
     Pause,
@@ -62,16 +63,18 @@ impl Session {
             Command::HardwareButton { id, pressed } => {
                 self.simulation.hardware_button(id, pressed)?
             }
-            Command::TouchDown { x, y } | Command::TouchUp { x, y } => {
+            Command::TouchDown { x, y }
+            | Command::TouchMove { x, y }
+            | Command::TouchUp { x, y } => {
                 if x < 0 || y < 0 || x >= SCREEN_SIZE.width as i32 || y >= SCREEN_SIZE.height as i32
                 {
                     return Err("Touch must be inside the display.");
                 }
                 let point = Point::new(x, y);
-                let event = if matches!(command, Command::TouchDown { .. }) {
-                    TouchEvent::Down(point)
+                let event = if !matches!(command, Command::TouchUp { .. }) {
+                    TouchEvent::touch(0, point)
                 } else {
-                    TouchEvent::Up(point)
+                    TouchEvent::release(0, point)
                 };
                 self.simulation.touch_portrait(event);
             }

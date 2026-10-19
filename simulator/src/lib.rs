@@ -324,12 +324,7 @@ impl Simulation {
     /// Converts browser portrait coordinates into native touch input.
     /// Sends that input through the shared input adapter.
     pub fn touch_portrait(&mut self, event: TouchEvent) {
-        let native = match event {
-            TouchEvent::Down(point) => ROTATION.to_native(point).map(TouchEvent::Down),
-            TouchEvent::Up(point) => ROTATION.to_native(point).map(TouchEvent::Up),
-            TouchEvent::Cancel => None,
-        };
-        self.touch_native(native.unwrap_or(TouchEvent::Cancel));
+        self.touch_native(event.map_position(|point| ROTATION.to_native(point)));
     }
 
     /// Exports the completed native frame with a clockwise rotation.
@@ -536,8 +531,8 @@ mod tests {
     use paper_mesh_platform::discovery::ScanError;
 
     fn press(sim: &mut Simulation, target: embedded_graphics::primitives::Rectangle) {
-        sim.touch_portrait(TouchEvent::Down(target.center()));
-        sim.touch_portrait(TouchEvent::Up(target.center()));
+        sim.touch_portrait(TouchEvent::touch(0, target.center()));
+        sim.touch_portrait(TouchEvent::release(0, target.center()));
     }
 
     #[test]
@@ -745,8 +740,8 @@ mod tests {
     fn tap(sim: &mut Simulation) {
         // Native (480, 269) maps to portrait (270, 480), in the button.
         let point = Point::new(480, 269);
-        sim.touch_native(TouchEvent::Down(point));
-        sim.touch_native(TouchEvent::Up(point));
+        sim.touch_native(TouchEvent::touch(0, point));
+        sim.touch_native(TouchEvent::release(0, point));
     }
 
     #[test]
@@ -787,9 +782,9 @@ mod tests {
         let mut sim = Simulation::default();
         let point = Point::new(270, 480);
         for count in 1..=40 {
-            sim.touch_portrait(TouchEvent::Down(point));
+            sim.touch_portrait(TouchEvent::touch(0, point));
             sim.advance(30);
-            sim.touch_portrait(TouchEvent::Up(point));
+            sim.touch_portrait(TouchEvent::release(0, point));
             assert_eq!(sim.snapshot().taps, count);
             sim.advance(30);
         }
@@ -890,18 +885,18 @@ mod tests {
         let mut sim = Simulation::default();
         tap(&mut sim);
         assert_eq!(sim.snapshot().taps, 1);
-        sim.touch_portrait(TouchEvent::Down(Point::new(270, 480)));
-        sim.touch_portrait(TouchEvent::Up(Point::new(270, 480)));
+        sim.touch_portrait(TouchEvent::touch(0, Point::new(270, 480)));
+        sim.touch_portrait(TouchEvent::release(0, Point::new(270, 480)));
         assert_eq!(sim.snapshot().taps, 2);
 
-        sim.touch_native(TouchEvent::Down(Point::new(480, 269)));
-        sim.touch_native(TouchEvent::Up(Point::new(960, 269)));
-        sim.touch_native(TouchEvent::Up(Point::new(480, 269)));
-        sim.touch_portrait(TouchEvent::Down(Point::new(270, 480)));
+        sim.touch_native(TouchEvent::touch(0, Point::new(480, 269)));
+        sim.touch_native(TouchEvent::release(0, Point::new(960, 269)));
+        sim.touch_native(TouchEvent::release(0, Point::new(480, 269)));
+        sim.touch_portrait(TouchEvent::touch(0, Point::new(270, 480)));
         sim.touch_portrait(TouchEvent::Cancel);
-        sim.touch_portrait(TouchEvent::Up(Point::new(270, 480)));
-        sim.touch_native(TouchEvent::Down(Point::new(0, 539)));
-        sim.touch_native(TouchEvent::Up(Point::new(480, 269)));
+        sim.touch_portrait(TouchEvent::release(0, Point::new(270, 480)));
+        sim.touch_native(TouchEvent::touch(0, Point::new(0, 539)));
+        sim.touch_native(TouchEvent::release(0, Point::new(480, 269)));
         assert_eq!(sim.snapshot().taps, 2);
     }
 

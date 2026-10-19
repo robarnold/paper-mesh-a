@@ -10,7 +10,12 @@ Initial samples and recovery synchronize the level without an invented press.
 Backends select debounce intervals from the electrical input requirements.
 
 Detailed lifecycle reports stay planned work.
-The current interface supplies single-contact `Down`, `Up`, and `Cancel` events.
+The current interface supplies `Touch`, `Release`, and `Cancel` events.
+Each contact has a stable ID and a position. IDs range from 0 through 15.
+`Touch` supplies both initial contact and subsequent movement.
+`Release` retains the last valid position for that ID.
+`Cancel` invalidates all contacts without a successful gesture.
+The platform's `TapGesture` recognizes taps without filtering the raw stream for other consumers.
 
 A backend supplies stable control identities, labels, and supported event kinds.
 An identity is separate from an action binding such as back, select, or sleep.
@@ -32,7 +37,7 @@ The design uses no universal list of enclosure buttons.
   Button state stays independent of pointer coordinates.
 - Multiple contacts, pressure, tilt, hover, pen buttons, and eraser state are
   optional capabilities. Their implementations must keep contact and tool
-  identity. The current `Down`/`Up` API cannot represent these reports.
+  identity. Pressure, tilt, hover, pen buttons, and eraser state stay planned work.
 
 Some physical controls operate outside the application.
 They can force a reset, remove power, or select a boot mode.

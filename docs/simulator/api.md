@@ -19,7 +19,7 @@ Event bodies use a `type` field:
 
 | Type | More fields |
 | --- | --- |
-| `touch_down`, `touch_up` | `x`, `y` |
+| `touch_down`, `touch_move`, `touch_up` | `x`, `y` |
 | `hardware_button` | `id`: 0 for BOOT, 1 for Function, or 2 for Home. `pressed`: boolean. |
 | `touch_cancel`, `pause`, `resume`, `reset` | None |
 | `advance` | `ms`, limited to 1–60000 ms per request with a paused clock |

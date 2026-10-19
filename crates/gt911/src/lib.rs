@@ -17,8 +17,8 @@ pub struct Contact {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Event {
-    Down(Contact),
-    Up(Contact),
+    Touch(Contact),
+    Release(Contact),
     Cancel,
 }
 
@@ -105,7 +105,7 @@ impl Gt911 {
         self.key_state = Some(status[0] & 0x10 != 0);
         if count == 0 {
             self.blocked = false;
-            return Ok(self.contact.take().map(Event::Up));
+            return Ok(self.contact.take().map(Event::Release));
         }
         let contact = Contact {
             id: point[0] & 15,
@@ -125,8 +125,8 @@ impl Gt911 {
         if self.blocked {
             return Ok(None);
         }
-        let first = self.contact.replace(contact).is_none();
-        Ok(first.then_some(Event::Down(contact)))
+        self.contact = Some(contact);
+        Ok(Some(Event::Touch(contact)))
     }
 }
 
@@ -239,17 +239,24 @@ mod tests {
         let mut driver = controller();
         assert_eq!(
             driver.poll(&mut bus),
-            Ok(Some(Event::Down(Contact {
+            Ok(Some(Event::Touch(Contact {
                 id: 0,
                 x: 200,
                 y: 400
             })))
         );
         assert_eq!(driver.poll(&mut bus), Ok(None));
-        assert_eq!(driver.poll(&mut bus), Ok(None));
         assert_eq!(
             driver.poll(&mut bus),
-            Ok(Some(Event::Up(Contact {
+            Ok(Some(Event::Touch(Contact {
+                id: 0,
+                x: 210,
+                y: 410
+            })))
+        );
+        assert_eq!(
+            driver.poll(&mut bus),
+            Ok(Some(Event::Release(Contact {
                 id: 0,
                 x: 210,
                 y: 410

@@ -32,10 +32,40 @@ pub trait Clock {
 /// Coordinates use logical display orientation at the application boundary.
 /// Platform input adapters can also use this type before coordinate normalization.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Contact {
+    /// Stable identity from 0 through 15 for one contact lifetime.
+    pub id: u8,
+    pub position: Point,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TouchEvent {
-    Down(Point),
-    Up(Point),
+    /// A new or updated contact. Repeated reports keep the same identity.
+    Touch(Contact),
+    Release(Contact),
     Cancel,
+}
+
+impl TouchEvent {
+    pub const fn touch(id: u8, position: Point) -> Self {
+        Self::Touch(Contact { id, position })
+    }
+    pub const fn release(id: u8, position: Point) -> Self {
+        Self::Release(Contact { id, position })
+    }
+
+    /// Preserves identity during coordinate conversion. Invalid coordinates cancel input.
+    pub fn map_position(self, convert: impl FnOnce(Point) -> Option<Point>) -> Self {
+        match self {
+            Self::Touch(contact) => convert(contact.position)
+                .map(|p| Self::touch(contact.id, p))
+                .unwrap_or(Self::Cancel),
+            Self::Release(contact) => convert(contact.position)
+                .map(|p| Self::release(contact.id, p))
+                .unwrap_or(Self::Cancel),
+            Self::Cancel => Self::Cancel,
+        }
+    }
 }
 
 /// Drawing updates a staging buffer without a visible panel change.

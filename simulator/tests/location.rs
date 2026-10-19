@@ -11,8 +11,8 @@ use paper_mesh_simulator::{
 };
 
 fn press(sim: &mut Simulation, target: Rectangle) {
-    sim.touch_portrait(TouchEvent::Down(target.center()));
-    sim.touch_portrait(TouchEvent::Up(target.center()));
+    sim.touch_portrait(TouchEvent::touch(0, target.center()));
+    sim.touch_portrait(TouchEvent::release(0, target.center()));
 }
 
 #[test]
@@ -81,19 +81,19 @@ fn loss_silence_and_faults_remove_coordinates_and_permit_recovery() {
 fn zero_coordinates_are_a_valid_fix_and_partial_touches_do_not_navigate() {
     let mut sim = Simulation::default();
     sim.set_location_scenario(LocationScenario::ZeroCoordinates);
-    sim.touch_portrait(TouchEvent::Up(LOCATION_TARGET.center()));
+    sim.touch_portrait(TouchEvent::release(0, LOCATION_TARGET.center()));
     assert!(!sim.location().is_open());
-    sim.touch_portrait(TouchEvent::Down(LOCATION_TARGET.center()));
+    sim.touch_portrait(TouchEvent::touch(0, LOCATION_TARGET.center()));
     sim.touch_portrait(TouchEvent::Cancel);
-    sim.touch_portrait(TouchEvent::Up(LOCATION_TARGET.center()));
+    sim.touch_portrait(TouchEvent::release(0, LOCATION_TARGET.center()));
     assert!(!sim.location().is_open());
     press(&mut sim, LOCATION_TARGET);
     assert_eq!(sim.location().view().status, FixStatus::Valid);
     assert_eq!(sim.snapshot().latitude_microdegrees, Some(0));
     assert_eq!(sim.snapshot().longitude_microdegrees, Some(0));
     assert_eq!(sim.snapshot().elevation_mm, Some(0));
-    sim.touch_portrait(TouchEvent::Down(BACK_TARGET.center()));
-    sim.touch_portrait(TouchEvent::Up(Point::zero()));
+    sim.touch_portrait(TouchEvent::touch(0, BACK_TARGET.center()));
+    sim.touch_portrait(TouchEvent::release(0, Point::zero()));
     assert!(sim.location().is_open());
     assert_eq!(sim.snapshot().taps, 0);
 }

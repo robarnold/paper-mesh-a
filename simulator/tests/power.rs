@@ -10,8 +10,8 @@ use paper_mesh_platform::{
 use paper_mesh_simulator::{REFRESH_MS, Simulation, power::PowerScenario};
 
 fn press(sim: &mut Simulation, target: Rectangle) {
-    sim.touch_portrait(TouchEvent::Down(target.center()));
-    sim.touch_portrait(TouchEvent::Up(target.center()));
+    sim.touch_portrait(TouchEvent::touch(0, target.center()));
+    sim.touch_portrait(TouchEvent::release(0, target.center()));
 }
 
 #[test]
@@ -126,8 +126,8 @@ fn hidden_power_changes_do_not_refresh_the_home_screen() {
         sim.advance(2000);
     }
     assert_eq!(sim.snapshot().completed_refreshes, before);
-    sim.touch_portrait(TouchEvent::Down(POWER_TARGET.center()));
+    sim.touch_portrait(TouchEvent::touch(0, POWER_TARGET.center()));
     sim.touch_portrait(TouchEvent::Cancel);
-    sim.touch_portrait(TouchEvent::Up(POWER_TARGET.center()));
+    sim.touch_portrait(TouchEvent::release(0, POWER_TARGET.center()));
     assert!(!sim.power().is_open());
 }

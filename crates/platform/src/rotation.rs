@@ -37,17 +37,7 @@ impl PortraitRotation {
     /// Invalid contacts cancel a gesture.
     /// Controller calibration, scaling, and axis alignment must occur before this operation.
     pub fn touch_to_portrait(self, event: TouchEvent) -> TouchEvent {
-        match event {
-            TouchEvent::Down(point) => self
-                .to_portrait(point)
-                .map(TouchEvent::Down)
-                .unwrap_or(TouchEvent::Cancel),
-            TouchEvent::Up(point) => self
-                .to_portrait(point)
-                .map(TouchEvent::Up)
-                .unwrap_or(TouchEvent::Cancel),
-            TouchEvent::Cancel => TouchEvent::Cancel,
-        }
+        event.map_position(|point| self.to_portrait(point))
     }
 }
 
@@ -192,12 +182,12 @@ mod tests {
             assert_eq!(rotation.to_portrait(native), Some(portrait));
             assert_eq!(rotation.to_native(portrait), Some(native));
             assert_eq!(
-                rotation.touch_to_portrait(TouchEvent::Down(native)),
-                TouchEvent::Down(portrait)
+                rotation.touch_to_portrait(TouchEvent::touch(0, native)),
+                TouchEvent::touch(0, portrait)
             );
             assert_eq!(
-                rotation.touch_to_portrait(TouchEvent::Up(native)),
-                TouchEvent::Up(portrait)
+                rotation.touch_to_portrait(TouchEvent::release(0, native)),
+                TouchEvent::release(0, portrait)
             );
         }
         for point in [
@@ -208,7 +198,7 @@ mod tests {
         ] {
             assert_eq!(rotation.to_portrait(point), None);
             assert_eq!(
-                rotation.touch_to_portrait(TouchEvent::Up(point)),
+                rotation.touch_to_portrait(TouchEvent::release(0, point)),
                 TouchEvent::Cancel
             );
         }
