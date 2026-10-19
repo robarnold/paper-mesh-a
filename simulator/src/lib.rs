@@ -11,16 +11,19 @@ use paper_mesh_platform::{
 use serde::Serialize;
 pub mod discovery;
 pub mod location;
+pub mod power;
 use discovery::{ScanScenario, SimDiscovery};
 use location::{LocationScenario, SimLocation};
 use paper_mesh_app::debugger::Debugger;
 use paper_mesh_app::location::LocationScreen;
+use paper_mesh_app::power::PowerScreen;
 use paper_mesh_platform::discovery::{RadioKind, ScanSource};
 use paper_mesh_platform::ui::format::satellite_label;
 use paper_mesh_platform::{
     location::{Location, LocationAvailability},
     time::{ObservationWindow, UtcDateTime, UtcReference},
 };
+use power::{PowerScenario, SimPower};
 
 // This artificial delay exercises asynchronous refresh.
 // It is not a panel measurement.
@@ -192,6 +195,17 @@ pub struct Snapshot {
     pub satellite_age_seconds: Option<u64>,
     pub satellite_signals: Vec<SatelliteSnapshot>,
     pub location_scenario: LocationScenario,
+    pub power_open: bool,
+    pub power_charger_tab: bool,
+    pub power_scenario: PowerScenario,
+    pub battery_status: &'static str,
+    pub charger_status: &'static str,
+    pub battery_percent: Option<u8>,
+    pub battery_current_ma: Option<i16>,
+    pub battery_voltage_mv: Option<u16>,
+    pub battery_present: Option<bool>,
+    pub power_source: Option<&'static str>,
+    pub charge_state: Option<&'static str>,
     pub controls: Vec<Control>,
 }
 
@@ -215,6 +229,7 @@ pub struct Simulation {
     display: SimDisplay,
     discovery: SimDiscovery,
     location: SimLocation,
+    power: SimPower,
     heartbeats: u64,
     last_heartbeat_seconds: Option<u64>,
 }
@@ -228,6 +243,7 @@ impl Default for Simulation {
             display: SimDisplay::default(),
             discovery: SimDiscovery::default(),
             location: SimLocation::default(),
+            power: SimPower::default(),
             heartbeats: 0,
             last_heartbeat_seconds: None,
         };
@@ -252,6 +268,7 @@ impl Simulation {
         }
         self.app.poll_discovery(&self.clock, &mut self.discovery);
         self.app.poll_location(&self.clock, &mut self.location);
+        self.app.poll_power(&self.clock, &mut self.power);
         if let Some(uptime) = self.app.tick(&self.clock) {
             self.heartbeats += 1;
             self.last_heartbeat_seconds = Some(uptime);
@@ -271,6 +288,9 @@ impl Simulation {
                 next = next.min(deadline);
             }
             if let Some(deadline) = self.location.next_deadline_ms(self.clock.now_ms()) {
+                next = next.min(deadline);
+            }
+            if let Some(deadline) = self.power.next_deadline_ms(self.clock.now_ms()) {
                 next = next.min(deadline);
             }
             if self.display.is_busy() {
@@ -333,6 +353,15 @@ impl Simulation {
         self.app.location()
     }
 
+    pub fn power(&self) -> &PowerScreen {
+        self.app.power()
+    }
+
+    pub fn set_power_scenario(&mut self, scenario: PowerScenario) {
+        self.power.set_scenario(scenario, self.clock.now_ms());
+        self.poll();
+    }
+
     pub fn clock(&self) -> &impl Clock {
         &self.clock
     }
@@ -361,7 +390,15 @@ impl Simulation {
         let debugger = self.app.debugger();
         let location = self.app.location();
         let view = location.view();
-        let targets: &[(&str, embedded_graphics::primitives::Rectangle)] = if location.is_open() {
+        let power = self.app.power();
+        let power_view = power.view();
+        let targets: &[(&str, embedded_graphics::primitives::Rectangle)] = if power.is_open() {
+            &[
+                ("Back", BACK_TARGET),
+                ("Battery", paper_mesh_app::power::BATTERY_TAB),
+                ("Charger", paper_mesh_app::power::CHARGER_TAB),
+            ]
+        } else if location.is_open() {
             &[("Back", BACK_TARGET)]
         } else if debugger.is_open() {
             &[
@@ -377,9 +414,25 @@ impl Simulation {
                 ("Tap counter", TAP_TARGET),
                 ("Radio debugger", DEBUGGER_TARGET),
                 ("GNSS", paper_mesh_app::location::LOCATION_TARGET),
+                ("Power", paper_mesh_app::power::POWER_TARGET),
             ]
         };
         Snapshot {
+            power_open: power.is_open(),
+            power_charger_tab: power.charger_tab(),
+            power_scenario: self.power.scenario,
+            battery_status: power_view.battery_status.label(),
+            charger_status: power_view.charger_status.label(),
+            battery_percent: power_view.battery.and_then(|b| b.state_of_charge_percent),
+            battery_current_ma: power_view.battery.and_then(|b| b.current_ma),
+            battery_voltage_mv: power_view.battery.and_then(|b| b.voltage_mv),
+            battery_present: power_view.battery.map(|b| b.present),
+            power_source: power_view
+                .charger
+                .map(|c| paper_mesh_app::power::source_label(c.source)),
+            charge_state: power_view
+                .charger
+                .map(|c| paper_mesh_app::power::charge_label(c.charge)),
             now_ms: self.clock.now_ms(),
             utc_datetime: self.clock.now_utc().map(|utc| {
                 format!(

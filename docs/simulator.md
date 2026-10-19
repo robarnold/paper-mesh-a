@@ -57,5 +57,6 @@ lists portable contract scenarios.
 Board profiles add physical control mappings.
 The current Reset action resets the test fixture.
 It does not model hardware reset, power controls, or persistence across power
-transitions. SD, battery, charger, frontlight, RTC, packet radio, and physical
-buttons have no simulator implementations yet.
+transitions. Battery and charger scenarios supply fixed observations without electrical simulation.
+SD, frontlight, packet radio, and physical buttons have no simulator implementations yet.
+The [calendar scenario](simulator/scenarios.md#calendar-clock) supplies UTC without oscillator simulation.

@@ -2,7 +2,44 @@
 
 [Device services](../device-interfaces.md)
 
-System power management and these lifecycle services stay planned work.
+Power observations are implemented. Charge control and system lifecycle services stay planned work.
+
+## Current observations
+
+`Power::snapshot` returns cached battery and charger observations without I/O or a wait.
+Each source has separate availability, optional data, and an observation time in the monotonic epoch.
+Availability distinguishes startup, ready, unavailable, and fault states.
+A failed read removes the affected observation. It does not invalidate an independent source.
+Consumers select age limits. A snapshot read does not change observation times.
+
+`BatteryState` supplies presence, gauge readiness, optional measurements, and status flags.
+Voltage uses mV. Current uses mA. Average power uses mW.
+Positive current and power enter the battery. Negative values indicate discharge.
+Capacity uses mAh. Percentage values range from zero through 100.
+Time estimates use minutes. Missing estimates remain absent.
+Gauge temperature describes the gauge silicon in hundredths of a degree Celsius.
+It does not describe cell temperature.
+
+The backend omits measurements without a present battery and a ready gauge.
+Gauge readiness does not establish correct cell parameters or calibration.
+`estimates_verified` requires backend evidence for both conditions.
+Unverified estimates retain their values and their qualification.
+Battery flags report full charge, full discharge, discharge activity, charge inhibition, overtemperature, and a shutdown request.
+These observations do not cause a shutdown.
+
+`ChargerState` supplies the input class, charge phase, configured limits, regulation status, and faults.
+The source field distinguishes no input, USB class, adapter class, OTG output, and an unknown class.
+USB and adapter classes do not identify the physical connection or distinguish wired power from wireless power.
+The input class does not establish a USB data session. OTG output is not external input power.
+The charge phase distinguishes idle, precharge, fast charge, and completion.
+Configured limits do not establish actual current or effective electrical limits.
+Current faults and latched faults have separate fields.
+Latched faults describe the interval since the previous device read, not a persistent event log.
+
+The [application power screen](../application.md#power-screen) consumes this interface.
+The [hardware adapter](../boards/lilygo-t5-s3-pro-power.md) and [simulator scenarios](../simulator/scenarios.md#power-screen) supply observations.
+
+## Planned control and lifecycle services
 
 Power status contains supported, valid observations.
 Battery percentage is optional.

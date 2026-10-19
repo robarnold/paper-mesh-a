@@ -8,6 +8,7 @@ mod discovery;
 mod display;
 mod display_worker;
 mod gnss;
+mod power;
 mod rtc;
 #[cfg(feature = "radio-scan-demo")]
 mod scan_demo;
@@ -59,6 +60,7 @@ fn initialize(spawner: Spawner) -> Option<display_worker::Client> {
         .map_err(|error| {
             error!("I2C: initialization failed: {:?}", error);
             gnss::fault();
+            power::fault();
         })
         .ok()?;
     gnss::start(
@@ -69,6 +71,7 @@ fn initialize(spawner: Spawner) -> Option<display_worker::Client> {
         peripherals.FROM_CPU_INTR3,
     );
     spawner.spawn(rtc::worker(bus).unwrap());
+    spawner.spawn(power::worker(bus).unwrap());
     let panel = display::Panel::new(
         display::Pins {
             data0: peripherals.GPIO5,
@@ -119,11 +122,13 @@ async fn run_app(mut panel: Option<display_worker::Client>) -> ! {
     let app = APP.take();
     let mut discovery = discovery::FirmwareDiscovery;
     let mut location = gnss::FirmwareLocation;
+    let mut power = power::FirmwarePower;
     #[cfg(feature = "radio-scan-demo")]
     scan_demo::run(&mut discovery).await;
     loop {
         app.poll_discovery(&clock, &mut discovery);
         app.poll_location(&clock, &mut location);
+        app.poll_power(&clock, &mut power);
         while let Some(sample) = touch::next_event() {
             info!(
                 "touch: {:?}; irq_ms={}; service_us={}; bus_wait_us={}; refresh={}",
@@ -158,7 +163,10 @@ async fn run_app(mut panel: Option<display_worker::Client>) -> ! {
         select4(
             touch::changed(),
             display_worker::changed(),
-            select(discovery::changed(), gnss::changed()),
+            select(
+                discovery::changed(),
+                select(gnss::changed(), power::changed()),
+            ),
             Timer::at(Instant::from_millis(app.next_deadline_ms())),
         )
         .await;

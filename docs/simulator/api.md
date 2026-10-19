@@ -24,6 +24,7 @@ Event bodies use a `type` field:
 | `advance` | `ms`, limited to 1–60000 ms per request with a paused clock |
 | `scan_scenario` | `scenario`: `nearby`, `empty`, `failed`, `unavailable`, or `timeout` |
 | `location_scenario` | `scenario`: a value from the [GNSS scenarios](scenarios.md#gnss-screen) |
+| `power_scenario` | `scenario`: a value from the [power scenarios](scenarios.md#power-screen) |
 
 The browser provides equivalent buttons for device touch targets.
 Rust supplies their labels and coordinates through `/api/state`.
@@ -31,6 +32,10 @@ These buttons also permit keyboard input.
 
 `GET /api/state` includes `utc_datetime` as a UTC timestamp string or `null` when calendar time is unknown.
 The `now_ms` value remains monotonic during calendar corrections.
+
+Power fields include the selected scenario, open screen, selected tab, and each source's data status.
+Battery percentage, presence, voltage, current, source, and charge phase use `null` when unavailable.
+The device screen shows the complete power details.
 
 ## Pointer conversion
 

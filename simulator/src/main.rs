@@ -10,6 +10,7 @@ use paper_mesh_platform::TouchEvent;
 use paper_mesh_simulator::SCREEN_SIZE;
 use paper_mesh_simulator::discovery::ScanScenario;
 use paper_mesh_simulator::location::LocationScenario;
+use paper_mesh_simulator::power::PowerScenario;
 use paper_mesh_simulator::{REFRESH_MS, Simulation, Snapshot};
 use serde::{Deserialize, Serialize};
 use tiny_http::{Header, Method, Request, Response, Server};
@@ -29,6 +30,7 @@ enum Command {
     Reset,
     ScanScenario { scenario: ScanScenario },
     LocationScenario { scenario: LocationScenario },
+    PowerScenario { scenario: PowerScenario },
 }
 
 #[derive(Serialize)]
@@ -89,6 +91,7 @@ impl Session {
             Command::LocationScenario { scenario } => {
                 self.simulation.set_location_scenario(scenario)
             }
+            Command::PowerScenario { scenario } => self.simulation.set_power_scenario(scenario),
         }
         Ok(())
     }

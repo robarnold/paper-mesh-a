@@ -55,13 +55,14 @@ The second-stage bootloader can select another flash mode after ROM startup.
 | [Touch](lilygo-t5-s3-pro-touch.md) | Report protocol, interrupts, shared I2C, and Home-key design |
 | [GNSS](lilygo-t5-s3-pro-gnss.md) | UART, baud selection, NMEA decoding, and observation validity |
 | [RTC](lilygo-t5-s3-pro-rtc.md) | Calendar retention, validity, and GPS synchronization |
+| [Power](lilygo-t5-s3-pro-power.md) | Battery measurements, charger status, faults, and verification limits |
 | [Radio discovery](lilygo-t5-s3-pro-radio.md) | Passive scans, resource release, and diagnostic builds |
 
 ## Device inventory
 
 The [device interface design](../device-interfaces.md) defines proposed shared
 services and simulator scenarios.
-Current hardware firmware connects the clock, display, single-contact touch input, passive radio scans, and GNSS observations.
+Current firmware connects the clock, display, single-contact touch input, passive radio scans, GNSS observations, and power observations.
 The [simulator guide](../simulator.md) describes the native backend.
 Other services in this inventory stay design work.
 

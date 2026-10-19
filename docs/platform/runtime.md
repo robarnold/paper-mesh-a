@@ -17,7 +17,7 @@ Only this connection requires both the application and backend code.
 ## Current application loop
 
 The runtime serializes calls into `App`.
-It supplies the clock, display, discovery, and location services.
+It supplies the clock, display, discovery, location, and power services.
 Application state stays on one core.
 The runtime controls executor selection, waits, event delivery, and driver supervision.
 
@@ -26,6 +26,7 @@ The runtime has these tasks:
 - Process driver completions and input events.
 - Call `App::poll_discovery` with the discovery service.
 - Call `App::poll_location` with the location service.
+- Call `App::poll_power` with the power service.
 - Call `App::tick` with the clock.
 - If a display is available, call `App::present` through the coordinate adapter.
 - Wait for the earliest application deadline, backend deadline, input event, or driver completion.

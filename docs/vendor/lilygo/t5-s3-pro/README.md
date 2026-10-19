@@ -24,6 +24,8 @@ They do not define requirements for all application targets.
 | TPS65185 display power supply | [Datasheet](https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/hardware/tps65185.pdf) |
 | PCA9535 I/O expander | [Datasheet](https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/hardware/pca9535.pdf) |
 | PCF8563 RTC, revision 11.1 dated 2026-01-19 | [NXP datasheet](https://www.nxp.com/docs/en/data-sheet/PCF8563.pdf) |
+| BQ27220 fuel gauge, SLUUBD4A, November 2022 | [TI technical reference](https://www.ti.com/lit/ug/sluubd4/sluubd4.pdf) |
+| BQ25896 charger, SLUSC76C, May 2018 | [TI datasheet](https://www.ti.com/lit/ds/symlink/bq25896.pdf) |
 | MIA-M10Q GPS option | [Datasheet](https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/hardware/MIA-M10Q_DataSheet_UBX-22015849.pdf) |
 | L76K GPS option | [Protocol specification](https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/hardware/Quectel_L76K_GNSS_Protocol_Specification_V1.1.pdf) |
 | Mechanical drawings | [Board size](https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/DXF/H752-Board%20size.dxf), [shell size](https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/DXF/H752-Shell%20size.dwg), [H752 drawing](https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/DXF/H752.dxf) |
@@ -71,6 +73,8 @@ These references give information about the controller.
 They do not supply the fitted panel's electrode layout or factory configuration.
 
 Keep these documents external.
+
+The [power adapter review](../../../boards/lilygo-t5-s3-pro-power.md) records register sources and verification limits from 2026-10-18.
 
 Board and component documents cover the vendor's available variants.
 Before use of another unit, confirm its fitted hardware.

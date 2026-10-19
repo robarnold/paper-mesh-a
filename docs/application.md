@@ -17,12 +17,12 @@ The application uses logical coordinates for rendering and touch targets.
 It does not select native panel dimensions or a mounting transform.
 Configurable layout and viewport changes stay planned work.
 
-The home screen contains a tap counter, uptime, a grayscale sample, and two navigation buttons.
+The home screen contains a tap counter, uptime, a grayscale sample, and three navigation buttons.
 The platform supplies normalized events.
 
 The application uses the [toolkit gesture](platform/toolkit.md) for tap recognition and cancellation.
 It supplies hit testing and action bindings.
-The home screen, radio debugger, and location screen use the same button renderer.
+All screens use the same button renderer.
 
 ## Deadlines and display submission
 
@@ -110,3 +110,30 @@ The backend notifies the platform loop when its latest observation changes.
 The location screen does not cause periodic display refreshes while another screen is open.
 The [simulator guide](simulator/scenarios.md#gnss-screen) defines deterministic location scenarios.
 UTC date, clock synchronization, accuracy estimates, and acquisition requests stay planned work.
+
+## Power screen
+
+Select `Power` on the home screen to open the battery details.
+Select `Battery` or `Charger` to change the detail tab.
+Select `Back` to return to the home screen.
+
+The battery tab shows charge percentage, a capacity bar, voltage, instantaneous current, average current, and average power.
+It also shows gauge temperature, capacity estimates, health percentage, cycles, time estimates, readiness, and battery flags.
+Positive current enters the battery. Gauge temperature does not measure cell temperature.
+The screen identifies unverified cell parameters and calibration.
+
+The charger tab shows supply type, charge phase, power status, configured limits, and regulation status.
+A fault table separates current faults from latched faults.
+Neither tab permits changes to charger settings or system power.
+The [power contract](services/power.md#current-observations) specifies units and validity.
+
+`App::poll_power` accepts independent battery and charger observations.
+The screen removes values after a read fault, an unavailable source, or an observation age of ten seconds.
+Future observation times supply no valid values. Missing values appear as `--`.
+Each tab shows data availability and age for both sources.
+
+Measurement changes update at five-second intervals.
+Supply changes, charge changes, faults, and validity changes update immediately.
+Display changes combine while a refresh is pending.
+`App::next_deadline_ms` includes power expiry and display deadlines only while the power screen is open.
+The [simulator scenarios](simulator/scenarios.md#power-screen) cover supply changes, missing data, failures, and recovery.

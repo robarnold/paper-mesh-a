@@ -12,6 +12,7 @@ pub mod discovery;
 pub mod display;
 pub mod input;
 pub mod location;
+pub mod power;
 pub mod rotation;
 pub mod time;
 pub mod ui;

@@ -6,6 +6,7 @@
 
 pub mod debugger;
 pub mod location;
+pub mod power;
 
 use core::fmt::Write;
 use debugger::{DEBUGGER_TARGET, Debugger};
@@ -20,9 +21,11 @@ use heapless::String;
 use location::{LOCATION_TARGET, LocationScreen};
 use paper_mesh_platform::discovery::Discovery;
 use paper_mesh_platform::location::Location;
+use paper_mesh_platform::power::Power;
 use paper_mesh_platform::{
     Clock, Display, TouchEvent, display, input::TapGesture, time::PeriodicTimer, ui::button,
 };
+use power::{POWER_TARGET, PowerScreen};
 
 /// Fixed logical viewport for this application. Backends supply a compatible display.
 pub const SCREEN_SIZE: Size = Size::new(540, 960);
@@ -41,6 +44,7 @@ enum HomeAction {
     Count,
     Debugger,
     Location,
+    Power,
 }
 
 pub struct App {
@@ -51,6 +55,7 @@ pub struct App {
     home_gesture: TapGesture<HomeAction>,
     debugger: Debugger,
     location: LocationScreen,
+    power: PowerScreen,
     dirty: bool,
 }
 
@@ -69,6 +74,7 @@ impl App {
             home_gesture: TapGesture::new(),
             debugger: Debugger::new(),
             location: LocationScreen::new(),
+            power: PowerScreen::new(),
             dirty: true,
         }
     }
@@ -92,6 +98,7 @@ impl App {
             .unwrap_or(u64::MAX)
             .min(self.next_heartbeat_ms())
             .min(self.location.next_deadline_ms().unwrap_or(u64::MAX))
+            .min(self.power.next_deadline_ms().unwrap_or(u64::MAX))
     }
 
     pub fn next_heartbeat_ms(&self) -> u64 {
@@ -118,7 +125,19 @@ impl App {
         self.dirty |= self.location.poll(clock.now_ms(), location);
     }
 
+    pub fn power(&self) -> &PowerScreen {
+        &self.power
+    }
+
+    pub fn poll_power(&mut self, clock: &impl Clock, power: &mut impl Power) {
+        self.dirty |= self.power.poll(clock.now_ms(), power);
+    }
+
     pub fn touch(&mut self, event: TouchEvent) {
+        if self.power.is_open() {
+            self.dirty |= self.power.touch(event);
+            return;
+        }
         if self.location.is_open() {
             self.dirty |= self.location.touch(event);
             return;
@@ -132,6 +151,7 @@ impl App {
                 (TAP_TARGET, HomeAction::Count),
                 (DEBUGGER_TARGET, HomeAction::Debugger),
                 (LOCATION_TARGET, HomeAction::Location),
+                (POWER_TARGET, HomeAction::Power),
             ]
             .into_iter()
             .find_map(|(target, action)| target.contains(point).then_some(action))
@@ -140,6 +160,7 @@ impl App {
                 HomeAction::Count => self.taps = self.taps.saturating_add(1),
                 HomeAction::Debugger => self.debugger.open(),
                 HomeAction::Location => self.location.open(),
+                HomeAction::Power => self.power.open(),
             }
             self.dirty = true;
         }
@@ -157,6 +178,9 @@ impl App {
     }
 
     pub fn render<D: DrawTarget<Color = Gray4>>(&self, display: &mut D) -> Result<(), D::Error> {
+        if self.power.is_open() {
+            return self.power.render(display);
+        }
         if self.location.is_open() {
             return self.location.render(display);
         }
@@ -170,6 +194,7 @@ impl App {
         Text::new("Hello from shared Rust", Point::new(48, 110), muted).draw(display)?;
         button(display, DEBUGGER_TARGET, "Radio debugger", false, true)?;
         button(display, LOCATION_TARGET, "GNSS", false, true)?;
+        button(display, POWER_TARGET, "Power", false, true)?;
         Rectangle::new(Point::new(48, 144), Size::new(TAP_TARGET.size.width, 2))
             .into_styled(PrimitiveStyle::with_fill(Gray4::new(11)))
             .draw(display)?;

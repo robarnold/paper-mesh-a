@@ -5,6 +5,38 @@ use heapless::String;
 
 use crate::location::{SatelliteSystem, UtcTime};
 
+/// Optional measurement with a unit. Missing data uses an explicit marker.
+pub fn measurement(value: Option<impl core::fmt::Display>, unit: &str) -> String<32> {
+    let mut label = String::new();
+    if let Some(value) = value {
+        let _ = write!(label, "{value}");
+        if !unit.is_empty() {
+            let _ = write!(label, " {unit}");
+        }
+    } else {
+        let _ = label.push_str("--");
+    }
+    label
+}
+
+/// Hundredths of a degree Celsius, rounded to one decimal place.
+pub fn temperature_celsius(value: Option<i32>) -> String<32> {
+    let mut label = String::new();
+    if let Some(value) = value {
+        let tenths = (u64::from(value.unsigned_abs()) + 5) / 10;
+        let _ = write!(
+            label,
+            "{}{}.{} C",
+            if value < 0 && tenths != 0 { "-" } else { "" },
+            tenths / 10,
+            tenths % 10
+        );
+    } else {
+        let _ = label.push_str("--");
+    }
+    label
+}
+
 /// Display label for a satellite system.
 pub fn satellite_label(system: SatelliteSystem) -> &'static str {
     match system {

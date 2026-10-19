@@ -17,6 +17,7 @@ A backend can omit services from this catalog.
 | `Display` | `DrawTarget<Color = Gray4>`, `is_busy()`, and `refresh()` | Control storage, pixel packing, submission, completion, and errors. |
 | `Discovery` | Identified scans, bounded results, source, receipt time, cancellation, and errors | Supply observations. Control radio resources. Report unsupported operations. |
 | `Location` | Position, motion, UTC, receiver activity, satellite signals, availability, and receipt times | Decode observations. Control the transport and supply. Keep original receipt times. |
+| `Power` | Independent battery and charger observations, validity, units, and receipt times | Read device state. Preserve source availability and estimate qualifications. |
 
 These interfaces contain no screen layout, fixed panel dimensions, or application timeout.
 `PortraitDisplay` and `PortraitRotation` supply coordinate adapters in the same crate.
@@ -106,7 +107,7 @@ Packet-radio consumers operate below application messaging.
 UI components can operate without physical radio configuration.
 
 The implemented interfaces cover the clock, single-contact touch, display
-submission, busy state, fixed rotation, discovery scans, and basic location observations.
+submission, busy state, fixed rotation, discovery scans, location observations, and power observations.
 Capability descriptors and other catalog entries stay planned work.
 Backend profiles and the [simulator guide](simulator.md) record implementation
 status.
@@ -119,7 +120,7 @@ status.
 | [Location observations](services/location.md) | Current observations and planned acquisition extensions |
 | [Calendar time and timers](services/time.md) | Current UTC clock, monotonic deadlines, and planned alarms |
 | [Files and internal persistence](services/storage.md) | Planned media and durable settings contracts |
-| [Power, charging, and suspend](services/power.md) | Planned power observations and lifecycle transitions |
+| [Power, charging, and suspend](services/power.md) | Current observations and planned control and lifecycle transitions |
 | [Discovery and communications](services/connectivity.md) | Current scans and planned packet and transport services |
 | [Display contract](display-constraints.md) | Planned display and lighting services |
 | [Orientation state](platform/orientation.md) | Fixed coordinate adapters and planned orientation policy |

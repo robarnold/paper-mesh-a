@@ -13,7 +13,7 @@
     h1 { font-size: 28px; letter-spacing: -.8px; margin: 4px 0; font-weight: 600; }
     .eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: 2px; color: #667060; }
     .badge { font-size: 12px; border: 1px solid #c6cabe; border-radius: 20px; padding: 7px 12px; white-space: nowrap; }
-    .workspace { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 32px; align-items: center; }
+    .workspace { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 32px; align-items: start; }
     .device { width: clamp(250px, calc((100dvh - 180px) * 9 / 16 + 40px), 580px); padding: 20px; background: #292c27; border-radius: 22px; box-shadow: 0 15px 35px #30342620; }
     #screen { display: block; width: 100%; height: auto; aspect-ratio: 9/16; background: white; border-radius: 2px; image-rendering: pixelated; touch-action: none; cursor: pointer; }
     #screen:focus-visible { outline: 3px solid #a9bf83; outline-offset: 5px; }
@@ -89,6 +89,22 @@
       <option value="stale_utc">UTC reports stop</option>
     </select>
     <p class="note">GNSS observations use test data. Select GNSS to see coordinates, satellite signals, and receiver activity.</p>
+    <h2>Power scenario</h2>
+    <label for="power-scenario">Battery and charger observations</label>
+    <select id="power-scenario">
+      <option value="battery">Battery discharge</option>
+      <option value="charging">USB power with charge current</option>
+      <option value="full">Charge complete</option>
+      <option value="low_battery">Low battery</option>
+      <option value="no_battery">USB power without a battery</option>
+      <option value="initializing">Gauge startup</option>
+      <option value="gauge_fault">Gauge read failure</option>
+      <option value="charger_fault">Charger read failure</option>
+      <option value="temperature_fault">Thermal shutdown</option>
+      <option value="unavailable">Power data unavailable</option>
+      <option value="stale">Reports stop</option>
+    </select>
+    <p class="note">Power observations use test data. Select Power to see battery measurements, charger settings, and faults.</p>
     <p class="note">Click the screen or use the device controls. Pause to advance virtual time.<br>
       A scan takes 1.5 simulated seconds. A display refresh takes 250 simulated milliseconds.</p>
     <p id="error" role="status"></p>
@@ -135,6 +151,7 @@
     document.querySelector('#reset').addEventListener('click', () => send({type: 'reset'}));
     document.querySelector('#scan-scenario').addEventListener('change', event => send({type: 'scan_scenario', scenario: event.target.value}));
     document.querySelector('#location-scenario').addEventListener('change', event => send({type: 'location_scenario', scenario: event.target.value}));
+    document.querySelector('#power-scenario').addEventListener('change', event => send({type: 'power_scenario', scenario: event.target.value}));
     async function poll() {
       try {
         const response = await fetch('/api/state');
@@ -149,6 +166,7 @@
         document.querySelector('#heartbeats').textContent = state.heartbeats;
         document.querySelector('#scan-scenario').value = state.scan_scenario;
         document.querySelector('#location-scenario').value = state.location_scenario;
+        document.querySelector('#power-scenario').value = state.power_scenario;
         const nextControlsKey = JSON.stringify(state.controls);
         if (nextControlsKey !== controlsKey) {
           const controls = document.querySelector('#device-controls');

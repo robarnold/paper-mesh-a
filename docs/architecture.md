@@ -48,6 +48,9 @@ The [clock contract](services/time.md) separates monotonic deadlines from option
 The RTC backend consumes complete GNSS observations and controls persistent calendar access.
 The platform supplies calendar types and elapsed-time conversion without hardware dependencies.
 
+The [power contract](services/power.md) separates battery observations from charger observations.
+Backends control device access and measurement conversion. The application controls the detail screen and observation age limits.
+
 Common functionality belongs in the platform crate.
 Toolkit components accept application choices through parameters and callbacks.
 Modules group related functions by responsibility.

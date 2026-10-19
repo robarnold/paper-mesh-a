@@ -79,3 +79,29 @@ Fresh GPS observations can set the clock again.
 Native tests cover calendar corrections and loss without changes to monotonic deadlines or display completion.
 Firmware tests use simulated I2C registers for retention, voltage loss, malformed values, drift corrections, and bus errors.
 The browser does not expose RTC fault controls or model oscillator drift.
+
+## Power screen
+
+Select `Power` on the device screen or in the browser controls.
+Select a power scenario in the browser.
+The selection takes effect immediately. Reset restores battery discharge and the home screen.
+Observations arrive at two-second virtual intervals. Values are test data, not an electrical model.
+The [application](../application.md#power-screen) defines display intervals and data expiry.
+
+| Scenario | Behavior |
+| --- | --- |
+| `battery` | 68 percent, negative battery current, no external input |
+| `charging` | USB power with positive current and fast charge |
+| `full` | Charge complete with 100 percent and zero current |
+| `low_battery` | Four percent and an observed shutdown request without a lifecycle action |
+| `no_battery` | USB power with no battery measurements |
+| `initializing` | Battery presence without a ready gauge or measurements |
+| `gauge_fault` | Gauge read failure with charger data still available |
+| `charger_fault` | Charger read failure with battery data still available |
+| `temperature_fault` | Charge inhibition, thermal shutdown, and a hot thermistor |
+| `unavailable` | Both sources unavailable |
+| `stale` | One observation, then no reports. Application age limits control expiry. |
+
+Native tests cover independent failures, recovery, expiry, navigation, and display updates.
+Large and small time advances produce the same state and completed frame.
+Separate native tests execute the firmware register adapter with simulated I2C responses.
