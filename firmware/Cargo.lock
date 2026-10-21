@@ -1648,6 +1648,7 @@ dependencies = [
  "paper-mesh-hid-touchpad",
  "paper-mesh-platform",
  "static_cell",
+ "xtensa-lx",
 ]
 
 [[package]]

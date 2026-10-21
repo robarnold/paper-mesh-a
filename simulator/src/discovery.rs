@@ -26,6 +26,9 @@ pub struct SimDiscovery {
 }
 
 impl SimDiscovery {
+    pub fn is_active(&self) -> bool {
+        self.pending.is_some()
+    }
     pub fn next_deadline_ms(&self) -> Option<u64> {
         self.pending.and_then(|(_, ready, scenario)| {
             (!matches!(scenario, ScanScenario::Timeout)).then_some(ready)

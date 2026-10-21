@@ -7,7 +7,7 @@ use embassy_sync::{
     blocking_mutex::{Mutex, raw::CriticalSectionRawMutex},
     signal::Signal,
 };
-use embassy_time::{Instant, Timer};
+use embassy_time::Instant;
 use paper_mesh_platform::power::{Power, PowerAvailability, PowerReading, PowerSnapshot};
 
 use crate::bus::Bus;
@@ -41,10 +41,31 @@ fn publish(snapshot: PowerSnapshot) {
     CHANGED.signal(());
 }
 
+pub async fn read_now(bus: &Bus) -> PowerSnapshot {
+    let battery = {
+        let mut bus = bus.lock().await;
+        device::battery(&mut *bus)
+            .map(|value| PowerReading::ready(value, Instant::now().as_millis()))
+            .unwrap_or(PowerReading::unavailable(PowerAvailability::Fault))
+    };
+    let charger = {
+        let mut bus = bus.lock().await;
+        device::charger(&mut *bus)
+            .map(|value| PowerReading::ready(value, Instant::now().as_millis()))
+            .unwrap_or(PowerReading::unavailable(PowerAvailability::Fault))
+    };
+    let snapshot = PowerSnapshot { battery, charger };
+    publish(snapshot);
+    snapshot
+}
+
 #[embassy_executor::task]
 pub async fn worker(bus: &'static Bus) {
+    use crate::suspend::{self, Service};
+    suspend::register(Service::Power);
     let mut failed = (false, false);
     loop {
+        suspend::checkpoint(Service::Power).await;
         let battery = {
             let mut bus = bus.lock().await;
             let at_ms = Instant::now().as_millis();
@@ -71,6 +92,6 @@ pub async fn worker(bus: &'static Bus) {
             battery: battery.unwrap_or(PowerReading::unavailable(PowerAvailability::Fault)),
             charger: charger.unwrap_or(PowerReading::unavailable(PowerAvailability::Fault)),
         });
-        Timer::after_millis(POLL_MS).await;
+        suspend::delay(Service::Power, POLL_MS).await;
     }
 }

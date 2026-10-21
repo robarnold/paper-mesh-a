@@ -15,7 +15,7 @@ use esp_hal::{
     Blocking,
     interrupt::Priority,
     peripherals,
-    uart::{Config, RxConfig, Uart},
+    uart::{Config, RxConfig, Uart, UartTx},
 };
 use esp_rtos::embassy::InterruptExecutor;
 use log::{error, info};
@@ -63,19 +63,11 @@ pub fn start(
     tx: peripherals::GPIO43<'static>,
     interrupt: peripherals::FROM_CPU_INTR3<'static>,
 ) {
-    let uart = match Uart::new(uart, config(9_600)) {
-        Ok(uart) => uart.with_rx(rx).with_tx(tx),
-        Err(error) => {
-            error!("GNSS: UART configuration failed: {:?}", error);
-            fault();
-            return;
-        }
-    };
     // The interrupt executor services UART input during application rendering.
     EXECUTOR
         .init(InterruptExecutor::new(interrupt))
         .start(Priority::Priority1)
-        .spawn(worker(bus, uart).unwrap());
+        .spawn(worker(bus, uart, rx, tx).unwrap());
 }
 
 pub fn fault() {
@@ -91,21 +83,59 @@ async fn enable_power(bus: &Bus) -> Result<(), esp_hal::i2c::master::Error> {
 }
 
 #[embassy_executor::task]
-async fn worker(bus: &'static Bus, uart: Uart<'static, Blocking>) {
-    let mut uart = uart.into_async();
-    loop {
-        match enable_power(bus).await {
-            Ok(()) => break,
-            Err(error) => {
-                error!("GNSS: supply enable failed: {:?}", error);
-                fault();
-                Timer::after_secs(1).await;
-            }
-        }
-    }
-    info!("GNSS: auxiliary supply enabled; core=0; RX44/TX43; continuous power");
-    // The GSV groups use static RAM instead of the interrupt stack.
+async fn worker(
+    bus: &'static Bus,
+    mut peripheral: peripherals::UART1<'static>,
+    mut rx: peripherals::GPIO44<'static>,
+    mut tx: peripherals::GPIO43<'static>,
+) {
+    use crate::suspend::{self, Service};
+    suspend::register(Service::Gnss);
     let receiver = RECEIVER.take();
+    loop {
+        if suspend::requested() {
+            // HAL sleep polls every UART transmitter. Keep UART1 clocked after RX drops,
+            // or that poll cannot finish. This idle driver has no pins or RX wake lock.
+            let idle_uart = UartTx::new(peripheral.reborrow(), config(9_600));
+            if idle_uart.is_err() {
+                suspend::fail();
+            }
+            let result = {
+                let mut bus = bus.lock().await;
+                power::disable(&mut *bus)
+            };
+            if result.is_err() {
+                suspend::fail();
+            }
+            receiver.uart_error();
+            publish(receiver.snapshot);
+            suspend::checkpoint(Service::Gnss).await;
+            drop(idle_uart);
+        }
+        if let Err(error) = enable_power(bus).await {
+            error!("GNSS: supply enable failed: {:?}", error);
+            fault();
+            suspend::delay(Service::Gnss, 1_000).await;
+            continue;
+        }
+        let uart = match Uart::new(peripheral.reborrow(), config(9_600)) {
+            Ok(uart) => uart.with_rx(rx.reborrow()).with_tx(tx.reborrow()),
+            Err(error) => {
+                error!("GNSS: UART configuration failed: {:?}", error);
+                fault();
+                suspend::delay(Service::Gnss, 1_000).await;
+                continue;
+            }
+        };
+        *receiver = Receiver::INITIAL;
+        info!("GNSS: auxiliary supply enabled; core=0; RX44/TX43");
+        select(suspend::request(Service::Gnss), receive(uart, receiver)).await;
+        // Cancellation drops UART RX and its wake lock before the pause acknowledgement.
+    }
+}
+
+async fn receive(uart: Uart<'_, Blocking>, receiver: &mut Receiver) {
+    let mut uart = uart.into_async();
     receiver.start_at(Instant::now().as_millis());
     publish(receiver.snapshot);
     let mut bytes = [0; 128];

@@ -122,7 +122,7 @@ status.
 | [Location observations](services/location.md) | Current observations and planned acquisition extensions |
 | [Calendar time and timers](services/time.md) | Current UTC clock, monotonic deadlines, and planned alarms |
 | [Files and internal persistence](services/storage.md) | Planned media and durable settings contracts |
-| [Power, charging, and suspend](services/power.md) | Current observations and planned control and lifecycle transitions |
+| [Power, charging, and suspend](services/power.md) | Current observations and manual suspend experiment; planned charge control and general lifecycle transitions |
 | [Discovery and communications](services/connectivity.md) | Current scans and planned packet and transport services |
 | [Display contract](display-constraints.md) | Planned display and lighting services |
 | [Orientation state](platform/orientation.md) | Fixed coordinate adapters and planned orientation policy |

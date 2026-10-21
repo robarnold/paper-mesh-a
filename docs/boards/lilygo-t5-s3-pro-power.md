@@ -61,7 +61,106 @@ All writes contain only a register pointer for a read transaction.
 The adapter does not change charge limits, watchdog settings, ADC mode, or BATFET controls.
 Charger ADC measurements remain unavailable because this adapter does not start or verify a conversion.
 Battery voltage and current come from the gauge.
-Charge control, power removal, and sleep remain planned work.
+Charge control and power removal remain planned work.
+
+## Manual light sleep
+
+The Suspend page requests explicit light sleep through `esp-hal 1.2.2`.
+The RTOS uses its ordinary idle hook. It does not enter automatic light sleep.
+A wake lock records application activity until suspend preparation completes.
+The runtime permits ten seconds for the final display update and five seconds for service preparation.
+An active or pending radio scan rejects the request.
+
+Preparation pauses button, power, and RTC polling.
+It stops touch interrupts, cancels the current touch gesture, and pauses USB reports and logs.
+USB detaches before its device task acknowledges preparation.
+The GNSS task drops the UART and its wake lock, then disables the shared GNSS/LoRa auxiliary supply.
+It retains a separate idle UART1 transmitter with no attached pins during the pause.
+This transmitter keeps UART1 clocks available without the receive wake lock.
+HAL sleep preparation polls UART transmitters and can stop indefinitely if UART1 clocks are disabled.
+The task drops the idle transmitter before it restores normal GNSS input.
+The display has already issued its rail shutdown sequence before this step.
+It also drops its temporary LCD and RMT drivers before it reports completion.
+Both drivers retain clock wake locks for their lifetime. Rail shutdown alone does not release those locks.
+The touch controller remains supplied. This experiment does not minimize every peripheral load.
+
+The coordinator sets unconnected PCA9535 pins `IO0_1` through `IO0_7` as low outputs before it arms wake inputs.
+It preserves the auxiliary supply on `IO0_0` and every port 1 signal.
+These unused pins have no external connection on schematic sheet 3.
+PCA9535 has no internal input pull resistors, so input mode can produce unwanted interrupts.
+See [the board schematic](../vendor/lilygo/t5-s3-pro/README.md) and [PCA9535 section 4](https://www.ti.com/lit/ds/symlink/pca9535.pdf#page=3).
+After services pause, the coordinator waits 500 ms for the display supply to settle.
+TPS65185 discharge continues after PWRGOOD falls and WAKEUP goes low.
+Its later status transition can assert the shared expander interrupt.
+The delay precedes the battery sample and wake-input baseline.
+See [TPS65185 Figure 2](https://www.ti.com/lit/ds/symlink/tps65185.pdf#page=13) and the vendor's
+[shutdown delay before interrupt clearing](https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/lib/epdiy/src/board/epd_board_v7.c).
+The coordinator then clears both input comparisons and arms low-level interrupts on GPIO0 and GPIO38.
+BOOT uses GPIO0. Function uses PCA9535 `IO1_2`.
+A held BOOT or Function control, or an asserted expander interrupt, rejects preparation.
+GPIO38 is a shared expander interrupt, so another expander input can also end suspend.
+If touch wake is enabled, the coordinator also arms GPIO3. A held contact, Home key, or asserted touch interrupt rejects preparation.
+Touch wake uses the current GT911 configuration. Firmware does not change sensitivity or enable its gesture mode.
+Contact sensitivity and unintended wake events require physical tests.
+QON cannot wake this path through a software event.
+The selected timer provides an independent wake deadline.
+
+The interrupt handler records each observed wake input before it disables that interrupt.
+After wake, the coordinator also captures pending interrupts before it reads the bus or resumes services.
+It attributes GPIO38 to Function only if the Function input is still low.
+A released control, another expander input, or a failed read produces `Control IRQ`.
+GPIO3 produces `Touch/Home IRQ`. The report can include multiple inputs and an expired timer without assigning an event order.
+The log includes the GPIO mask and both expander ports before and after sleep, when available.
+It also records whether the coordinator called HAL sleep or skipped it because an input had already arrived.
+The result page shows elapsed time to the nearest millisecond.
+The touch driver consumes contacts from suspend until an empty report confirms release.
+
+After services pause, the coordinator reads the gauge and charger directly before it arms wake inputs.
+It releases the application wake lock only after every participating task acknowledges the pause.
+Any remaining driver wake lock rejects the experiment.
+Core 1 acknowledges a stop request between display operations, with its local interrupts disabled and no shared lock held.
+The coordinator permits one second for this acknowledgement. Cancellation releases the request, including a concurrent acknowledgement.
+Core 0 then disables its local interrupts and stalls core 1 at that known point.
+It arms the RTC timer with the selected deadline and calls the HAL sleep function directly.
+The HAL restores monotonic time after sleep. The coordinator captures pending GPIO events and releases the hardware stall.
+It rearms the RTOS timer alarm before it enables interrupts and releases the cooperative stop.
+After wake, the coordinator restores the wake lock and reads the gauge and charger before it resumes services.
+USB reconnects. GNSS restarts baud selection and acquires new observations.
+The display compares its framebuffer checksum across suspend and requires a full refresh after resume.
+
+The [portable report](../services/power.md#manual-suspend-experiment) defines charge signs, retention, and measurement limits.
+No external RTC register stores the report. No gauge or charger configuration changes occur.
+An internal RTC memory word records suspend progress for diagnosis after a main-system reset.
+A hardware reset can discard this marker.
+USB logs report the previous and current stages when a terminal opens CDC with DTR asserted.
+The log task waits for USB configuration and DTR before it accesses endpoints or removes queued messages.
+The underlying driver's disable operation leaves old endpoint state until the next USB reset.
+Each connection receives the latest wake diagnostics even if ordinary queued logs have been lost.
+Retained progress identifies the last completed marker. It does not prove sleep residency or identify a fault inside a HAL call.
+
+The RTC watchdog limits a failed experiment.
+Preparation and restoration each have a 15-second recovery deadline.
+The watchdog deadline for sleep includes the requested duration and 15 seconds for recovery.
+The watchdog runs during sleep. Its expiry resets the main system and preserves the RTC domain for diagnosis.
+The coordinator disables the watchdog after the experiment.
+This backend rejects durations longer than one hour.
+
+This path requires physical validation before normal use.
+The installed RTOS's [automatic multicore hook][rtos-sleep] can stall another core while that core holds a required lock.
+This implementation avoids that hook and waits for the cooperative stop before it stalls core 1.
+Neither a build nor simulator success establishes wake reliability, sleep residency, or battery savings.
+Physical checks must cover timer, BOOT, Function, touch, and Home wake events, including held and simultaneous inputs.
+They must also cover repeated cycles, USB reconnection, display retention, and GNSS recovery.
+
+### External power measurement
+
+The BQ27220 observes battery current. It does not measure system current from the charger input.
+The BQ25896 exposes voltage and battery charge-current measurements, but no total input-current measurement.
+Its charge-current ADC uses 50 mA steps. See [the charger datasheet][charger], section 9.2.8 and register REG12.
+An external USB meter can observe input power during sleep without a processor wake.
+That reading includes battery charging, conversion losses, and other board loads.
+After charge termination, an awake-to-sleep comparison reduces the contribution from battery charging.
+The meter must resolve the expected low current. This experiment does not change charger settings.
 
 ## Verification limits
 
@@ -82,3 +181,4 @@ The charger reference is SLUSC76C, revised May 2018.
 [pinmap]: https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/docs/pinmap.md
 [gauge]: https://www.ti.com/lit/ug/sluubd4/sluubd4.pdf
 [charger]: https://www.ti.com/lit/ds/symlink/bq25896.pdf
+[rtos-sleep]: https://github.com/esp-rs/esp-hal/blob/63e97be553f435f29171f7ae5f37a41ad737a75a/esp-rtos/src/sleep.rs

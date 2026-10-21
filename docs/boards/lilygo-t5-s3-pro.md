@@ -130,7 +130,8 @@ UART receipt on this wiring does not provide PPS precision.
 The [fuel-gauge example][gauge] identifies available measurements.
 It does not establish calibration or accuracy for the delivered cell.
 
-ESP light sleep is a candidate for `DEV-POWER` suspend with resume.
+The [manual light-sleep experiment](lilygo-t5-s3-pro-power.md#manual-light-sleep) implements suspend with resume.
+Physical wake reliability and power savings remain unverified.
 Deep sleep restarts the application.
 BQ25896 battery shipping mode is a conditional power-off mechanism.
 USB can keep the system supplied.
@@ -305,7 +306,8 @@ Current firmware initializes display storage, display output, GT911 input, reque
 Other peripherals stay uninitialized.
 This state does not guarantee that those peripherals are off.
 Timer waits yield to the scheduler.
-Automatic light sleep and deep sleep stay unconfigured.
+Automatic light sleep is permitted only during the manual suspend experiment.
+Deep sleep stays unconfigured.
 Battery-life estimates must use measurements on the physical board.
 
 MeshCore integration, persistent storage, and OTA

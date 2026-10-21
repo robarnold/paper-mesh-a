@@ -6,6 +6,7 @@ mod state;
 mod wifi;
 
 use alloc::boxed::Box;
+use core::sync::atomic::{AtomicBool, Ordering};
 use core::{cell::RefCell, future::Future, pin::Pin};
 use embassy_futures::select::{Either3, select3};
 use embassy_sync::{
@@ -23,6 +24,24 @@ static STATE: Mutex<CriticalSectionRawMutex, RefCell<ScanState>> =
     Mutex::new(RefCell::new(ScanState::NEW));
 static REQUEST: Signal<CriticalSectionRawMutex, Option<ScanRequest>> = Signal::new();
 static CHANGED: Signal<CriticalSectionRawMutex, ()> = Signal::new();
+static ACTIVE: AtomicBool = AtomicBool::new(false);
+
+pub fn is_active() -> bool {
+    ACTIVE.load(Ordering::Acquire) || STATE.lock(|state| state.borrow().is_pending())
+}
+
+struct ActiveScan;
+impl ActiveScan {
+    fn new() -> Self {
+        ACTIVE.store(true, Ordering::Release);
+        Self
+    }
+}
+impl Drop for ActiveScan {
+    fn drop(&mut self) {
+        ACTIVE.store(false, Ordering::Release);
+    }
+}
 
 type ScanFuture<'a> = Pin<Box<dyn Future<Output = Result<(), ScanError>> + 'a>>;
 
@@ -30,6 +49,9 @@ pub struct FirmwareDiscovery;
 
 impl Discovery for FirmwareDiscovery {
     fn start(&mut self, request: ScanRequest, now_ms: u64) -> Result<ScanSource, ScanError> {
+        if crate::suspend::requested() {
+            return Err(ScanError::Busy);
+        }
         let source = STATE.lock(|state| state.borrow_mut().start(request, now_ms))?;
         REQUEST.signal(Some(request));
         Ok(source)
@@ -69,6 +91,7 @@ pub async fn worker(mut wifi: WIFI<'static>, mut bluetooth: BT<'static>) {
         if !STATE.lock(|state| state.borrow().accepts(request)) {
             continue;
         }
+        let _active = ActiveScan::new();
         let result = if Instant::now().as_millis() >= request.deadline_ms {
             Err(ScanError::Timeout)
         } else {

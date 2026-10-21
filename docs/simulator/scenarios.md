@@ -88,6 +88,15 @@ The selection takes effect immediately. Reset restores battery discharge and the
 Observations arrive at two-second virtual intervals. Values are test data, not an electrical model.
 The [application](../application.md#power-screen) defines display intervals and data expiry.
 
+The Suspend page uses the same application controls as firmware.
+The simulator waits for the final display frame, then stops application polls until a wake event ends suspend.
+BOOT, Function, and the timer can end suspend. Touch and Home can also end suspend when touch wake is enabled.
+The simulator consumes the wake contact through its release.
+It retains the counter, screen state, and clock epoch.
+Capacity values remain scenario data. The simulator does not model electrical sleep consumption.
+Tests cover each wake input, held controls, contact suppression, repeated cycles, charge gain, missing readings, and consistent virtual time steps.
+The firmware decoder tests also cover simultaneous events and unattributed expander interrupts.
+
 | Scenario | Behavior |
 | --- | --- |
 | `battery` | 68 percent, negative battery current, no external input |

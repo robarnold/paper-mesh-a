@@ -151,3 +151,24 @@ Supply changes, charge changes, faults, and validity changes update immediately.
 Display changes combine while a refresh is pending.
 `App::next_deadline_ms` includes power expiry and display deadlines only while the power screen is open.
 The [simulator scenarios](simulator/scenarios.md#power-screen) cover supply changes, missing data, failures, and recovery.
+
+### Suspend experiment
+
+Select `Suspend` from the Power screen.
+Select a timer duration of one minute, ten minutes, or one hour.
+Ten minutes is the initial selection.
+Select `Start light sleep` to request suspend.
+Use a displayed wake control to resume before the timer expires.
+The backend supplies the control identities and labels. The current board uses BOOT and Function.
+`Touch/Home wake` enables the touch interrupt as another wake input. Its initial setting is off.
+This input can respond to incidental contact. A wake contact must end before the application accepts another gesture.
+USB disconnects during the experiment.
+
+The page shows elapsed time, wake events, remaining charge before and after, and signed net charge loss.
+`Touch/Home IRQ` identifies an interrupt. It does not establish a deliberate tap.
+`Control IRQ` identifies a shared interrupt that the backend cannot attribute to a readable control.
+It also shows external power at the endpoints and the limits of the gauge estimate.
+The report stays available until reset or the next experiment.
+Preparation errors appear on the same page and permit a retry.
+`Back` returns to the battery and charger tabs.
+The [suspend contract](services/power.md#manual-suspend-experiment) defines the measurement interval and retention.

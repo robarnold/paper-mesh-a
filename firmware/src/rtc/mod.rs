@@ -5,7 +5,7 @@ mod service;
 
 use core::cell::RefCell;
 use embassy_sync::blocking_mutex::{Mutex, raw::CriticalSectionRawMutex};
-use embassy_time::{Instant, Timer};
+use embassy_time::Instant;
 use log::error;
 use paper_mesh_platform::{Clock, location::Location, time::UtcDateTime};
 
@@ -29,10 +29,13 @@ impl Clock for FirmwareClock {
 
 #[embassy_executor::task]
 pub async fn worker(bus: &'static Bus) {
-    let mut service = Service::INITIAL;
+    use crate::suspend::{self, Service};
+    suspend::register(Service::Rtc);
+    let mut service = service::Service::INITIAL;
     let mut location = FirmwareLocation;
     let mut faulted = false;
     loop {
+        suspend::checkpoint(Service::Rtc).await;
         let result = {
             let mut bus = bus.lock().await;
             let now_ms = Instant::now().as_millis();
@@ -45,6 +48,6 @@ pub async fn worker(bus: &'static Bus) {
             error!("RTC: access failed: {:?}", error);
         }
         faulted = result.is_err();
-        Timer::after_millis(POLL_MS).await;
+        suspend::delay(Service::Rtc, POLL_MS).await;
     }
 }

@@ -6,8 +6,8 @@ use embassy_sync::{
     channel::Channel,
     signal::Signal,
 };
-use embassy_time::{Instant, Timer};
-use esp_hal::gpio::{Input, InputConfig, Pull};
+use embassy_time::Instant;
+use esp_hal::gpio::{Event, Input, InputConfig, Pull};
 use esp_hal::peripherals::GPIO0;
 use paper_mesh_platform::input::buttons::{
     ButtonCapability, ButtonDebouncer, ButtonDescriptor, ButtonEvent, ButtonId, ButtonState,
@@ -48,6 +48,8 @@ pub const CONTROLS: [ButtonDescriptor; 5] = [
 
 static EVENTS: Channel<CriticalSectionRawMutex, ButtonEvent, 16> = Channel::new();
 static CHANGED: Signal<CriticalSectionRawMutex, ()> = Signal::new();
+static BOOT_PIN: Mutex<CriticalSectionRawMutex, RefCell<Option<Input<'static>>>> =
+    Mutex::new(RefCell::new(None));
 static HOME_STATE: Mutex<CriticalSectionRawMutex, RefCell<ButtonDebouncer>> =
     Mutex::new(RefCell::new(ButtonDebouncer::new(HOME, 0)));
 
@@ -82,9 +84,42 @@ pub async fn changed() {
     CHANGED.wait().await;
 }
 
+pub fn arm_boot_wake() -> Result<(), paper_mesh_platform::suspend::SuspendError> {
+    use paper_mesh_platform::suspend::SuspendError;
+    BOOT_PIN.lock(|slot| {
+        let mut slot = slot.borrow_mut();
+        let pin = slot.as_mut().ok_or(SuspendError::Preparation)?;
+        if pin.is_low() {
+            return Err(SuspendError::WakeActive);
+        }
+        pin.clear_interrupt();
+        pin.listen(Event::LowLevel);
+        Ok(())
+    })
+}
+
+pub fn take_boot_interrupt(disarm: bool) -> bool {
+    BOOT_PIN.lock(|slot| {
+        let mut slot = slot.borrow_mut();
+        let Some(pin) = slot.as_mut() else {
+            return false;
+        };
+        let pending = pin.is_interrupt_set();
+        if pending || disarm {
+            pin.unlisten();
+            pin.clear_interrupt();
+        }
+        pending
+    })
+}
+
 #[embassy_executor::task]
 pub async fn worker(bus: Option<&'static Bus>, pin: GPIO0<'static>) {
-    let boot = Input::new(pin, InputConfig::default().with_pull(Pull::Up));
+    use crate::suspend::{self, Service};
+    suspend::register(Service::Buttons);
+    BOOT_PIN.lock(|slot| {
+        *slot.borrow_mut() = Some(Input::new(pin, InputConfig::default().with_pull(Pull::Up)))
+    });
     let mut boot_state = ButtonDebouncer::new(BOOT, 20);
     let mut function = ButtonDebouncer::new(FUNCTION, 20);
     let mut configured = false;
@@ -92,8 +127,10 @@ pub async fn worker(bus: Option<&'static Bus>, pin: GPIO0<'static>) {
         log::info!("button: {} {:?}", control.label, control.capability);
     }
     loop {
+        suspend::checkpoint(Service::Buttons).await;
         let now = Instant::now().as_millis();
-        if let Some(event) = boot_state.sample(boot.is_low(), now) {
+        let pressed = BOOT_PIN.lock(|slot| slot.borrow().as_ref().is_some_and(Input::is_low));
+        if let Some(event) = boot_state.sample(pressed, now) {
             publish(event);
         }
         if let Some(bus) = bus {
@@ -112,7 +149,7 @@ pub async fn worker(bus: Option<&'static Bus>, pin: GPIO0<'static>) {
                 publish(event);
             }
         }
-        Timer::after_millis(10).await;
+        suspend::delay(Service::Buttons, 10).await;
     }
 }
 

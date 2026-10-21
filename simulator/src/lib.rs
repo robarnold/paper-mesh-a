@@ -26,7 +26,19 @@ use paper_mesh_platform::{
     location::{Location, LocationAvailability},
     time::{ObservationWindow, UtcDateTime, UtcReference},
 };
+use paper_mesh_platform::{
+    power::{Power, PowerSnapshot},
+    suspend::{SuspendError, SuspendReport, SuspendRequest, WakeReason},
+};
 use power::{PowerScenario, SimPower};
+
+struct Suspended {
+    started_at_ms: u64,
+    deadline_ms: u64,
+    before: PowerSnapshot,
+    host: HostState,
+    touch_wake: bool,
+}
 
 // This artificial delay exercises asynchronous refresh.
 // It is not a panel measurement.
@@ -165,6 +177,11 @@ fn encode_png(size: Size, pixels: &[u8]) -> Result<Vec<u8>, png::EncodingError> 
 
 #[derive(Serialize)]
 pub struct Snapshot {
+    pub suspended: bool,
+    pub suspend_elapsed_ms: Option<u64>,
+    pub suspend_charge_loss_mah: Option<i32>,
+    pub suspend_touch_wake: bool,
+    pub suspend_wake_reasons: Vec<&'static str>,
     pub touchpad_open: bool,
     pub touchpad_host: &'static str,
     pub touchpad_reports: u64,
@@ -240,6 +257,10 @@ pub struct ContactSnapshot {
 }
 
 pub struct Simulation {
+    suspend_request: Option<SuspendRequest>,
+    suspended: Option<Suspended>,
+    contacts: paper_mesh_platform::input::contacts::ContactState,
+    discard_touch: bool,
     touchpad_session: TouchpadSession,
     touchpad: touchpad::SimTouchpad,
     buttons: buttons::SimButtons,
@@ -257,6 +278,10 @@ impl Default for Simulation {
     fn default() -> Self {
         let clock = VirtualClock::default();
         let mut simulation = Self {
+            suspend_request: None,
+            suspended: None,
+            contacts: paper_mesh_platform::input::contacts::ContactState::new(),
+            discard_touch: false,
             touchpad_session: TouchpadSession::new(),
             touchpad: touchpad::SimTouchpad::default(),
             buttons: buttons::SimButtons::default(),
@@ -269,6 +294,7 @@ impl Default for Simulation {
             heartbeats: 0,
             last_heartbeat_seconds: None,
         };
+        simulation.app.set_suspend_controls(&buttons::WAKE_CONTROLS);
         simulation.poll();
         simulation
     }
@@ -282,6 +308,15 @@ impl Simulation {
             self.clock.now_ms(),
         )?;
         if let Some(event) = event {
+            if let Some(suspended) = &self.suspended {
+                if [buttons::BOOT, buttons::FUNCTION].contains(&event.id) && pressed {
+                    self.resume(WakeReason::Control(event.id));
+                } else if event.id == buttons::HOME && pressed && suspended.touch_wake {
+                    self.resume(WakeReason::TouchInterrupt);
+                }
+                self.poll();
+                return Ok(());
+            }
             self.app
                 .hardware_button(event, &[buttons::FUNCTION, buttons::HOME]);
         }
@@ -289,6 +324,52 @@ impl Simulation {
         Ok(())
     }
     fn poll(&mut self) {
+        self.display.advance_to(self.clock.now_ms());
+        if let Some(suspended) = &self.suspended {
+            if self.clock.now_ms() < suspended.deadline_ms {
+                return;
+            }
+            self.resume(WakeReason::Timer);
+        }
+        if let Some(request) = self.app.take_suspend_request() {
+            self.suspend_request = Some(request);
+        }
+        if let Some(request) = self.suspend_request {
+            if self.display.is_busy() {
+                return;
+            }
+            if self
+                .app
+                .present(&mut PortraitDisplay::new(&mut self.display))
+                .expect("idle display")
+            {
+                return;
+            }
+            self.suspend_request = None;
+            if self.buttons.snapshot().iter().any(|button| {
+                button.pressed
+                    && (button.id == buttons::BOOT.0
+                        || button.id == buttons::FUNCTION.0
+                        || (request.touch_wake && button.id == buttons::HOME.0))
+            }) || (request.touch_wake && !self.contacts.is_empty())
+            {
+                self.app.finish_suspend(Err(SuspendError::WakeActive));
+            } else if self.discovery.is_active() {
+                self.app.finish_suspend(Err(SuspendError::Busy));
+            } else {
+                self.suspended = Some(Suspended {
+                    started_at_ms: self.clock.now_ms(),
+                    deadline_ms: self.clock.now_ms().saturating_add(request.duration_ms),
+                    before: self.power.snapshot(self.clock.now_ms()),
+                    host: self.touchpad.state,
+                    touch_wake: request.touch_wake,
+                });
+                self.touchpad_session.set_active(false, &mut self.touchpad);
+                self.touchpad.cancel();
+                self.touchpad.state = HostState::Disconnected;
+                return;
+            }
+        }
         self.touchpad_session
             .set_active(self.app.touchpad_open(), &mut self.touchpad);
         self.touchpad_session.poll(&self.touchpad);
@@ -322,6 +403,16 @@ impl Simulation {
     pub fn advance(&mut self, duration_ms: u64) {
         let end = self.clock.now_ms.saturating_add(duration_ms);
         while self.clock.now_ms < end {
+            if let Some(suspended) = &self.suspended {
+                self.clock.now_ms = end.min(suspended.deadline_ms);
+                self.poll();
+                continue;
+            }
+            if self.suspend_request.is_some() {
+                self.clock.now_ms = end.min(self.display.ready_at_ms.max(self.clock.now_ms + 1));
+                self.poll();
+                continue;
+            }
             let mut next = end.min(self.app.next_deadline_ms());
             if let Some(deadline) = self.discovery.next_deadline_ms() {
                 next = next.min(deadline);
@@ -350,6 +441,22 @@ impl Simulation {
     }
 
     pub fn touch_frame_native(&mut self, frame: paper_mesh_platform::input::contacts::TouchFrame) {
+        self.contacts.apply(&frame);
+        if let Some(suspended) = &self.suspended {
+            if suspended.touch_wake
+                && frame
+                    .events()
+                    .any(|event| matches!(event, TouchEvent::Touch(_)))
+            {
+                self.resume(WakeReason::TouchInterrupt);
+                self.poll();
+            }
+            return;
+        }
+        if self.discard_touch {
+            self.discard_touch = !self.contacts.is_empty();
+            return;
+        }
         let mut normalized = paper_mesh_platform::input::contacts::TouchFrame::new(frame.at_ms);
         for event in frame.events() {
             normalized.push(ROTATION.touch_to_portrait(event));
@@ -414,6 +521,21 @@ impl Simulation {
         self.app.power()
     }
 
+    fn resume(&mut self, reason: WakeReason) {
+        let Some(suspended) = self.suspended.take() else {
+            return;
+        };
+        let report = SuspendReport {
+            elapsed_ms: self.clock.now_ms().saturating_sub(suspended.started_at_ms),
+            wake_reasons: [Some(reason), None, None, None],
+            before: suspended.before,
+            after: self.power.snapshot(self.clock.now_ms()),
+        };
+        self.touchpad.state = suspended.host;
+        self.discard_touch = !self.contacts.is_empty();
+        self.app.finish_suspend(Ok(report));
+    }
+
     pub fn set_power_scenario(&mut self, scenario: PowerScenario) {
         self.power.set_scenario(scenario, self.clock.now_ms());
         self.poll();
@@ -452,11 +574,21 @@ impl Simulation {
         let targets: &[(&str, embedded_graphics::primitives::Rectangle)] =
             if self.app.touchpad_open() {
                 &[]
+            } else if power.is_open() && power.suspend.open {
+                &[
+                    ("Back", BACK_TARGET),
+                    ("1 minute", paper_mesh_app::suspend::ONE_MINUTE),
+                    ("10 minutes", paper_mesh_app::suspend::TEN_MINUTES),
+                    ("1 hour", paper_mesh_app::suspend::ONE_HOUR),
+                    ("Start light sleep", paper_mesh_app::suspend::START),
+                    ("Touch/Home wake", paper_mesh_app::suspend::TOUCH_WAKE),
+                ]
             } else if power.is_open() {
                 &[
                     ("Back", BACK_TARGET),
                     ("Battery", paper_mesh_app::power::BATTERY_TAB),
                     ("Charger", paper_mesh_app::power::CHARGER_TAB),
+                    ("Suspend", paper_mesh_app::power::SUSPEND_TAB),
                 ]
             } else if location.is_open() {
                 &[("Back", BACK_TARGET)]
@@ -479,6 +611,31 @@ impl Simulation {
                 ]
             };
         Snapshot {
+            suspended: self.suspended.is_some(),
+            suspend_touch_wake: power.suspend.touch_wake(),
+            suspend_wake_reasons: power
+                .suspend
+                .result()
+                .and_then(Result::ok)
+                .map(|report| {
+                    report
+                        .wake_reasons
+                        .into_iter()
+                        .flatten()
+                        .map(|reason| power.suspend.wake_label(reason))
+                        .collect()
+                })
+                .unwrap_or_default(),
+            suspend_elapsed_ms: power
+                .suspend
+                .result()
+                .and_then(Result::ok)
+                .map(|report| report.elapsed_ms),
+            suspend_charge_loss_mah: power
+                .suspend
+                .result()
+                .and_then(Result::ok)
+                .and_then(|report| report.charge_loss_mah()),
             touchpad_open: self.app.touchpad_open(),
             touchpad_host: match self.touchpad.state() {
                 HostState::Ready => "ready",

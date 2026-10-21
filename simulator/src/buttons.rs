@@ -5,6 +5,7 @@ use paper_mesh_platform::input::buttons::{
 };
 use serde::Serialize;
 
+pub const BOOT: ButtonId = ButtonId(0);
 pub const FUNCTION: ButtonId = ButtonId(1);
 pub const HOME: ButtonId = ButtonId(2);
 const DESCRIPTORS: [ButtonDescriptor; 5] = [
@@ -34,6 +35,7 @@ const DESCRIPTORS: [ButtonDescriptor; 5] = [
         capability: ButtonCapability::PowerRecovery,
     },
 ];
+pub const WAKE_CONTROLS: [ButtonDescriptor; 2] = [DESCRIPTORS[0], DESCRIPTORS[1]];
 
 #[derive(Serialize)]
 pub struct ButtonSnapshot {

@@ -2,7 +2,8 @@
 
 [Device services](../device-interfaces.md)
 
-Power observations are implemented. Charge control and system lifecycle services stay planned work.
+Power observations and a manual suspend experiment are implemented.
+Charge control and general lifecycle planning stay planned work.
 
 ## Current observations
 
@@ -38,6 +39,35 @@ Latched faults describe the interval since the previous device read, not a persi
 
 The [application power screen](../application.md#power-screen) consumes this interface.
 The [hardware adapter](../boards/lilygo-t5-s3-pro-power.md) and [simulator scenarios](../simulator/scenarios.md#power-screen) supply observations.
+
+## Manual suspend experiment
+
+`SuspendRequest` specifies a maximum duration in milliseconds and whether touch interrupts can end suspend.
+The backend provides readable wake controls and a timer fallback.
+It rejects an unavailable requested input or an input that is already active.
+The application requests the transition. The runtime waits for the final display update before preparation.
+Preparation failure returns an explicit error and resumes the paused services.
+
+`SuspendReport` records elapsed monotonic time, observed wake events, and fresh power observations before and after the suspend interval.
+Control events carry portable control identities. A touch interrupt does not establish a deliberate tap.
+An unidentified input remains explicit. The report can contain simultaneous events, and array order does not establish event order.
+RAM retains the application and report across light sleep. The experiment does not write the external RTC or flash.
+A reset discards the report. The next experiment replaces it.
+
+Charge loss equals the earlier remaining capacity minus the later remaining capacity, in mAh.
+Negative loss indicates net charge gain. Missing, invalid, or repeated observations do not produce a comparison.
+The current gauge reports capacity in whole mAh. Zero change does not establish zero consumption.
+Capacity corrections, temperature, and unverified cell parameters can affect the result.
+The report does not claim calibrated energy use or average sleep current.
+
+External power status describes the two endpoints only.
+It cannot exclude supply insertion or removal during the interval.
+Battery charge change does not measure system consumption when an external supply provides power.
+The samples bracket the suspended interval after preparation and before service restoration.
+They exclude most display preparation and restoration costs.
+Elapsed time describes the interval with sleep permitted, not verified hardware sleep residency.
+
+The [hardware adapter](../boards/lilygo-t5-s3-pro-power.md#manual-light-sleep) defines preparation and verification limits.
 
 ## Planned control and lifecycle services
 

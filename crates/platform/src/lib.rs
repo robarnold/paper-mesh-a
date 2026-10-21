@@ -14,6 +14,7 @@ pub mod input;
 pub mod location;
 pub mod power;
 pub mod rotation;
+pub mod suspend;
 pub mod time;
 pub mod touchpad;
 pub mod ui;

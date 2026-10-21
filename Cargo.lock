@@ -338,6 +338,7 @@ name = "paper-mesh-simulator"
 version = "0.1.0"
 dependencies = [
  "bt-hci",
+ "embassy-sync",
  "embedded-graphics",
  "embedded-hal",
  "paper-mesh-app",

@@ -12,6 +12,10 @@ It sets the port 0 output latch before it selects the output direction.
 It preserves other port 0 bits and all display controls on port 1.
 The auxiliary supply stays enabled after startup, during receiver faults, and after exit from the GNSS screen.
 Thus, this version also supplies power to LoRa. The LoRa driver stays uninitialized.
+The manual suspend experiment drops the UART and disables this supply after the active display update ends.
+It retains an idle transmitter during the pause to keep UART1 clocks available for HAL sleep preparation.
+This transmitter has no attached pins or receive wake lock.
+Resume enables the supply and restarts baud selection. Previous GNSS observations cannot supply a retained fix.
 
 The adapter uses UART1 on RX44/TX43 with 8 data bits, no parity, and one stop bit.
 UART1 uses the GPIO matrix. Application logs continue through USB Serial/JTAG.
@@ -59,7 +63,7 @@ Invalid or absent numeric fields clear only their readout. Invalid RMC status al
 This conservative policy does not display time from invalid RMC reports before a fix.
 
 RMC motion and UTC expire independently of GGA and GSV data. Other messages cannot extend their receipt times.
-The adapter does not request VTG or ZDA output. Receiver power stays enabled.
+The adapter does not request VTG or ZDA output. Receiver power stays enabled outside manual suspend.
 
 ## Satellite reports and receiver activity
 

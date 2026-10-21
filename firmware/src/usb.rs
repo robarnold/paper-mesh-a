@@ -184,8 +184,14 @@ pub fn start(
 
 #[embassy_executor::task]
 async fn bus_worker(mut device: UsbDevice<'static, Driver<'static>>) {
+    use crate::suspend::{self, Service};
+    suspend::register(Service::Usb);
     loop {
-        select(device.run(), RESTART.wait()).await;
+        select(
+            device.run(),
+            select(RESTART.wait(), suspend::request(Service::Usb)),
+        )
+        .await;
         // The resolved Synopsys driver's disable() does not disconnect the PHY.
         // Keep clocks running and detach before resetting the USB stack state.
         USB_FS::regs().pcgcctl().modify(|_, w| {
@@ -195,6 +201,7 @@ async fn bus_worker(mut device: UsbDevice<'static, Driver<'static>>) {
         USB_FS::regs().dctl().modify(|_, w| w.sftdiscon().set_bit());
         // Embassy requires disable after cancellation of run().
         device.disable().await;
+        suspend::checkpoint(Service::Usb).await;
         Timer::after_millis(250).await;
         USB_FS::regs()
             .dctl()
@@ -205,6 +212,15 @@ async fn bus_worker(mut device: UsbDevice<'static, Driver<'static>>) {
 
 #[embassy_executor::task]
 async fn hid_worker(mut writer: hid::HidWriter<'static, Driver<'static>, REPORT_LEN>) {
+    use crate::suspend::{self, Service};
+    suspend::register(Service::Hid);
+    loop {
+        suspend::checkpoint(Service::Hid).await;
+        select(suspend::request(Service::Hid), write_hid(&mut writer)).await;
+    }
+}
+
+async fn write_hid(writer: &mut hid::HidWriter<'static, Driver<'static>, REPORT_LEN>) {
     let mut generation = 0;
     let mut encoder = Encoder::default();
     let mut held: Option<(u32, HostFrame)> = None;
@@ -269,16 +285,76 @@ impl log::Log for Logger {
 
 #[embassy_executor::task]
 async fn log_worker(mut sender: cdc_acm::Sender<'static, Driver<'static>>) {
+    use crate::suspend::{self, Service};
+    suspend::register(Service::Logs);
     loop {
-        sender.wait_connection().await;
-        let line = LOGS.receive().await;
-        for packet in line.as_bytes().chunks(64) {
-            if sender.write_packet(packet).await.is_err() {
-                break;
-            }
+        suspend::checkpoint(Service::Logs).await;
+        select(suspend::request(Service::Logs), write_logs(&mut sender)).await;
+    }
+}
+
+async fn write_logs(sender: &mut cdc_acm::Sender<'static, Driver<'static>>) {
+    let mut connection = None;
+    loop {
+        let generation = GENERATION.load(Ordering::Acquire);
+        // The driver's disable leaves endpoints enabled until the next USB reset.
+        // Wait for a new configuration before accessing those stale endpoints.
+        if !log_connection(sender, generation) {
+            connection = None;
+            Timer::after_millis(50).await;
+            continue;
         }
-        if line.len() % 64 == 0 {
-            let _ = sender.write_packet(&[]).await;
+        sender.wait_connection().await;
+        if connection != Some(generation) {
+            if send_log_line(
+                sender,
+                &crate::suspend::trace::connection_line(),
+                generation,
+            )
+            .await
+                && send_log_line(sender, &crate::suspend::trace::wake_line(), generation).await
+            {
+                connection = Some(generation);
+            }
+            continue;
+        }
+        let line = match select(LOGS.receive(), Timer::after_millis(250)).await {
+            Either::First(line) => line,
+            Either::Second(()) => continue,
+        };
+        if !send_log_line(sender, &line, generation).await {
+            connection = None;
         }
     }
+}
+
+fn log_connection(sender: &cdc_acm::Sender<'static, Driver<'static>>, generation: u32) -> bool {
+    STATUS.load(Ordering::Acquire) == 1
+        && GENERATION.load(Ordering::Acquire) == generation
+        && sender.dtr()
+}
+
+async fn send_log_line(
+    sender: &mut cdc_acm::Sender<'static, Driver<'static>>,
+    line: &str,
+    generation: u32,
+) -> bool {
+    if line.is_empty() {
+        return true;
+    }
+    let packets = line
+        .as_bytes()
+        .chunks(64)
+        .chain(line.len().is_multiple_of(64).then_some(&[][..]));
+    for packet in packets {
+        if !log_connection(sender, generation)
+            || !matches!(
+                with_timeout(Duration::from_millis(250), sender.write_packet(packet)).await,
+                Ok(Ok(()))
+            )
+        {
+            return false;
+        }
+    }
+    true
 }

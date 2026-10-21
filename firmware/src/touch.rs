@@ -1,7 +1,11 @@
 //! H752-01 touch adapter and event queue.
 
 use crate::display::NATIVE_SCREEN_SIZE;
-use core::cell::RefCell;
+use core::{
+    cell::RefCell,
+    sync::atomic::{AtomicBool, Ordering},
+};
+use embassy_futures::select::{Either, select};
 use embassy_sync::{
     blocking_mutex::{Mutex, raw::CriticalSectionRawMutex},
     channel::Channel,
@@ -30,6 +34,8 @@ const ROTATION: PortraitRotation = PortraitRotation::new(NATIVE_SCREEN_SIZE);
 static PIN: Mutex<CriticalSectionRawMutex, RefCell<Option<Flex<'static>>>> =
     Mutex::new(RefCell::new(None));
 static IRQ: Signal<CriticalSectionRawMutex, Instant> = Signal::new();
+static WAKE_ARMED: AtomicBool = AtomicBool::new(false);
+static WAKE_READY: AtomicBool = AtomicBool::new(false);
 static CHANGED: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 static EVENTS: Channel<CriticalSectionRawMutex, Sample, 32> = Channel::new();
 static EXECUTOR: StaticCell<InterruptExecutor<2>> = StaticCell::new();
@@ -92,12 +98,12 @@ pub fn start(
     software_interrupt: peripherals::FROM_CPU_INTR2<'static>,
 ) {
     assert!(Cpu::current() == Cpu::ProCpu);
+    Io::new(io_mux).set_interrupt_handler(interrupt_handler);
     let touch = Touch::new(&mut bus.try_lock().unwrap(), reset, interrupt);
     let Some((touch, pin)) = touch else {
         return;
     };
     PIN.lock(|slot| slot.borrow_mut().replace(pin));
-    Io::new(io_mux).set_interrupt_handler(interrupt_handler);
     EXECUTOR
         .init(InterruptExecutor::new(software_interrupt))
         .start(Priority::Priority2)
@@ -106,6 +112,7 @@ pub fn start(
 
 #[esp_hal::handler]
 fn interrupt_handler() {
+    crate::suspend::interrupt();
     PIN.lock(|slot| {
         if let Some(pin) = slot.borrow_mut().as_mut()
             && pin.is_interrupt_set()
@@ -113,9 +120,44 @@ fn interrupt_handler() {
             let now = Instant::now();
             pin.unlisten();
             pin.clear_interrupt();
-            IRQ.signal(now);
+            if WAKE_ARMED.load(Ordering::Acquire) {
+                crate::suspend::touch_interrupt();
+            } else {
+                IRQ.signal(now);
+            }
         }
     });
+}
+
+pub fn arm_wake() -> Result<(), paper_mesh_platform::suspend::SuspendError> {
+    use paper_mesh_platform::suspend::SuspendError;
+    PIN.lock(|slot| {
+        let mut slot = slot.borrow_mut();
+        let pin = slot.as_mut().ok_or(SuspendError::Unsupported)?;
+        if !WAKE_READY.load(Ordering::Acquire) || pin.is_low() {
+            return Err(SuspendError::WakeActive);
+        }
+        pin.clear_interrupt();
+        WAKE_ARMED.store(true, Ordering::Release);
+        pin.listen(GpioEvent::LowLevel);
+        Ok(())
+    })
+}
+
+pub fn disarm_wake() -> bool {
+    PIN.lock(|slot| {
+        let armed = WAKE_ARMED.swap(false, Ordering::AcqRel);
+        if let Some(pin) = slot.borrow_mut().as_mut()
+            && armed
+        {
+            let pending = pin.is_interrupt_set();
+            pin.unlisten();
+            pin.clear_interrupt();
+            pending
+        } else {
+            false
+        }
+    })
 }
 
 fn arm_interrupt() {
@@ -132,6 +174,7 @@ pub struct Touch {
     driver: Gt911,
     _reset: Output<'static>,
     failed: bool,
+    home_pressed: bool,
 }
 
 impl Touch {
@@ -207,6 +250,7 @@ impl Touch {
                 driver,
                 _reset: reset,
                 failed: false,
+                home_pressed: false,
             },
             interrupt,
         ))
@@ -215,6 +259,7 @@ impl Touch {
     fn poll(&mut self, bus: &mut I2c<'static, Blocking>, at_ms: u64) -> Option<TouchFrame> {
         let result = self.driver.poll(bus);
         if let Some(pressed) = self.driver.take_key_state() {
+            self.home_pressed = pressed;
             crate::buttons::home(Some(pressed), Instant::now().as_millis());
         }
         let report = match result {
@@ -260,11 +305,34 @@ impl Touch {
 
 #[embassy_executor::task]
 async fn worker(mut touch: Touch, bus: &'static Bus) {
+    use crate::suspend::{self, Service};
+    suspend::register(Service::Touch);
     assert!(Cpu::current() == Cpu::ProCpu);
     info!("touch: interrupt worker started; core=0; GPIO3 low level; priority=2");
     loop {
+        if suspend::requested() {
+            PIN.lock(|slot| {
+                if let Some(pin) = slot.borrow_mut().as_mut() {
+                    pin.unlisten();
+                    pin.clear_interrupt();
+                }
+            });
+            EVENTS.clear();
+            let contacts_idle = touch.driver.contacts_idle();
+            WAKE_READY.store(contacts_idle && !touch.home_pressed, Ordering::Release);
+            suspend::checkpoint(Service::Touch).await;
+            let pending = PIN.lock(|slot| slot.borrow().as_ref().is_some_and(Flex::is_low));
+            if !contacts_idle || pending || suspend::touch_woke() {
+                // Consume contacts from suspend until an empty report confirms release.
+                touch.driver.cancel();
+            }
+            IRQ.reset();
+        }
         arm_interrupt();
-        let irq = IRQ.wait().await;
+        let irq = match select(suspend::request(Service::Touch), IRQ.wait()).await {
+            Either::First(()) => continue,
+            Either::Second(irq) => irq,
+        };
         let wait_start = Instant::now();
         let mut guard = bus.lock().await;
         let bus_wait_us = wait_start.elapsed().as_micros();

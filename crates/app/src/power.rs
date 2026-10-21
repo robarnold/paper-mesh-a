@@ -26,8 +26,9 @@ use paper_mesh_platform::{
 use crate::BACK_TARGET;
 
 pub const POWER_TARGET: Rectangle = Rectangle::new(Point::new(48, 620), Size::new(444, 64));
-pub const BATTERY_TAB: Rectangle = Rectangle::new(Point::new(28, 104), Size::new(234, 56));
-pub const CHARGER_TAB: Rectangle = Rectangle::new(Point::new(278, 104), Size::new(234, 56));
+pub const BATTERY_TAB: Rectangle = Rectangle::new(Point::new(28, 104), Size::new(150, 56));
+pub const CHARGER_TAB: Rectangle = Rectangle::new(Point::new(195, 104), Size::new(150, 56));
+pub const SUSPEND_TAB: Rectangle = Rectangle::new(Point::new(362, 104), Size::new(150, 56));
 pub const POWER_MAX_AGE_MS: u64 = 10_000;
 pub const POWER_REFRESH_MS: u64 = 5_000;
 
@@ -122,12 +123,14 @@ fn reading<T: Copy>(
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Action {
+    Suspend,
     Back,
     Battery,
     Charger,
 }
 
 pub struct PowerScreen {
+    pub suspend: crate::suspend::SuspendScreen,
     open: bool,
     charger_tab: bool,
     gesture: TapGesture<Action>,
@@ -145,6 +148,7 @@ impl Default for PowerScreen {
 impl PowerScreen {
     pub const fn new() -> Self {
         Self {
+            suspend: crate::suspend::SuspendScreen::new(),
             open: false,
             charger_tab: false,
             gesture: TapGesture::new(),
@@ -165,6 +169,7 @@ impl PowerScreen {
     }
 
     pub fn open(&mut self) {
+        self.suspend.open = false;
         self.open = true;
         self.charger_tab = false;
         self.gesture.cancel();
@@ -209,16 +214,21 @@ impl PowerScreen {
     }
 
     pub fn touch(&mut self, event: TouchEvent) -> bool {
+        if self.suspend.open {
+            return self.suspend.touch(event);
+        }
         let action = self.gesture.update(event, |point| {
             [
                 (BACK_TARGET, Action::Back),
                 (BATTERY_TAB, Action::Battery),
                 (CHARGER_TAB, Action::Charger),
+                (SUSPEND_TAB, Action::Suspend),
             ]
             .into_iter()
             .find_map(|(target, action)| target.contains(point).then_some(action))
         });
         match action {
+            Some(Action::Suspend) => self.suspend.open = true,
             Some(Action::Back) => self.open = false,
             Some(Action::Battery) => self.charger_tab = false,
             Some(Action::Charger) => self.charger_tab = true,
@@ -228,11 +238,15 @@ impl PowerScreen {
     }
 
     pub fn render<D: DrawTarget<Color = Gray4>>(&self, display: &mut D) -> Result<(), D::Error> {
+        if self.suspend.open {
+            return self.suspend.render(display);
+        }
         display.clear(Gray4::WHITE)?;
         text(display, "POWER", 28, 58, false)?;
         button(display, BACK_TARGET, "Back", false, true)?;
         button(display, BATTERY_TAB, "Battery", !self.charger_tab, true)?;
         button(display, CHARGER_TAB, "Charger", self.charger_tab, true)?;
+        button(display, SUSPEND_TAB, "Suspend", false, true)?;
         if self.charger_tab {
             self.render_charger(display)?;
         } else {

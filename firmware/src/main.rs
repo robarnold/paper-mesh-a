@@ -14,18 +14,19 @@ mod power;
 mod rtc;
 #[cfg(feature = "radio-scan-demo")]
 mod scan_demo;
+mod suspend;
 mod touch;
 mod usb;
 
 use embassy_executor::Spawner;
 use embassy_futures::select::{select, select4};
-use embassy_time::{Instant, Timer};
+use embassy_time::{Duration, Instant, Timer, with_timeout};
 use esp_backtrace as _;
 use esp_hal::{clock::CpuClock, system::Stack, timer::timg::TimerGroup};
 use log::{error, info};
 use paper_mesh_app::App;
 use paper_mesh_platform::touchpad::{TouchpadHost, TouchpadSession};
-use paper_mesh_platform::{Clock, location::Location, rotation::PortraitDisplay};
+use paper_mesh_platform::{Clock, Display, location::Location, rotation::PortraitDisplay};
 
 use rtc::FirmwareClock;
 use static_cell::{ConstStaticCell, StaticCell};
@@ -40,13 +41,20 @@ esp_bootloader_esp_idf::esp_app_desc!();
 
 #[esp_rtos::main]
 async fn main(spawner: Spawner) -> ! {
-    let panel = initialize(spawner);
-    run_app(panel).await
+    let (panel, bus, suspend) = initialize(spawner);
+    run_app(panel, bus, suspend).await
 }
 
-fn initialize(spawner: Spawner) -> Option<display_worker::Client> {
+fn initialize(
+    spawner: Spawner,
+) -> (
+    Option<display_worker::Client>,
+    Option<&'static bus::Bus>,
+    suspend::Controller,
+) {
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::_240MHz);
     let peripherals = esp_hal::init(config);
+    let suspend = suspend::initialize(peripherals.GPIO38, peripherals.LPWR, peripherals.RTC_TIMER);
 
     // Radio drivers and RTOS tasks use internal RAM.
     esp_alloc::heap_allocator!(size: 128 * 1024);
@@ -59,6 +67,7 @@ fn initialize(spawner: Spawner) -> Option<display_worker::Client> {
         peripherals.GPIO19,
     );
     diagnostics::report_previous_panic();
+    suspend::trace::boot();
     spawner.spawn(discovery::worker(peripherals.WIFI, peripherals.BT).unwrap());
 
     info!(
@@ -74,7 +83,9 @@ fn initialize(spawner: Spawner) -> Option<display_worker::Client> {
         })
         .ok();
     spawner.spawn(buttons::worker(bus, peripherals.GPIO0).unwrap());
-    let bus = bus?;
+    let Some(bus) = bus else {
+        return (None, None, suspend);
+    };
     gnss::start(
         bus,
         peripherals.UART1,
@@ -125,13 +136,18 @@ fn initialize(spawner: Spawner) -> Option<display_worker::Client> {
                 .run(|spawner| spawner.spawn(display_worker::worker().unwrap()));
         },
     );
-    panel.map(display_worker::Client::new)
+    (panel.map(display_worker::Client::new), Some(bus), suspend)
 }
 
-async fn run_app(mut panel: Option<display_worker::Client>) -> ! {
+async fn run_app(
+    mut panel: Option<display_worker::Client>,
+    bus: Option<&'static bus::Bus>,
+    mut suspend: suspend::Controller,
+) -> ! {
     let clock = FirmwareClock;
     // The application and its scan results use static RAM instead of the task stack.
     let app = APP.take();
+    app.set_suspend_controls(&buttons::CONTROLS[..2]);
     let mut discovery = discovery::FirmwareDiscovery;
     let mut location = gnss::FirmwareLocation;
     let mut power = power::FirmwarePower;
@@ -146,40 +162,20 @@ async fn run_app(mut panel: Option<display_worker::Client>) -> ! {
         app.poll_discovery(&clock, &mut discovery);
         app.poll_location(&clock, &mut location);
         app.poll_power(&clock, &mut power);
-        while let Some(sample) = touch::next_event() {
-            log::debug!(
-                "touch: {:?}; irq_ms={}; service_us={}; bus_wait_us={}; refresh={}",
-                sample.frame,
-                sample.irq_ms,
-                sample.service_us,
-                sample.bus_wait_us,
-                sample.during_refresh
-            );
-            let previous = app.taps();
-            let was_touchpad_open = app.touchpad_open();
-            if touchpad_session.input(&sample.frame, &mut touchpad) {
-                for event in sample.frame.events() {
-                    app.touch(event);
-                }
-            }
-            touchpad_session.set_active(app.touchpad_open(), &mut touchpad);
-            if app.touchpad_open() != was_touchpad_open {
-                info!("touchpad: application mode={}", app.touchpad_open());
-            }
-            if app.taps() != previous {
-                info!(
-                    "touch: count={}; stats={:?}",
-                    app.taps(),
-                    touch::statistics()
-                );
-            }
-        }
+        process_touch(app, &mut touchpad_session, &mut touchpad);
         // Drain earlier touch frames before applying an exit button.
         while let Some(event) = buttons::next_event() {
             info!("button: {:?}", event);
             app.hardware_button(event, &[buttons::FUNCTION, buttons::HOME]);
         }
         touchpad_session.set_active(app.touchpad_open(), &mut touchpad);
+        if let Some(request) = app.take_suspend_request() {
+            app.cancel_touchpad();
+            touchpad_session.set_active(false, &mut touchpad);
+            alloc::boxed::Box::pin(suspend_app(app, panel.as_mut(), bus, request, &mut suspend))
+                .await;
+            continue;
+        }
         if let Some(display) = panel.as_mut()
             && let Err(error) = display.complete().and_then(|()| {
                 let submitted = app.present(&mut PortraitDisplay::new(display))?;
@@ -227,4 +223,82 @@ async fn run_app(mut panel: Option<display_worker::Client>) -> ! {
             );
         }
     }
+}
+
+fn process_touch(app: &mut App, session: &mut TouchpadSession, host: &mut usb::FirmwareTouchpad) {
+    while let Some(sample) = touch::next_event() {
+        log::debug!(
+            "touch: {:?}; irq_ms={}; service_us={}; bus_wait_us={}; refresh={}",
+            sample.frame,
+            sample.irq_ms,
+            sample.service_us,
+            sample.bus_wait_us,
+            sample.during_refresh
+        );
+        let previous = app.taps();
+        let was_touchpad_open = app.touchpad_open();
+        if session.input(&sample.frame, host) {
+            for event in sample.frame.events() {
+                app.touch(event);
+            }
+        }
+        session.set_active(app.touchpad_open(), host);
+        if app.touchpad_open() != was_touchpad_open {
+            info!("touchpad: application mode={}", app.touchpad_open());
+        }
+        if app.taps() != previous {
+            info!(
+                "touch: count={}; stats={:?}",
+                app.taps(),
+                touch::statistics()
+            );
+        }
+    }
+}
+
+async fn suspend_app(
+    app: &mut App,
+    mut panel: Option<&mut display_worker::Client>,
+    bus: Option<&bus::Bus>,
+    request: paper_mesh_platform::suspend::SuspendRequest,
+    suspend: &mut suspend::Controller,
+) {
+    let before_frame = if let Some(display) = panel.as_deref_mut() {
+        with_timeout(Duration::from_secs(10), async {
+            loop {
+                display.complete()?;
+                if !display.is_busy() && !app.present(&mut PortraitDisplay::new(&mut *display))? {
+                    break display.frame_checksum();
+                }
+                display_worker::changed().await;
+            }
+        })
+        .await
+        .ok()
+        .and_then(Result::ok)
+    } else {
+        None
+    };
+    let result = if before_frame.is_some()
+        && let Some(bus) = bus
+    {
+        alloc::boxed::Box::pin(suspend.run(bus, request)).await
+    } else {
+        Err(paper_mesh_platform::suspend::SuspendError::Preparation)
+    };
+    if let (Some(display), Some(before)) = (panel, before_frame)
+        && let Err(error) = display.resume_from_suspend(before)
+    {
+        error!("display: suspend restoration failed: {}", error);
+    }
+    match &result {
+        Ok(report) => info!(
+            "suspend: resumed; elapsed_ms={}; wake_reasons={:?}; charge_loss_mah={:?}",
+            report.elapsed_ms,
+            report.wake_reasons,
+            report.charge_loss_mah()
+        ),
+        Err(error) => error!("suspend: failed: {:?}", error),
+    }
+    app.finish_suspend(result);
 }

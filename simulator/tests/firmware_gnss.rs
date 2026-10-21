@@ -594,8 +594,8 @@ impl I2c for Expander {
             }
             [Operation::Write(bytes)] => {
                 self.registers[bytes[0] as usize] = bytes[1];
-                // An enabled output must never drive the shared supply low.
-                if self.registers[6] & 1 == 0 {
+                // Enabling the output must follow the high output latch.
+                if bytes[0] == 6 && self.registers[6] & 1 == 0 {
                     assert_eq!(self.registers[2] & 1, 1);
                 }
             }
@@ -622,5 +622,25 @@ fn power_enable_preserves_display_controls_and_recovers_after_each_bus_failure()
         expected[2] |= 1;
         expected[6] &= !1;
         assert_eq!(bus.registers, expected);
+    }
+}
+
+#[test]
+fn suspend_supply_shutdown_preserves_other_outputs_and_propagates_errors() {
+    let original = [0x12, 0x34, 0xab, 0x5b, 0xcd, 0xef, 0xfe, 0xc4];
+    for fail_at in [None, Some(1), Some(2)] {
+        let mut bus = Expander {
+            registers: original,
+            transactions: 0,
+            fail_at,
+        };
+        assert_eq!(power::disable(&mut bus).is_err(), fail_at.is_some());
+        bus.fail_at = None;
+        power::disable(&mut bus).unwrap();
+        let mut expected = original;
+        expected[2] &= !1;
+        assert_eq!(bus.registers, expected);
+        power::enable(&mut bus).unwrap();
+        assert_eq!(bus.registers, original);
     }
 }

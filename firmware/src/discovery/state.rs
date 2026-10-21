@@ -11,6 +11,9 @@ pub struct ScanState {
 }
 
 impl ScanState {
+    pub fn is_pending(&self) -> bool {
+        self.active.is_some() && self.completion.is_none()
+    }
     pub const NEW: Self = Self {
         active: None,
         completion: None,

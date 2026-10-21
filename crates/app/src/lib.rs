@@ -7,6 +7,7 @@
 pub mod debugger;
 pub mod location;
 pub mod power;
+pub mod suspend;
 pub mod touchpad;
 
 use core::fmt::Write;
@@ -165,6 +166,26 @@ impl App {
 
     pub fn power(&self) -> &PowerScreen {
         &self.power
+    }
+
+    pub fn set_suspend_controls(
+        &mut self,
+        controls: &'static [paper_mesh_platform::input::buttons::ButtonDescriptor],
+    ) {
+        self.power.suspend.set_controls(controls);
+    }
+    pub fn take_suspend_request(&mut self) -> Option<paper_mesh_platform::suspend::SuspendRequest> {
+        self.power.suspend.take_request()
+    }
+    pub fn finish_suspend(
+        &mut self,
+        result: Result<
+            paper_mesh_platform::suspend::SuspendReport,
+            paper_mesh_platform::suspend::SuspendError,
+        >,
+    ) {
+        self.power.suspend.finish(result);
+        self.dirty = true;
     }
 
     pub fn poll_power(&mut self, clock: &impl Clock, power: &mut impl Power) {

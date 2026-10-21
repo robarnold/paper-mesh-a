@@ -2,6 +2,7 @@
 
 use crate::display::NATIVE_SCREEN_SIZE;
 use core::sync::atomic::{AtomicBool, Ordering};
+use embassy_futures::select::{Either, select};
 use embassy_sync::{
     blocking_mutex::raw::CriticalSectionRawMutex,
     channel::{Channel, TrySendError},
@@ -32,7 +33,14 @@ pub async fn worker() {
     assert!(Cpu::current() == Cpu::AppCpu);
     info!("display: worker started; core=1");
     loop {
-        let mut panel = REQUEST.receive().await;
+        let mut panel =
+            match select(REQUEST.receive(), crate::suspend::cores::park_requested()).await {
+                Either::First(panel) => panel,
+                Either::Second(()) => {
+                    crate::suspend::cores::park();
+                    continue;
+                }
+            };
         info!("display: refresh started");
         REFRESHING.store(true, Ordering::Relaxed);
         let result = panel.refresh();
@@ -50,6 +58,18 @@ pub struct Client {
 impl Client {
     pub fn new(panel: Panel) -> Self {
         Self { panel: Some(panel) }
+    }
+
+    pub fn frame_checksum(&self) -> Result<u32, Error> {
+        Ok(self.panel.as_ref().ok_or(Error::Busy)?.frame_checksum())
+    }
+
+    pub fn resume_from_suspend(&mut self, before: u32) -> Result<(), Error> {
+        self.panel
+            .as_mut()
+            .ok_or(Error::Busy)?
+            .resume_from_suspend(before);
+        Ok(())
     }
 
     /// Return ownership after completion. Report failures to platform supervision.

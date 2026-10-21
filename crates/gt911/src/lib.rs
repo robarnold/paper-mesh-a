@@ -105,6 +105,11 @@ impl Gt911 {
         self.key_state = None;
     }
 
+    /// An invalid or canceled sequence needs an empty report before it is idle.
+    pub fn contacts_idle(&self) -> bool {
+        !self.blocked && self.contacts.iter().all(Option::is_none)
+    }
+
     /// Returns the key level from the last acknowledged ready report.
     pub fn take_key_state(&mut self) -> Option<bool> {
         self.key_state.take()
@@ -310,6 +315,27 @@ mod tests {
         assert_eq!(result.len(), 10);
         assert_eq!(&result[..5], &a.map(Event::Release));
         assert_eq!(&result[5..], &b.map(Event::Touch));
+    }
+
+    #[test]
+    fn canceled_contacts_stay_blocked_until_an_empty_report() {
+        let mut driver = controller();
+        let mut bus = Bus(VecDeque::new());
+        assert!(driver.contacts_idle());
+        driver.cancel();
+        assert!(!driver.contacts_idle());
+        report(&mut bus, &[point(0, 1, 2)]);
+        assert!(events(&mut driver, &mut bus).is_empty());
+        assert!(!driver.contacts_idle());
+        report(&mut bus, &[]);
+        assert!(events(&mut driver, &mut bus).is_empty());
+        assert!(driver.contacts_idle());
+        report(&mut bus, &[point(0, 1, 2)]);
+        assert_eq!(
+            events(&mut driver, &mut bus),
+            vec![Event::Touch(point(0, 1, 2))]
+        );
+        assert!(!driver.contacts_idle());
     }
 
     #[test]

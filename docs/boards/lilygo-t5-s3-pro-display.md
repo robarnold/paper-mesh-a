@@ -24,6 +24,10 @@ One holds the new image. The other holds the last completed image.
 
 LCD DMA sends source data at 20 MHz through a 248-byte internal buffer.
 RMT supplies the gate clock with 0.1 µs timing units.
+The adapter retains the peripheral tokens, pins, and framebuffers between updates.
+Each refresh creates temporary LCD and RMT drivers from borrowed peripheral tokens.
+Their clock guards hold wake locks until the drivers drop after rail shutdown, including error paths.
+An idle panel retains no LCD or RMT driver wake lock.
 
 Startup and changes to gray pixels require a full refresh.
 A full refresh applies 32 clearing scans and 15 black-on-white grayscale scans.
@@ -48,6 +52,10 @@ It does not initialize the reference's unrelated board services.
 
 The display adapter owns PCA9535 port 1 output state.
 Display controls and touch reports share I2C through a mutex that leaves interrupts enabled during transfers.
+An eight-slot semaphore queues asynchronous clients in request order.
+Waiters do not replace each other's wake registrations while another client owns the bus.
+The synchronous display client uses bounded lock attempts without a wake registration.
+It waits behind queued clients and reports a bus-ownership timeout after 100 ms.
 The display adapter releases that mutex before pixel transfers and supply waits.
 It preserves port 0, which controls the shared LoRa/GNSS supply.
 Power sequencing follows the vendor's
@@ -61,6 +69,9 @@ Power-good and temperature checks have 500 ms deadlines.
 The driver rejects sensor readings outside 0–50 °C.
 Every refresh attempts supply shutdown, including after an error.
 A display fault stops further updates while USB heartbeat output continues.
+Resume from manual suspend invalidates the previous-image history and requires a full refresh.
+Firmware compares the staged framebuffer checksum before and after suspend to check retained data.
+This comparison does not verify the physical panel image.
 
 ### Verification scope
 

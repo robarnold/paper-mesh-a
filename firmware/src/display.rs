@@ -5,19 +5,15 @@
 
 use embedded_graphics::{pixelcolor::Gray4, prelude::*};
 use esp_hal::{
-    Blocking,
     delay::Delay,
     dma::DmaTxBuf,
     dma_tx_buffer,
-    gpio::{Level, Output, OutputConfig},
-    lcd_cam::{
-        LcdCam,
-        lcd::i8080::{self, Command, I8080},
-    },
+    gpio::Level,
+    lcd_cam::lcd::i8080::Command,
     peripherals,
     psram::{Psram, PsramConfig, PsramMode},
-    rmt::{self, Channel, PulseCode, Tx, TxChannelCreator, TxTransaction},
-    time::{Duration, Instant, Rate},
+    rmt::{PulseCode, TxTransaction},
+    time::{Duration, Instant},
 };
 use log::{error, info};
 use paper_mesh_ed047tc1::{
@@ -25,6 +21,8 @@ use paper_mesh_ed047tc1::{
     STORAGE_BYTES, Update, WIDTH,
 };
 use paper_mesh_platform::Display;
+mod scanout;
+use scanout::{Resources, Scanout};
 
 pub const NATIVE_SCREEN_SIZE: Size = Size::new(WIDTH as u32, HEIGHT as u32);
 
@@ -83,15 +81,28 @@ pub struct Panel {
     history: FrameHistory<'static>,
     _psram: Psram,
     bus: &'static crate::bus::Bus,
-    latch: Output<'static>,
-    start_vertical: Output<'static>,
-    clock_vertical: Channel<'static, Blocking, Tx>,
-    lcd: Option<I8080<'static, Blocking>>,
+    scanout: Option<Resources>,
     dma: Option<DmaTxBuf>,
     control: u8,
 }
 
 impl Panel {
+    pub fn frame_checksum(&self) -> u32 {
+        self.frame.checksum()
+    }
+
+    pub fn resume_from_suspend(&mut self, before: u32) {
+        let after = self.frame.checksum();
+        info!(
+            "display: suspend frame {:08x}->{:08x}; retained={}; next refresh full",
+            before,
+            after,
+            before == after
+        );
+        // Establish the panel baseline again after the clocks stop.
+        self.history.invalidate();
+    }
+
     pub fn new(
         pins: Pins,
         psram: peripherals::PSRAM<'static>,
@@ -129,50 +140,17 @@ impl Panel {
             size, STORAGE_BYTES
         );
 
-        let lcd = LcdCam::new(lcd);
-        let lcd = I8080::new(
-            lcd.lcd,
-            dma,
-            i8080::Config::default()
-                .with_frequency(Rate::from_mhz(20))
-                .with_cd_idle_edge(false)
-                .with_cd_cmd_edge(true)
-                .with_cd_dummy_edge(false)
-                .with_cd_data_edge(false),
-        )
-        .map_err(|_| Error::Configuration)?
-        .with_dc(pins.start_horizontal)
-        .with_wrx(pins.clock_horizontal)
-        .with_data0(pins.data6)
-        .with_data1(pins.data7)
-        .with_data2(pins.data4)
-        .with_data3(pins.data5)
-        .with_data4(pins.data2)
-        .with_data5(pins.data3)
-        .with_data6(pins.data0)
-        .with_data7(pins.data1);
+        let mut scanout = Resources::new(pins, lcd, dma, rmt);
+        // Validate configuration without retaining the LCD and RMT clock wake locks.
+        drop(scanout.open()?);
         // The eight trailing bytes flush the source-driver pipeline.
         let dma = dma_tx_buffer!(ROW_BYTES + 8).map_err(|_| Error::Dma)?;
-        let rmt = rmt::Rmt::new(rmt, Rate::from_mhz(80)).map_err(|_| Error::Configuration)?;
-        let clock_vertical = rmt
-            .channel1
-            .configure_tx(
-                &rmt::TxChannelConfig::default()
-                    .with_clk_divider(8)
-                    .with_idle_output_level(Level::Low)
-                    .with_idle_output(true),
-            )
-            .map_err(|_| Error::Configuration)?
-            .with_pin(pins.clock_vertical);
         let mut panel = Self {
             frame,
             history,
             _psram: psram,
             bus,
-            latch: Output::new(pins.latch, Level::Low, OutputConfig::default()),
-            start_vertical: Output::new(pins.start_vertical, Level::Low, OutputConfig::default()),
-            clock_vertical,
-            lcd: Some(lcd),
+            scanout: Some(scanout),
             dma: Some(dma),
             control: 0,
         };
@@ -190,16 +168,29 @@ impl Panel {
 
     fn read(&mut self, device: u8, register: u8) -> Result<u8, Error> {
         let mut result = [0];
-        embassy_futures::block_on(self.bus.lock())
+        self.lock_bus()?
             .write_read(device, &[register], &mut result)
             .map_err(Error::I2c)?;
         Ok(result[0])
     }
 
     fn write(&mut self, device: u8, register: u8, value: u8) -> Result<(), Error> {
-        embassy_futures::block_on(self.bus.lock())
+        self.lock_bus()?
             .write(device, &[register, value])
             .map_err(Error::I2c)
+    }
+
+    fn lock_bus(&self) -> Result<crate::bus::BusGuard<'_>, Error> {
+        let deadline = Instant::now() + Duration::from_millis(100);
+        self.bus
+            .lock_blocking(|| {
+                if Instant::now() >= deadline {
+                    return false;
+                }
+                Delay::new().delay_micros(10);
+                true
+            })
+            .ok_or(Error::Timeout("I2C bus ownership"))
     }
 
     fn set_control(&mut self, mask: u8, value: u8) -> Result<(), Error> {
@@ -227,8 +218,8 @@ impl Panel {
         }
     }
 
-    fn power_on(&mut self) -> Result<(), Error> {
-        self.start_vertical.set_high();
+    fn power_on(&mut self, io: &mut Scanout<'_>) -> Result<(), Error> {
+        io.start_vertical.set_high();
         self.set_control(DISPLAY_OUTPUTS, WAKE | OE)?;
         Delay::new().delay_millis(3);
         let revision = self.read(SUPPLY, 0x10)?;
@@ -253,22 +244,22 @@ impl Panel {
         Ok(())
     }
 
-    fn power_off(&mut self) -> Result<(), Error> {
+    fn power_off(&mut self, io: &mut Scanout<'_>) -> Result<(), Error> {
         let disable = self.set_control(OE | MODE | VCOM | PWRUP, 0);
         let discharge = self.wait_register(EXPANDER, 1, PG, 0, "power off");
         // Attempt shutdown even when the previous operation failed.
         let sleep = self.set_control(DISPLAY_OUTPUTS, 0);
-        self.start_vertical.set_low();
-        self.latch.set_low();
+        io.start_vertical.set_low();
+        io.latch.set_low();
         disable.and(discharge).and(sleep)
     }
 
-    fn pulse(&mut self, high: u16, low: u16) -> Result<(), Error> {
+    fn pulse(&mut self, io: &mut Scanout<'_>, high: u16, low: u16) -> Result<(), Error> {
         let data = [
             PulseCode::new(Level::High, high, Level::Low, low),
             PulseCode::end_marker(),
         ];
-        let tx = self
+        let tx = io
             .clock_vertical
             .reborrow()
             .transmit(&data)
@@ -276,56 +267,61 @@ impl Panel {
         wait_pulse(tx)
     }
 
-    fn frame_start(&mut self) -> Result<(), Error> {
+    fn frame_start(&mut self, io: &mut Scanout<'_>) -> Result<(), Error> {
         self.set_control(MODE, MODE)?;
-        self.pulse(10, 10)?;
-        self.start_vertical.set_low();
+        self.pulse(io, 10, 10)?;
+        io.start_vertical.set_low();
         Delay::new().delay_micros(1);
         let data = [
             PulseCode::new(Level::High, 100, Level::Low, 100),
             PulseCode::end_marker(),
         ];
-        let tx = self
+        let tx = io
             .clock_vertical
             .reborrow()
             .transmit(&data)
             .map_err(|_| Error::Rmt)?;
-        self.start_vertical.set_high();
+        io.start_vertical.set_high();
         wait_pulse(tx)?;
-        self.pulse(100, 0)?;
+        self.pulse(io, 100, 0)?;
         self.set_control(OE, OE)?;
-        self.pulse(10, 10)
+        self.pulse(io, 10, 10)
     }
 
-    fn frame_end(&mut self) -> Result<(), Error> {
+    fn frame_end(&mut self, io: &mut Scanout<'_>) -> Result<(), Error> {
         self.set_control(OE | MODE, 0)?;
-        self.pulse(10, 10)?;
-        self.pulse(10, 10)?;
+        self.pulse(io, 10, 10)?;
+        self.pulse(io, 10, 10)?;
         Ok(())
     }
 
-    fn output_row(&mut self, row: &[u8; ROW_BYTES], ticks: u16) -> Result<(), Error> {
+    fn output_row(
+        &mut self,
+        io: &mut Scanout<'_>,
+        row: &[u8; ROW_BYTES],
+        ticks: u16,
+    ) -> Result<(), Error> {
         let mut dma = self.dma.take().ok_or(Error::Dma)?;
         dma.as_mut_slice()[..ROW_BYTES].copy_from_slice(row);
         dma.as_mut_slice()[ROW_BYTES..].fill(0);
-        self.latch.set_high();
+        io.latch.set_high();
         Delay::new().delay_micros(1);
-        self.latch.set_low();
+        io.latch.set_low();
         Delay::new().delay_micros(1);
         let data = [
             PulseCode::new(Level::High, ticks, Level::Low, 50),
             PulseCode::end_marker(),
         ];
-        let pulse = self
+        let pulse = io
             .clock_vertical
             .reborrow()
             .transmit(&data)
             .map_err(|_| Error::Rmt)?;
-        let lcd = self.lcd.take().ok_or(Error::Dma)?;
+        let lcd = io.lcd.take().ok_or(Error::Dma)?;
         let tx = match lcd.send(Command::<u8>::One(0), 0, dma) {
             Ok(tx) => tx,
             Err((_, lcd, dma)) => {
-                self.lcd = Some(lcd);
+                io.lcd = Some(lcd);
                 self.dma = Some(dma);
                 return Err(Error::Dma);
             }
@@ -334,63 +330,63 @@ impl Panel {
         while !tx.is_done() {
             if Instant::now() >= deadline {
                 let (lcd, dma) = tx.cancel();
-                self.lcd = Some(lcd);
+                io.lcd = Some(lcd);
                 self.dma = Some(dma);
                 return Err(Error::Timeout("LCD DMA"));
             }
         }
         let (result, lcd, dma) = tx.wait();
-        self.lcd = Some(lcd);
+        io.lcd = Some(lcd);
         self.dma = Some(dma);
         let pulse_result = wait_pulse(pulse);
         result.map_err(|_| Error::Dma).and(pulse_result)
     }
 
-    fn scan_uniform(&mut self, drive: u8) -> Result<(), Error> {
-        self.frame_start()?;
+    fn scan_uniform(&mut self, io: &mut Scanout<'_>, drive: u8) -> Result<(), Error> {
+        self.frame_start(io)?;
         let row = [drive; ROW_BYTES];
         for _ in 0..=HEIGHT {
-            self.output_row(&row, 50)?;
+            self.output_row(io, &row, 50)?;
         }
-        self.frame_end()
+        self.frame_end(io)
     }
 
-    fn update_full(&mut self) -> Result<(), Error> {
+    fn update_full(&mut self, io: &mut Scanout<'_>) -> Result<(), Error> {
         // Restore a white baseline before each grayscale image.
         for _ in 0..4 {
             for _ in 0..4 {
-                self.scan_uniform(0x55)?;
+                self.scan_uniform(io, 0x55)?;
             }
             for _ in 0..4 {
-                self.scan_uniform(0xaa)?;
+                self.scan_uniform(io, 0xaa)?;
             }
         }
         let mut row = [0; ROW_BYTES];
         for (phase, ticks) in PHASE_TICKS.into_iter().enumerate() {
-            self.frame_start()?;
+            self.frame_start(io)?;
             for y in 0..HEIGHT {
                 self.frame.encode_row(y, phase, &mut row);
-                self.output_row(&row, ticks)?;
+                self.output_row(io, &row, ticks)?;
             }
-            self.output_row(&[0; ROW_BYTES], ticks)?;
-            self.frame_end()?;
+            self.output_row(io, &[0; ROW_BYTES], ticks)?;
+            self.frame_end(io)?;
         }
         Ok(())
     }
 
-    fn update_partial(&mut self) -> Result<(), Error> {
+    fn update_partial(&mut self, io: &mut Scanout<'_>) -> Result<(), Error> {
         let mut row = [0; ROW_BYTES];
         for ticks in PARTIAL_PHASE_TICKS {
-            self.frame_start()?;
+            self.frame_start(io)?;
             for y in 0..HEIGHT {
                 if !self.history.encode_partial_row(&self.frame, y, &mut row) {
                     return Err(Error::PartialTransition);
                 }
                 // Traverse every gate row. Unchanged pixels receive neutral commands.
-                self.output_row(&row, ticks)?;
+                self.output_row(io, &row, ticks)?;
             }
-            self.output_row(&[0; ROW_BYTES], ticks)?;
-            self.frame_end()?;
+            self.output_row(io, &[0; ROW_BYTES], ticks)?;
+            self.frame_end(io)?;
         }
         Ok(())
     }
@@ -459,16 +455,23 @@ impl Display for Panel {
             self.frame.checksum()
         );
         self.history.invalidate();
-        let result = self.power_on().and_then(|()| match update {
-            Update::Full => self.update_full(),
-            Update::Partial(_) => self.update_partial(),
-            Update::Unchanged => unreachable!(),
+        let mut resources = self.scanout.take().ok_or(Error::Busy)?;
+        let result = resources.open().and_then(|mut io| {
+            info!("display: scanout drivers ready");
+            let result = self.power_on(&mut io).and_then(|()| match update {
+                Update::Full => self.update_full(&mut io),
+                Update::Partial(_) => self.update_partial(&mut io),
+                Update::Unchanged => unreachable!(),
+            });
+            let power_off = self.power_off(&mut io);
+            if let Err(error) = &power_off {
+                error!("display: power off failed: {}", error);
+            }
+            result.and(power_off)
         });
-        let power_off = self.power_off();
-        if let Err(error) = &power_off {
-            error!("display: power off failed: {}", error);
-        }
-        result.and(power_off)?;
+        // Dropping the temporary drivers releases both clock locks on success or error.
+        self.scanout = Some(resources);
+        result?;
         self.history.commit(&self.frame);
         info!(
             "display: refresh complete; mode={}; elapsed={} ms; power off",

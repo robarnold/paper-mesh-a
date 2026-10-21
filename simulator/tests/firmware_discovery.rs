@@ -37,6 +37,7 @@ fn cancellation_rejects_old_reports_and_completions_after_radio_change() {
     let wifi = request(1, RadioKind::Wifi);
     let ble = request(2, RadioKind::BluetoothLe);
     assert_eq!(state.start(wifi, 0), Ok(ScanSource::Device));
+    assert!(state.is_pending());
     state.observe(wifi, network(1, b"old", Some(-10)));
     assert!(state.cancel(wifi));
     assert_eq!(state.start(ble, 1), Ok(ScanSource::Device));

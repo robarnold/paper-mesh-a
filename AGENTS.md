@@ -33,7 +33,7 @@ directory to load the target configuration and the `esp` toolchain.
 
 The firmware implements display output and contact frames with up to five touchpoints.
 Display refresh runs on core 1. Touch interrupts and the application run on core 0.
-System power management stays planned work.
+A manual light-sleep experiment is implemented. General system power management stays planned work.
 The design does not use ESPHome or an ESP-IDF application runtime.
 
 The root Cargo workspace builds the `no_std` application in `crates/app/`
