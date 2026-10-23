@@ -3,6 +3,7 @@
 // Copyright Andrew Whaley and Frido Koch. See ../../crates/ed047tc1/README.md.
 //! H752-01 display adapter with synchronous full and partial refresh.
 
+use alloc::boxed::Box;
 use embedded_graphics::{pixelcolor::Gray4, prelude::*};
 use esp_hal::{
     delay::Delay,
@@ -24,17 +25,10 @@ use paper_mesh_platform::Display;
 mod scanout;
 use scanout::{Resources, Scanout};
 
-pub const NATIVE_SCREEN_SIZE: Size = Size::new(WIDTH as u32, HEIGHT as u32);
+mod power_sequence;
+use power_sequence::{MODE, OE};
 
-const EXPANDER: u8 = 0x20;
-const SUPPLY: u8 = 0x68;
-const OE: u8 = 1;
-const MODE: u8 = 2;
-const PWRUP: u8 = 8;
-const VCOM: u8 = 16;
-const WAKE: u8 = 32;
-const DISPLAY_OUTPUTS: u8 = OE | MODE | PWRUP | VCOM | WAKE;
-const PG: u8 = 64;
+pub const NATIVE_SCREEN_SIZE: Size = Size::new(WIDTH as u32, HEIGHT as u32);
 
 #[derive(Debug)]
 pub enum Error {
@@ -47,6 +41,9 @@ pub enum Error {
     Psram,
     PartialTransition,
     Busy,
+    PowerVerification(&'static str),
+    Faulted,
+    SupplyFault(u8, u8),
 }
 
 impl core::fmt::Display for Error {
@@ -55,6 +52,8 @@ impl core::fmt::Display for Error {
             Self::I2c(error) => write!(f, "I2C: {error:?}"),
             Self::Timeout(stage) => write!(f, "timeout: {stage}"),
             Self::Temperature(value) => write!(f, "temperature outside 0..50 C: {value}"),
+            Self::PowerVerification(stage) => write!(f, "power verification: {stage}"),
+            Self::SupplyFault(a, b) => write!(f, "PMIC fault: INT1=0x{a:02x}; INT2=0x{b:02x}"),
             other => write!(f, "{other:?}"),
         }
     }
@@ -76,6 +75,84 @@ pub struct Pins {
     pub start_vertical: peripherals::GPIO45<'static>,
 }
 
+pub fn establish_safe_state(bus: &crate::bus::Bus, pins: &mut Pins) -> Result<(), Error> {
+    let mut power = power_sequence::State::new();
+    let blank = power.blank_retained_outputs(&mut PowerAccess::new(bus));
+    pins.idle();
+    let off = power.establish_off(&mut PowerAccess::new(bus));
+    blank.and(off).map_err(power_error)
+}
+
+struct PowerAccess<'a> {
+    bus: &'a crate::bus::Bus,
+}
+
+impl<'a> PowerAccess<'a> {
+    fn new(bus: &'a crate::bus::Bus) -> Self {
+        Self { bus }
+    }
+}
+
+impl power_sequence::Access for PowerAccess<'_> {
+    type Error = Error;
+
+    fn read(&mut self, device: u8, register: u8) -> Result<u8, Error> {
+        let mut value = [0];
+        lock_bus(self.bus)?
+            .write_read(device, &[register], &mut value)
+            .map_err(Error::I2c)?;
+        Ok(value[0])
+    }
+
+    fn write(&mut self, device: u8, register: u8, value: u8) -> Result<(), Error> {
+        lock_bus(self.bus)?
+            .write(device, &[register, value])
+            .map_err(Error::I2c)
+    }
+
+    fn wait_ms(&mut self, milliseconds: u32) {
+        Delay::new().delay_millis(milliseconds);
+    }
+
+    fn now_ms(&self) -> u64 {
+        Instant::now().duration_since_epoch().as_millis()
+    }
+
+    fn mark(&mut self, stage: power_sequence::Stage) {
+        use crate::display_recovery::Stage;
+        let stage = match stage {
+            power_sequence::Stage::LogicReady => Stage::LogicReady,
+            power_sequence::Stage::RailsRequested => Stage::RailsRequested,
+            power_sequence::Stage::RailsReady => Stage::RailsReady,
+            power_sequence::Stage::HighVoltageOff | power_sequence::Stage::WakeLow => return,
+        };
+        crate::display_recovery::mark(stage);
+    }
+}
+
+fn lock_bus(bus: &crate::bus::Bus) -> Result<crate::bus::BusGuard<'_>, Error> {
+    let deadline = Instant::now() + Duration::from_millis(100);
+    bus.lock_blocking(|| {
+        if Instant::now() >= deadline {
+            return false;
+        }
+        Delay::new().delay_micros(10);
+        true
+    })
+    .ok_or(Error::Timeout("I2C bus ownership"))
+}
+
+fn power_error(error: power_sequence::Error<Error>) -> Error {
+    match error {
+        power_sequence::Error::Transport(error) => error,
+        power_sequence::Error::Verification(stage) => Error::PowerVerification(stage),
+        power_sequence::Error::Timeout(stage) => Error::Timeout(stage),
+        power_sequence::Error::Temperature(value) => Error::Temperature(value),
+        power_sequence::Error::Faulted => Error::Faulted,
+        power_sequence::Error::SupplyFault(a, b) => Error::SupplyFault(a, b),
+    }
+}
+
 pub struct Panel {
     frame: Framebuffer<'static>,
     history: FrameHistory<'static>,
@@ -83,7 +160,7 @@ pub struct Panel {
     bus: &'static crate::bus::Bus,
     scanout: Option<Resources>,
     dma: Option<DmaTxBuf>,
-    control: u8,
+    power: Box<power_sequence::State>,
 }
 
 impl Panel {
@@ -119,6 +196,7 @@ impl Panel {
             },
         );
         let (address, size) = psram.raw_parts();
+
         if address.is_null() || size < STORAGE_BYTES {
             return Err(Error::Psram);
         }
@@ -127,7 +205,7 @@ impl Panel {
         // No allocator or DMA accesses this region. The adapter retains Psram.
         let storage = unsafe {
             address.write_bytes(0xff, STORAGE_BYTES);
-            &mut *address.cast::<[u8; STORAGE_BYTES]>()
+            core::slice::from_raw_parts_mut(address, STORAGE_BYTES)
         };
         let (staging, previous) = storage.split_at_mut(FRAME_BYTES);
         let frame = Framebuffer::new(staging.try_into().unwrap());
@@ -141,117 +219,85 @@ impl Panel {
         );
 
         let mut scanout = Resources::new(pins, lcd, dma, rmt);
-        // Validate configuration without retaining the LCD and RMT clock wake locks.
-        drop(scanout.open()?);
+        // Open scan drivers only while panel logic power is present.
+        scanout.idle();
         // The eight trailing bytes flush the source-driver pipeline.
         let dma = dma_tx_buffer!(ROW_BYTES + 8).map_err(|_| Error::Dma)?;
-        let mut panel = Self {
+        let panel = Self {
             frame,
             history,
             _psram: psram,
             bus,
             scanout: Some(scanout),
             dma: Some(dma),
-            control: 0,
+            power: Box::new(power_sequence::State::new()),
         };
-        // Preserve port 0, which controls the LoRa/GNSS supply.
-        // Set output values before the expander enables those outputs.
-        panel.control = panel.read(EXPANDER, 3)? & !DISPLAY_OUTPUTS;
-        panel.write(EXPANDER, 3, panel.control)?;
-        let direction = panel.read(EXPANDER, 7)?;
-        panel.write(EXPANDER, 7, (direction & !DISPLAY_OUTPUTS) | 0xc4)?;
-        let inversion = panel.read(EXPANDER, 5)?;
-        panel.write(EXPANDER, 5, inversion & !PG)?;
+        panel
+            .power
+            .verify_off(&mut PowerAccess::new(bus))
+            .map_err(power_error)?;
         info!("display: ED047TC1 bus initialized; native=960x540; logical=540x960");
         Ok(panel)
     }
 
-    fn read(&mut self, device: u8, register: u8) -> Result<u8, Error> {
-        let mut result = [0];
-        self.lock_bus()?
-            .write_read(device, &[register], &mut result)
-            .map_err(Error::I2c)?;
-        Ok(result[0])
-    }
-
-    fn write(&mut self, device: u8, register: u8, value: u8) -> Result<(), Error> {
-        self.lock_bus()?
-            .write(device, &[register, value])
-            .map_err(Error::I2c)
-    }
-
-    fn lock_bus(&self) -> Result<crate::bus::BusGuard<'_>, Error> {
-        let deadline = Instant::now() + Duration::from_millis(100);
-        self.bus
-            .lock_blocking(|| {
-                if Instant::now() >= deadline {
-                    return false;
-                }
-                Delay::new().delay_micros(10);
-                true
-            })
-            .ok_or(Error::Timeout("I2C bus ownership"))
-    }
-
     fn set_control(&mut self, mask: u8, value: u8) -> Result<(), Error> {
-        self.control = (self.control & !mask) | (value & mask);
-        self.write(EXPANDER, 3, self.control)
+        self.power
+            .set_control(&mut PowerAccess::new(self.bus), mask, value)
+            .map_err(power_error)
     }
 
-    fn wait_register(
-        &mut self,
-        device: u8,
-        register: u8,
-        mask: u8,
-        value: u8,
-        stage: &'static str,
-    ) -> Result<(), Error> {
-        let deadline = Instant::now() + Duration::from_millis(500);
-        loop {
-            if self.read(device, register)? & mask == value {
-                return Ok(());
-            }
-            if Instant::now() >= deadline {
-                return Err(Error::Timeout(stage));
-            }
-            Delay::new().delay_millis(1);
-        }
-    }
-
-    fn power_on(&mut self, io: &mut Scanout<'_>) -> Result<(), Error> {
-        io.start_vertical.set_high();
-        self.set_control(DISPLAY_OUTPUTS, WAKE | OE)?;
-        Delay::new().delay_millis(3);
-        let revision = self.read(SUPPLY, 0x10)?;
-        self.write(SUPPLY, 0x0d, 0x80)?;
-        self.wait_register(SUPPLY, 0x0d, 0x20, 0x20, "temperature")?;
-        let temperature = self.read(SUPPLY, 0)? as i8;
-        if !(0..=50).contains(&temperature) {
-            return Err(Error::Temperature(temperature));
-        }
-        self.set_control(PWRUP, PWRUP)?;
-        self.set_control(VCOM, VCOM)?;
-        self.wait_register(EXPANDER, 1, PG, PG, "PWRGOOD")?;
-        self.write(SUPPLY, 1, 0x3f)?;
-        // The vendor H752-01 profile specifies -1.60 V. Do not program EEPROM.
-        self.write(SUPPLY, 4, 0)?;
-        self.write(SUPPLY, 3, 160)?;
-        self.wait_register(SUPPLY, 0x0f, 0xfa, 0xfa, "TPS65185 rails")?;
+    fn power_on(&mut self) -> Result<(), Error> {
+        let magnitude_mv = 1600;
+        let reading = self
+            .power
+            .power_on(&mut PowerAccess::new(self.bus), magnitude_mv)
+            .map_err(power_error)?;
         info!(
-            "display: TPS65185 revision=0x{:02x}; temperature={} C; rails=0xfa",
-            revision, temperature
+            "display: TPS65185 revision=0x{:02x}; temperature={} C; rails=0xfa; VCOM1=0x{:02x}; VCOM2=0x{:02x}",
+            reading.revision, reading.temperature, reading.vcom1, reading.vcom2
         );
         Ok(())
     }
 
-    fn power_off(&mut self, io: &mut Scanout<'_>) -> Result<(), Error> {
-        let disable = self.set_control(OE | MODE | VCOM | PWRUP, 0);
-        let discharge = self.wait_register(EXPANDER, 1, PG, 0, "power off");
-        // Attempt shutdown even when the previous operation failed.
-        let sleep = self.set_control(DISPLAY_OUTPUTS, 0);
-        io.start_vertical.set_low();
+    fn power_off(&mut self) -> Result<(), Error> {
+        let mut access = PowerAccess::new(self.bus);
+        self.power
+            .stop_high_voltage(&mut access)
+            .map_err(power_error)
+    }
+
+    fn load_neutral(&mut self, io: &mut Scanout<'_>) -> Result<(), Error> {
+        let mut dma = self.dma.take().ok_or(Error::Dma)?;
+        dma.as_mut_slice().fill(0);
+        let Some(lcd) = io.lcd.take() else {
+            self.dma = Some(dma);
+            return Err(Error::Dma);
+        };
+        let tx = match lcd.send(Command::<u8>::One(0), 0, dma) {
+            Ok(tx) => tx,
+            Err((_, lcd, dma)) => {
+                io.lcd = Some(lcd);
+                self.dma = Some(dma);
+                return Err(Error::Dma);
+            }
+        };
+        let deadline = Instant::now() + Duration::from_millis(20);
+        while !tx.is_done() {
+            if Instant::now() >= deadline {
+                let (lcd, dma) = tx.cancel();
+                io.lcd = Some(lcd);
+                self.dma = Some(dma);
+                return Err(Error::Timeout("neutral LCD DMA"));
+            }
+        }
+        let (result, lcd, dma) = tx.wait();
+        io.lcd = Some(lcd);
+        self.dma = Some(dma);
+        result.map_err(|_| Error::Dma)?;
+        io.latch.set_high();
+        Delay::new().delay_micros(1);
         io.latch.set_low();
-        disable.and(discharge).and(sleep)
+        Ok(())
     }
 
     fn pulse(&mut self, io: &mut Scanout<'_>, high: u16, low: u16) -> Result<(), Error> {
@@ -285,7 +331,8 @@ impl Panel {
         wait_pulse(tx)?;
         self.pulse(io, 100, 0)?;
         self.set_control(OE, OE)?;
-        self.pulse(io, 10, 10)
+        self.pulse(io, 10, 10)?;
+        Ok(())
     }
 
     fn frame_end(&mut self, io: &mut Scanout<'_>) -> Result<(), Error> {
@@ -304,6 +351,7 @@ impl Panel {
         let mut dma = self.dma.take().ok_or(Error::Dma)?;
         dma.as_mut_slice()[..ROW_BYTES].copy_from_slice(row);
         dma.as_mut_slice()[ROW_BYTES..].fill(0);
+        // The queued bytes latch on the next row.
         io.latch.set_high();
         Delay::new().delay_micros(1);
         io.latch.set_low();
@@ -312,12 +360,17 @@ impl Panel {
             PulseCode::new(Level::High, ticks, Level::Low, 50),
             PulseCode::end_marker(),
         ];
-        let pulse = io
-            .clock_vertical
-            .reborrow()
-            .transmit(&data)
-            .map_err(|_| Error::Rmt)?;
-        let lcd = io.lcd.take().ok_or(Error::Dma)?;
+        let pulse = match io.clock_vertical.reborrow().transmit(&data) {
+            Ok(pulse) => pulse,
+            Err(_) => {
+                self.dma = Some(dma);
+                return Err(Error::Rmt);
+            }
+        };
+        let Some(lcd) = io.lcd.take() else {
+            self.dma = Some(dma);
+            return Err(Error::Dma);
+        };
         let tx = match lcd.send(Command::<u8>::One(0), 0, dma) {
             Ok(tx) => tx,
             Err((_, lcd, dma)) => {
@@ -352,7 +405,8 @@ impl Panel {
     }
 
     fn update_full(&mut self, io: &mut Scanout<'_>) -> Result<(), Error> {
-        // Restore a white baseline before each grayscale image.
+        // Restore a white baseline with four black scans, then four white scans.
+
         for _ in 0..4 {
             for _ in 0..4 {
                 self.scan_uniform(io, 0x55)?;
@@ -429,6 +483,9 @@ impl Display for Panel {
     }
 
     fn refresh(&mut self) -> Result<(), Error> {
+        if self.power.faulted() || crate::display_recovery::blocked() {
+            return Err(Error::Faulted);
+        }
         let start = Instant::now();
         let update = self.history.plan(&self.frame);
         let mode = match update {
@@ -455,21 +512,60 @@ impl Display for Panel {
             self.frame.checksum()
         );
         self.history.invalidate();
+
+        let guard = crate::display_recovery::Guard::begin().map_err(|_| Error::Faulted)?;
         let mut resources = self.scanout.take().ok_or(Error::Busy)?;
-        let result = resources.open().and_then(|mut io| {
-            info!("display: scanout drivers ready");
-            let result = self.power_on(&mut io).and_then(|()| match update {
-                Update::Full => self.update_full(&mut io),
-                Update::Partial(_) => self.update_partial(&mut io),
-                Update::Unchanged => unreachable!(),
-            });
-            let power_off = self.power_off(&mut io);
-            if let Err(error) = &power_off {
-                error!("display: power off failed: {}", error);
-            }
-            result.and(power_off)
+        let mut shutdown_confirmed = false;
+        let mut shutdown_attempted = false;
+
+        let result = self.power_on().and_then(|()| {
+            resources.open().and_then(|mut io| {
+                info!("display: scanout drivers ready");
+                let result = self.load_neutral(&mut io).and_then(|()| {
+                    io.start_vertical.set_high();
+                    crate::display_recovery::mark(crate::display_recovery::Stage::Scanning);
+                    match update {
+                        Update::Full => self.update_full(&mut io),
+                        Update::Partial(_) => self.update_partial(&mut io),
+                        Update::Unchanged => unreachable!(),
+                    }
+                });
+                crate::display_recovery::mark(crate::display_recovery::Stage::ShuttingDown);
+                io.start_vertical.set_low();
+                io.latch.set_low();
+                shutdown_attempted = true;
+                let power_off = self.power_off();
+                shutdown_confirmed = power_off.is_ok();
+                if let Err(error) = &power_off {
+                    error!("display: power off failed: {}", error);
+                }
+                result.and(power_off)
+            })
         });
+        if !shutdown_attempted {
+            crate::display_recovery::mark(crate::display_recovery::Stage::ShuttingDown);
+            shutdown_confirmed = self.power_off().is_ok();
+        }
         // Dropping the temporary drivers releases both clock locks on success or error.
+        resources.idle();
+        let mut access = PowerAccess::new(self.bus);
+        let finish_off = self.power.finish_off(&mut access).map_err(power_error);
+        shutdown_confirmed &= finish_off.is_ok();
+        let result = result.and(finish_off);
+        let verification = self
+            .power
+            .verify_off(&mut PowerAccess::new(self.bus))
+            .map_err(power_error);
+        if verification.is_err() {
+            shutdown_confirmed = false;
+            self.power.latch_fault();
+        }
+        let result = result.and(verification);
+        if shutdown_confirmed {
+            crate::display_recovery::mark(crate::display_recovery::Stage::ControlsLow);
+        }
+
+        guard.finish(shutdown_confirmed, result.is_ok());
         self.scanout = Some(resources);
         result?;
         self.history.commit(&self.frame);

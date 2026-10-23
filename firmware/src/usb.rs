@@ -313,6 +313,12 @@ async fn write_logs(sender: &mut cdc_acm::Sender<'static, Driver<'static>>) {
             )
             .await
                 && send_log_line(sender, &crate::suspend::trace::wake_line(), generation).await
+                && send_log_line(
+                    sender,
+                    &crate::display_recovery::connection_line(),
+                    generation,
+                )
+                .await
             {
                 connection = Some(generation);
             }

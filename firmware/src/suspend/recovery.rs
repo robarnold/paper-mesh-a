@@ -1,39 +1,21 @@
-//! Recover an interrupted suspend experiment without resetting RTC memory.
+//! Reserve the shared RTC watchdog for a suspend experiment.
 
-use esp_hal::{
-    peripherals::LPWR,
-    rtc_cntl::{Rwdt, RwdtStage, RwdtStageAction},
-    time::Duration,
-};
+use crate::recovery::{self, Owner};
+use esp_hal::rtc_cntl::Rwdt;
 
-pub struct Recovery(Rwdt);
+pub struct Recovery;
 
 impl Recovery {
     pub fn new(watchdog: Rwdt) -> Self {
-        Self(watchdog)
+        recovery::initialize(watchdog);
+        Self
     }
 
-    pub fn arm(&mut self, milliseconds: u64) {
-        self.0.disable();
-        self.0
-            .set_timeout(RwdtStage::Stage0, Duration::from_millis(milliseconds));
-        self.0.enable();
-        self.0
-            .set_stage_action(RwdtStage::Stage0, RwdtStageAction::ResetCore);
-        // The recovery deadline must also cover a missing sleep wake event.
-        // This coordinator is the only RTC watchdog owner.
-        let registers = LPWR::regs();
-        registers
-            .wdtwprotect()
-            .write(|w| unsafe { w.bits(0x50d8_3aa1) });
-        registers
-            .wdtconfig0()
-            .modify(|_, w| w.wdt_pause_in_slp().clear_bit());
-        registers.wdtwprotect().write(|w| unsafe { w.bits(0) });
-        self.0.feed();
+    pub fn arm(&mut self, milliseconds: u64) -> bool {
+        recovery::arm(Owner::Suspend, milliseconds)
     }
 
-    pub fn disable(&mut self) {
-        self.0.disable();
+    pub fn disable(&mut self) -> bool {
+        recovery::disable(Owner::Suspend)
     }
 }

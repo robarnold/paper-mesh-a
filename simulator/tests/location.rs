@@ -309,3 +309,51 @@ fn lost_fix_silence_and_faults_remove_motion_and_utc() {
         assert_eq!(sim.snapshot().utc_time, None);
     }
 }
+
+#[test]
+fn changed_gray_message_digits_require_a_full_panel_refresh() {
+    use embedded_graphics::pixelcolor::{Gray4, GrayColor};
+    use paper_mesh_app::location::LocationScreen;
+    use paper_mesh_ed047tc1::{FRAME_BYTES, FrameHistory, Framebuffer, Update};
+    use paper_mesh_platform::{
+        location::{Location, LocationAvailability, LocationSnapshot, ReceiverActivity},
+        rotation::PortraitDisplay,
+    };
+
+    struct Messages(u32);
+    impl Location for Messages {
+        fn snapshot(&mut self, now_ms: u64) -> LocationSnapshot {
+            LocationSnapshot {
+                availability: LocationAvailability::Ready,
+                observation: None,
+                motion: None,
+                utc: None,
+                activity: Some(ReceiverActivity {
+                    received_at_ms: now_ms,
+                    valid_messages: self.0,
+                }),
+                satellites: None,
+            }
+        }
+    }
+
+    let mut staging = vec![0xff; FRAME_BYTES];
+    let mut previous = vec![0xff; FRAME_BYTES];
+    let mut frame = Framebuffer::new(staging.as_mut_slice().try_into().unwrap());
+    let mut history = FrameHistory::new(previous.as_mut_slice().try_into().unwrap());
+    let mut screen = LocationScreen::new();
+    frame.clear(Gray4::WHITE).unwrap();
+    history.commit(&frame);
+    for messages in 10..15 {
+        screen.poll(1_000, &mut Messages(messages));
+        screen
+            .render(&mut PortraitDisplay::new(&mut frame))
+            .unwrap();
+        assert_eq!(history.plan(&frame), Update::Full, "Messages: {messages}");
+        history.commit(&frame);
+        screen
+            .render(&mut PortraitDisplay::new(&mut frame))
+            .unwrap();
+        assert_eq!(history.plan(&frame), Update::Unchanged);
+    }
+}

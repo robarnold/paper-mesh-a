@@ -14,6 +14,32 @@ use esp_hal::{
 
 use super::{Error, Pins};
 
+impl Pins {
+    pub(super) fn idle(&mut self) {
+        // Explicit GPIO routing survives driver release and peripheral clock gating.
+        macro_rules! low {
+            ($($pin:ident),+ $(,)?) => {
+                $(let _pin = Output::new(self.$pin.reborrow(), Level::Low, OutputConfig::default());)+
+            };
+        }
+        low!(
+            data0,
+            data1,
+            data2,
+            data3,
+            data4,
+            data5,
+            data6,
+            data7,
+            latch,
+            start_horizontal,
+            clock_horizontal,
+            clock_vertical,
+            start_vertical
+        );
+    }
+}
+
 pub struct Resources {
     pins: Pins,
     lcd: peripherals::LCD_CAM<'static>,
@@ -29,6 +55,10 @@ pub struct Scanout<'a> {
 }
 
 impl Resources {
+    pub fn idle(&mut self) {
+        self.pins.idle();
+    }
+
     pub fn new(
         pins: Pins,
         lcd: peripherals::LCD_CAM<'static>,

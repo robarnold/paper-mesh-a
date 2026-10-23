@@ -204,7 +204,9 @@ impl Controller {
         if request.duration_ms > 3_600_000 {
             return Err(SuspendError::Unsupported);
         }
-        self.recovery.arm(15_000);
+        if !self.recovery.arm(15_000) {
+            return Err(SuspendError::Busy);
+        }
         FAILED.store(false, Ordering::Release);
         WAKE_BITS.store(0, Ordering::Release);
         trace::mark(trace::Stage::Preparing);
@@ -219,9 +221,12 @@ impl Controller {
                     let result = if !parked.is_ok_and(|result| result.is_ok()) {
                         Err(SuspendError::Preparation)
                     } else {
-                        self.recovery.arm(request.duration_ms + 15_000);
-                        cores::sleep(&mut self.low_power, deadline)
-                            .map(|entered| (started.elapsed().as_millis(), entered))
+                        if self.recovery.arm(request.duration_ms + 15_000) {
+                            cores::sleep(&mut self.low_power, deadline)
+                                .map(|entered| (started.elapsed().as_millis(), entered))
+                        } else {
+                            Err(SuspendError::Preparation)
+                        }
                     };
                     self.recovery.arm(15_000);
                     cores::release();

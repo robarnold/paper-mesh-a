@@ -5,7 +5,8 @@ This evidence for the [LILYGO backend](lilygo-t5-s3-pro.md) supports the
 Its numerical examples and driver algorithms apply to this backend.
 They are not universal application requirements.
 
-The evidence review date is **2026-10-12**.
+The original evidence review date is **2026-10-12**.
+The power sequence and recovery review date is **2026-10-23**.
 The review covers the ED047TC1 panel and reference drivers.
 The implementation section records verified behavior and remaining limits.
 The other numerical examples are calculations, not measured performance.
@@ -26,7 +27,8 @@ LCD DMA sends source data at 20 MHz through a 248-byte internal buffer.
 RMT supplies the gate clock with 0.1 µs timing units.
 The adapter retains the peripheral tokens, pins, and framebuffers between updates.
 Each refresh creates temporary LCD and RMT drivers from borrowed peripheral tokens.
-Their clock guards hold wake locks until the drivers drop after rail shutdown, including error paths.
+Their clock guards hold wake locks until the drivers drop after high-voltage shutdown, including error paths.
+Panel logic remains supplied until driver release and explicit low levels on every direct panel input.
 An idle panel retains no LCD or RMT driver wake lock.
 
 Startup and changes to gray pixels require a full refresh.
@@ -37,6 +39,12 @@ The driver traverses all gate rows during each scan.
 
 The driver skips unchanged images and saves each completed image after supply shutdown.
 An interrupted update invalidates the previous image and requires a full refresh before further partial updates.
+
+The normal application has no limit on consecutive partial updates and no periodic full-refresh policy.
+LILYGO warns that prolonged partial-only operation can leave residual images and cause irreversible damage.
+See the warning above Specifications on its [older T5 product page](https://lilygo.cc/products/t5-4-7-inch-e-paper-v2-3), reviewed on 2026-10-24.
+That page specifies no update count or maintenance interval.
+The missing limit is an implementation gap, not evidence that it caused a particular panel defect.
 
 The client returns after submission and reports busy until core 1 completes the scan and supply shutdown.
 Exclusive panel ownership passes through channels between cores.
@@ -58,10 +66,12 @@ The synchronous display client uses bounded lock attempts without a wake registr
 It waits behind queued clients and reports a bus-ownership timeout after 100 ms.
 The display adapter releases that mutex before pixel transfers and supply waits.
 It preserves port 0, which controls the shared LoRa/GNSS supply.
-Power sequencing follows the vendor's
-[`epd_board_v7.c`](https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/lib/epdiy/src/board/epd_board_v7.c)
-and [`tps65185.c`](https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/lib/epdiy/src/board/tps65185.c).
+The [checked power sequence](#power-sequence-and-recovery) controls panel logic separately from the high-voltage supplies.
 The profile selects −1.60 V VCOM without EEPROM programming.
+This value matches the reference board driver, not the factory application's default.
+The vendor factory application initializes its `system/eps_vcom` flash setting to 1560 mV, which selects −1.56 V.
+It loads that setting before display initialization and permits changes through its settings screen.
+See the [factory defaults][factory-vcom-defaults] and [settings adapter][factory-vcom-settings].
 
 I2C transactions have a 20 ms timeout.
 RMT and LCD transfers have 20 ms timeouts.
@@ -73,11 +83,72 @@ Resume from manual suspend invalidates the previous-image history and requires a
 Firmware compares the staged framebuffer checksum before and after suspend to check retained data.
 This comparison does not verify the physical panel image.
 
+### Power sequence and recovery
+
+An ESP reset does not reset the external PCA9535 output latch.
+Startup therefore requests display shutdown before PSRAM initialization, allocation, or scan-driver creation.
+It first lowers OE and MODE, then routes every direct panel input to a low GPIO output.
+It clears all display controls, verifies the expander registers and physical control levels, and waits four seconds.
+This conservative guard covers an unknown retained PMIC sequence.
+A failed check blocks display initialization.
+A separate 15-second watchdog remains active until startup confirms the shutdown controls.
+
+Each refresh starts with every direct panel input low and the scan drivers absent.
+The adapter raises only WAKE and waits 3 ms before PMIC access.
+It enables V3P3 through `ENABLE=0x20`, verifies the register, and waits 10 ms for panel logic.
+It writes and verifies VCOM before high-voltage activation.
+The adapter requires the expected sequence registers: `UPSEQ0=0xe4`, `UPSEQ1=0x55`, `DWNSEQ0=0x1e`, and `DWNSEQ1=0xe0`.
+It reads temperature and rejects values outside 0–50 °C.
+
+The adapter raises PWRUP and requires all six regulator indications in `PG & 0xfa`.
+It then raises VCOM_CTRL, waits 10 ms, checks fault registers, and checks PG again.
+Only then does it create the LCD and RMT drivers.
+It loads neutral source data before the first scan enables panel outputs.
+OE and MODE remain low throughout supply preparation.
+
+Shutdown stops data transitions and applies a 1 ms guard before it lowers VCOM_CTRL and PWRUP.
+OE, MODE, STV, and latch also stay low during discharge.
+It retains WAKE and V3P3 for a 600 ms discharge guard, then requires `PG & 0xfa == 0`.
+The adapter releases the scan drivers and routes all thirteen direct panel inputs to low GPIO outputs.
+It then clears ENABLE, verifies that register, lowers WAKE, and waits another 150 ms.
+Final checks verify the expander output latch, direction, inversion, and physical control levels.
+An error still attempts shutdown and prevents another refresh.
+
+The normal refresh has an independent 15-second RTC watchdog deadline.
+Progress checkpoints do not extend this deadline.
+
+RTC memory preserves the last display checkpoint and failure status across processor resets.
+An independent retained panic record prevents normal completion from erasing a concurrent panic.
+A valid retained fault blocks automatic refresh, including after a reset reported as power-on.
+Early startup still attempts shutdown before it applies that block.
+USB reports the retained state when a terminal connects.
+
+Confirmed shutdown releases the watchdog even when scanning failed, but the display fault remains latched.
+Unconfirmed shutdown retains watchdog protection and permits recovery through a processor reset.
+This reset cannot independently remove display power when the I2C bus or expander fails.
+Loss of RTC retention permits a fresh startup, while ordinary processor resets preserve a valid fault.
+The current runtime does not expose a software command to clear the display fault.
+
+These controls establish software order, bounded waits, and register evidence.
+They do not measure panel voltages or prove analog settling.
+Internal PG covers six regulators, while the external PWRGOOD signal covers four output rails.
+Neither indication verifies V3P3 or VCOM.
+The guards allow documented PMIC sequence and discharge delays, including clock tolerance and longer discharge variants.
+See the [TPS65185 datasheet][tps-vcom], Figure 2 and sections 8.3.1, 8.3.6–8.3.9, and 8.6.
+
+The default shutdown order places VGL last, as the panel requires.
+The [ED047TC1 specification][panel-spec], pages 14–15, also constrains voltage ramps and relative levels.
+In particular, its VGL decay interval to −7.4 V is at least 0.5 seconds.
+A software delay after the shutdown request does not prove this physical ramp.
+Electrical conformance and removal of existing image defects require separate hardware evidence.
+
 ### Verification scope
 
 Physical checks established visible text, grayscale samples, and counter updates with the fitted panel.
 Partial updates produced clear counter changes during those checks.
 Native tests compare complete images and exercise unchanged pixels, grayscale fallback, and invalid history.
+Power-sequence tests inject transaction failures and verify control order, readback failures, discharge guards, and blocked retries.
+Recovery tests cover retained checkpoints, watchdog ownership, and interrupted operations.
 These results do not establish calibrated shades, electrical timing margins, or long-term image retention.
 
 ### Current limits
@@ -88,6 +159,8 @@ Repeated partial updates need further checks for residual images and contrast lo
 Touch interrupts receive service on core 0 during display scans on core 1.
 The adapter retains up to 32 touch events until the application can process them.
 Existing checks do not establish performance for other panels, temperatures, or waveform modes.
+
+[panel-spec]: https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/hardware/ED047TC1.pdf
 
 ## Panel facts and terminology
 
@@ -267,4 +340,7 @@ is established yet.
 [epdiy-api]: https://epdiy.readthedocs.io/en/latest/api.html
 [fastepd]: https://github.com/bitbank2/FastEPD/blob/a5aa810798c5104c1da8dc915f75ab00a4b65f13/src/FastEPD.inl#L3478
 [fastepd-releases]: https://github.com/bitbank2/FastEPD/releases/tag/1.5.1
+[factory-vcom-defaults]: https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/examples/factory/main/nvs_param.cpp#L8-L17
+[factory-vcom-settings]: https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/examples/factory/main/ui_port.cpp#L215-L227
+[tps-vcom]: https://www.ti.com/lit/ds/symlink/tps65185.pdf
 [paperboy]: https://www.hackster.io/wenting-zhang/60fps-eink-gameboy-emulator-on-m5papers3-57e4e5

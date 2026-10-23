@@ -36,6 +36,7 @@ pub fn report_previous_panic() {
 
 #[unsafe(no_mangle)]
 extern "C" fn custom_pre_backtrace() {
+    crate::display_recovery::record_panic();
     let backtrace = esp_backtrace::Backtrace::capture();
     for index in 0..FRAME_COUNT {
         frame(index).store(

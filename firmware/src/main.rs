@@ -5,12 +5,17 @@ extern crate alloc;
 
 mod bus;
 mod buttons;
+
 mod diagnostics;
 mod discovery;
 mod display;
+
+mod display_recovery;
+
 mod display_worker;
 mod gnss;
 mod power;
+mod recovery;
 mod rtc;
 #[cfg(feature = "radio-scan-demo")]
 mod scan_demo;
@@ -55,6 +60,34 @@ fn initialize(
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::_240MHz);
     let peripherals = esp_hal::init(config);
     let suspend = suspend::initialize(peripherals.GPIO38, peripherals.LPWR, peripherals.RTC_TIMER);
+    display_recovery::boot();
+    assert!(recovery::arm(recovery::Owner::Boot, 15_000));
+    let bus_result = bus::initialize(peripherals.I2C0, peripherals.GPIO39, peripherals.GPIO40);
+    let mut pins = display::Pins {
+        data0: peripherals.GPIO5,
+        data1: peripherals.GPIO6,
+        data2: peripherals.GPIO7,
+        data3: peripherals.GPIO15,
+        data4: peripherals.GPIO16,
+        data5: peripherals.GPIO17,
+        data6: peripherals.GPIO18,
+        data7: peripherals.GPIO8,
+        latch: peripherals.GPIO42,
+        start_horizontal: peripherals.GPIO41,
+        clock_horizontal: peripherals.GPIO4,
+        clock_vertical: peripherals.GPIO48,
+        start_vertical: peripherals.GPIO45,
+    };
+    // External expander outputs survive an ESP reset. Stop them before PSRAM setup.
+    let display_safe = bus_result
+        .as_ref()
+        .ok()
+        .map(|bus| display::establish_safe_state(bus, &mut pins));
+    if matches!(display_safe, Some(Ok(()))) {
+        recovery::disable(recovery::Owner::Boot);
+    } else {
+        display_recovery::latch_fault(display_recovery::Stage::ShuttingDown);
+    }
 
     // Radio drivers and RTOS tasks use internal RAM.
     esp_alloc::heap_allocator!(size: 128 * 1024);
@@ -67,6 +100,7 @@ fn initialize(
         peripherals.GPIO19,
     );
     diagnostics::report_previous_panic();
+    display_recovery::report_previous();
     suspend::trace::boot();
     spawner.spawn(discovery::worker(peripherals.WIFI, peripherals.BT).unwrap());
 
@@ -75,7 +109,7 @@ fn initialize(
         env!("CARGO_PKG_VERSION")
     );
 
-    let bus = bus::initialize(peripherals.I2C0, peripherals.GPIO39, peripherals.GPIO40)
+    let bus = bus_result
         .map_err(|error| {
             error!("I2C: initialization failed: {:?}", error);
             gnss::fault();
@@ -95,30 +129,27 @@ fn initialize(
     );
     spawner.spawn(rtc::worker(bus).unwrap());
     spawner.spawn(power::worker(bus).unwrap());
-    let panel = display::Panel::new(
-        display::Pins {
-            data0: peripherals.GPIO5,
-            data1: peripherals.GPIO6,
-            data2: peripherals.GPIO7,
-            data3: peripherals.GPIO15,
-            data4: peripherals.GPIO16,
-            data5: peripherals.GPIO17,
-            data6: peripherals.GPIO18,
-            data7: peripherals.GPIO8,
-            latch: peripherals.GPIO42,
-            start_horizontal: peripherals.GPIO41,
-            clock_horizontal: peripherals.GPIO4,
-            clock_vertical: peripherals.GPIO48,
-            start_vertical: peripherals.GPIO45,
-        },
-        peripherals.PSRAM,
-        bus,
-        peripherals.LCD_CAM,
-        peripherals.DMA_CH0,
-        peripherals.RMT,
-    )
-    .map_err(|error| error!("display: initialization failed: {}", error))
-    .ok();
+    let panel = if display_safe.is_some_and(|result| {
+        if let Err(error) = &result {
+            error!("display: boot shutdown failed: {}", error);
+        }
+        result.is_ok()
+    }) && !display_recovery::blocked()
+    {
+        display::Panel::new(
+            pins,
+            peripherals.PSRAM,
+            bus,
+            peripherals.LCD_CAM,
+            peripherals.DMA_CH0,
+            peripherals.RMT,
+        )
+        .map_err(|error| error!("display: initialization failed: {}", error))
+        .ok()
+    } else {
+        error!("display: updates blocked; retained recovery fault");
+        None
+    };
     touch::start(
         bus,
         peripherals.GPIO9,
@@ -169,6 +200,7 @@ async fn run_app(
             app.hardware_button(event, &[buttons::FUNCTION, buttons::HOME]);
         }
         touchpad_session.set_active(app.touchpad_open(), &mut touchpad);
+
         if let Some(request) = app.take_suspend_request() {
             app.cancel_touchpad();
             touchpad_session.set_active(false, &mut touchpad);
