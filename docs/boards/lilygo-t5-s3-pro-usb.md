@@ -74,6 +74,7 @@ Decode the addresses with the ELF from the firmware that panicked.
 Power loss can erase this evidence. The hook does not detect a stall without a panic.
 
 Normal firmware supplies CDC logs and the [ROM download command](#enter-rom-download-mode).
+The application accepts [read-only inspection commands](#inspect-the-held-framebuffer) during a completed diagnostic pattern.
 Use BOOT and Reset when software entry is unavailable:
 
 1. Hold BOOT.
@@ -88,6 +89,167 @@ The [download procedure](#enter-rom-download-mode) defines the checks and the re
 It uses `--before no-reset` so the processor stays in the confirmed download session.
 The [build guide](../firmware-build.md) defines the ELF and boot image artifacts.
 No build recipe flashes hardware.
+
+## Inspect the held framebuffer
+
+Normal firmware permits inspection during its manual black, white, and gray checks.
+See the [display check procedure](lilygo-t5-s3-pro-display.md#basic-display-check).
+Other application screens reject these inspection methods.
+The separate `system.bootloader` route remains available under its preparation checks.
+
+Inspection does not refresh the panel, advance the test, or change display controls.
+It does not wake the PMIC or read its registers again.
+The runtime must own the idle display, with completed shutdown and no retained recovery fault.
+One request can wait in the queue while the preceding response completes.
+
+Requests use JSON-RPC 2.0 with one object per newline and at most 512 bytes before the newline.
+An ID must be an integer or a string of at most 64 bytes. Null IDs are invalid for inspection.
+Notifications perform no read and receive no response. Batch requests are unsupported.
+Unknown envelope fields and invalid parameters produce errors.
+
+| Method | Parameters | Result |
+| --- | --- | --- |
+| `display.inspect` | Absent or `{}` | Current hold, framebuffer metadata, and retained refresh measurements |
+| `display.framebuffer.read` | Exactly `frame_id`, `offset`, and `length` | One native framebuffer chunk |
+
+For a metadata request, send:
+
+```json
+{"jsonrpc":"2.0","id":1,"method":"display.inspect"}
+```
+
+The success envelope is `{"jsonrpc":"2.0","id":1,"result":{...}}`.
+The `result` object has these fields:
+
+| Field | Type and meaning |
+| --- | --- |
+| `protocol` | Integer `1` |
+| `stage` | Current completed pattern: `black`, `white`, or `gray` |
+| `frame_id` | Positive integer that identifies this idle hold within the current startup |
+| `captured_at_ms` | Unsigned monotonic uptime in milliseconds |
+| `recovery_blocked` | Boolean, false for a successful response |
+| `framebuffer` | Object described below |
+
+Each new hold gets a new `frame_id`, even if its pixels match an earlier image.
+The runtime revokes the hold before it changes the frame or exits the check.
+The ID does not persist across resets.
+The runtime checks the hold and USB session before it serves each request.
+It retains display ownership until the bounded response write completes.
+
+### Framebuffer metadata
+
+`display.inspect` computes a fresh checksum and reads the PCA9535 port 1 registers.
+It reports earlier PMIC measurements separately.
+
+| Field | Type and meaning |
+| --- | --- |
+| `width`, `height` | Native dimensions, integers `960` and `540` |
+| `format` | String `gray4` |
+| `packing` | String `low-nibble-first` |
+| `length` | Integer `259200`, the native byte count |
+| `checksum` | Unsigned 32-bit FNV-1a checksum of the current native bytes |
+| `committed_checksum` | Unsigned 32-bit checksum of the committed history, or null when unavailable |
+| `shutdown_complete` | Boolean derived from the shutdown preconditions and current control levels |
+| `sampled_at_ms` | Unsigned monotonic uptime in milliseconds |
+| `expander_port1` | Current expander readings and the cached output value |
+| `most_recent_refresh` | Most recent physical refresh record, or null before the first attempt |
+
+Each byte contains two native pixels. The low nibble contains the even native X coordinate.
+The high nibble contains the next pixel. Gray level 0 is black and level 15 is white.
+The portrait image is 540 × 960 after the shared rotation.
+
+`expander_port1` contains raw byte fields `input`, `output`, `configuration`, and `inversion` from the expander.
+Reading the PCA9535 input port can acknowledge its interrupt comparison.
+Its `cached_output` byte comes from the driver's confirmed output cache.
+Its `controls_off` Boolean checks the display output directions, latch bits, and input levels after polarity correction.
+These checks confirm digital controls. They do not measure analog supply voltages.
+
+### Retained refresh measurements
+
+`most_recent_refresh` has these fields:
+
+| Field | Type and meaning |
+| --- | --- |
+| `epoch` | Unsigned 32-bit attempt counter |
+| `started_ms`, `finished_ms` | Unsigned uptime in milliseconds. `finished_ms` is null until completion |
+| `mode` | String `full` or `partial` |
+| `frame_checksum` | Unsigned 32-bit checksum of the attempted image |
+| `success` | Boolean result, or null before completion |
+| `shutdown_confirmed` | Boolean shutdown result, or null before completion |
+| `pmic` | Retained power measurements, or null when unavailable |
+
+A new refresh attempt clears the previous attempt's result and PMIC record.
+An unchanged update that needs no physical refresh retains the previous physical refresh record.
+The host also checks that its checksum matches the current image.
+
+The `pmic` object contains values from existing reads during that power sequence:
+
+| Field | Type and meaning |
+| --- | --- |
+| `source` | String `existing reads during refresh; not live` |
+| `attempt` | Unsigned 32-bit power attempt counter |
+| `started_ms`, `ready_ms`, `shutdown_ms` | Unsigned uptime in milliseconds. The last two fields can be null |
+| `revision` | Controller revision byte |
+| `temperature` | Signed thermistor reading in degrees Celsius |
+| `enable_start`, `enable_off` | ENABLE register bytes |
+| `vcom1`, `vcom2` | VCOM register bytes |
+| `sequence` | Four bytes in UPSEQ0, UPSEQ1, DWNSEQ0, DWNSEQ1 order |
+| `faults_before`, `faults_active` | Two bytes in INT1, INT2 order, before activation and after VCOM activation |
+| `power_good_start`, `power_good_active`, `power_good_off` | PG register bytes from the named checkpoints |
+
+Register values and array entries are null when a required read or readback check did not complete.
+Reading this record does not clear PMIC fault flags.
+VCOM registers report the programmed value. They do not report the measured voltage at the panel.
+PG and fault bits report the controller's threshold checks, not full voltage waveforms.
+
+### Download one held frame
+
+Use the `frame_id` from the metadata response for every chunk request:
+
+```json
+{"jsonrpc":"2.0","id":2,"method":"display.framebuffer.read","params":{"frame_id":1,"offset":0,"length":512}}
+```
+
+`offset` is an unsigned native byte offset. `length` is an integer from 1 through 512.
+The sum of `offset` and `length` must not exceed 259200.
+The success result contains exactly `frame_id`, `offset`, `length`, and `hex`.
+The `hex` string contains two hexadecimal characters per byte, in native byte order.
+The final chunk in a 512-byte transfer has 128 bytes.
+
+Errors use `{"jsonrpc":"2.0","id":2,"error":{"code":-32001,"message":"Frame changed"}}` for a different requested frame.
+Code `-32000` covers an unavailable hold, pending request, connection change, recovery fault, or backend read failure.
+Standard codes `-32700`, `-32600`, `-32601`, and `-32602` cover parsing, request, method, and parameter errors.
+An expired hold can discard a queued request. The host must also handle a response timeout.
+
+Connect USB during an unchanged hold. Keep BOOT untouched during capture.
+Run the helper inside the USB devcontainer with a new output directory:
+
+```sh
+python3 scripts/inspect_display.py backups/display-inspection
+```
+
+The helper requires identity `cafe:4010`, serial `paper-mesh-prototype`, and the shared `/tmp/paper-mesh-cdc.lock`.
+It uses one exclusive application connection for the metadata, 507 chunks, and final metadata response.
+Each request has a five-second deadline. The complete capture has a 180-second deadline.
+Response lines have an 8192-byte limit. Each request permits at most 65536 received bytes, including unrelated logs.
+The helper sends only the two inspection methods and does not retry a failed capture.
+
+The helper validates every chunk ID, offset, length, and hexadecimal value.
+It computes FNV-1a over all native bytes and checks the reported checksum.
+The final inspection must have the same frame ID, stage, and checksum, with confirmed shutdown and no recovery block.
+Both inspections must match committed history and a successful physical refresh with confirmed shutdown.
+If BOOT advances the test, these checks fail or the old request times out.
+The helper then stops without publishing the native image or preview.
+
+A successful capture saves `before.json`, `after.json`, `native.bin`, `portrait.png`, `histogram.json`, `events.jsonl`, and `summary.json`.
+The event log contains request and response metadata. It excludes framebuffer payloads and unrelated log contents.
+The histogram counts all 16 gray levels across the complete framebuffer.
+It does not assume defect locations or comparison regions.
+USB can remain connected between the manual steps.
+
+The capture describes the intended software image and reported controls.
+The panel provides no documented pixel readback, charge measurement, or row-health report through this interface.
+A matching image does not prove the displayed shade, panel condition, or electrical waveform.
 
 ## Enter ROM download mode
 

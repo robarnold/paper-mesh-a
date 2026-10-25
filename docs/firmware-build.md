@@ -42,6 +42,11 @@ Application controls request scans through the portable discovery interface.
 The [USB backend profile](boards/lilygo-t5-s3-pro-usb.md#diagnostics-and-recovery) specifies CDC logs, ROM recovery, and flashing after OTG startup.
 The [download command](boards/lilygo-t5-s3-pro-usb.md#enter-rom-download-mode) permits software entry when the application and display are idle.
 
+The normal image includes Diagnostics on Home.
+The [display procedure](boards/lilygo-t5-s3-pro-display.md#basic-display-check) uses BOOT to advance each image.
+The diagnostic also provides [framebuffer inspection](boards/lilygo-t5-s3-pro-usb.md#inspect-the-held-framebuffer) during each hold.
+No separate diagnostic feature or image is necessary.
+
 ## Linker configuration
 
 `firmware/ld/esp32s3-readonly.x` is a versioned copy of the esp-hal 1.2.2 chip

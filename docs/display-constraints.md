@@ -4,7 +4,8 @@ This design defines backend requirements for shared components and display
 policy. It specifies no panel, scan geometry, waveform implementation, or update
 rate. The first target's [display evidence](boards/lilygo-t5-s3-pro-display.md)
 provides calculations and reference-driver examples that support these boundaries.
-The proposed `Display` extensions stay unimplemented.
+The current interface supports serialized refreshes and an explicit complete refresh.
+The broader capability and scheduling extensions below stay planned work.
 
 ## Capabilities and geometry
 
@@ -102,8 +103,9 @@ Applications must obey buffer ownership and backpressure rules.
 They must not assume a particular framebuffer count.
 
 The current `refresh()`/`is_busy()` interface serializes an update.
-It does not represent damage, mode selection, completion identity, or asynchronous
-failure. The demonstration redraws its complete buffer.
+The [current interface](platform/display.md#current-interface) also provides an explicit complete refresh.
+The interface does not represent damage, general mode selection, completion identity, or asynchronous failure.
+The demonstration redraws its complete buffer.
 Future consumers will drive extensions to these limits.
 Components must not generate electrical drive commands.
 

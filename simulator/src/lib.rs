@@ -76,6 +76,7 @@ pub struct SimDisplay {
     now_ms: u64,
     ready_at_ms: u64,
     completed_refreshes: u64,
+    full_refreshes: u64,
 }
 
 impl Default for SimDisplay {
@@ -88,6 +89,7 @@ impl Default for SimDisplay {
             now_ms: 0,
             ready_at_ms: 0,
             completed_refreshes: 0,
+            full_refreshes: 0,
         }
     }
 }
@@ -150,6 +152,12 @@ impl DrawTarget for SimDisplay {
 }
 
 impl Display for SimDisplay {
+    fn refresh_full(&mut self) -> Result<(), Self::Error> {
+        self.refresh()?;
+        self.full_refreshes += 1;
+        Ok(())
+    }
+
     fn is_busy(&self) -> bool {
         self.pending.is_some()
     }
@@ -197,6 +205,7 @@ pub struct Snapshot {
     pub next_heartbeat_ms: u64,
     pub display_busy: bool,
     pub completed_refreshes: u64,
+    pub full_refreshes: u64,
     pub debugger_open: bool,
     pub scan_kind: &'static str,
     pub scan_state: &'static str,
@@ -222,6 +231,9 @@ pub struct Snapshot {
     pub satellite_age_seconds: Option<u64>,
     pub satellite_signals: Vec<SatelliteSnapshot>,
     pub location_scenario: LocationScenario,
+    pub diagnostics_open: bool,
+    pub diagnostic_pattern: Option<&'static str>,
+    pub diagnostic_ready: bool,
     pub power_open: bool,
     pub power_charger_tab: bool,
     pub power_scenario: PowerScenario,
@@ -304,6 +316,9 @@ impl Default for Simulation {
             .app
             .set_power_off_restart_hint("Restart the simulator.");
         simulation.app.set_power_off_control(buttons::BOOT);
+        simulation
+            .app
+            .set_diagnostic_controls(buttons::WAKE_CONTROLS[0], "Press Function or Home.");
         simulation.poll();
         simulation
     }
@@ -340,6 +355,9 @@ impl Simulation {
             return;
         }
         self.display.advance_to(self.clock.now_ms());
+        if !self.display.is_busy() {
+            self.app.display_completed(self.clock.now_ms());
+        }
         self.power_off_request |= self.app.take_power_off_request();
         if self.power_off_request {
             if self.display.is_busy()
@@ -430,6 +448,9 @@ impl Simulation {
         self.touchpad_session.poll(&self.touchpad);
         self.app.set_touchpad_host(self.touchpad.state());
         self.display.advance_to(self.clock.now_ms());
+        if !self.display.is_busy() {
+            self.app.display_completed(self.clock.now_ms());
+        }
         let location = self.location.snapshot(self.clock.now_ms());
         if location.availability == LocationAvailability::Ready
             && let Some(reference) = location.utc.and_then(|utc| utc.reference())
@@ -636,6 +657,15 @@ impl Simulation {
         let targets: &[(&str, embedded_graphics::primitives::Rectangle)] =
             if self.powered_off || self.app.touchpad_open() {
                 &[]
+            } else if self.app.diagnostics().is_open() {
+                if self.app.diagnostics().pattern().is_some() {
+                    &[]
+                } else {
+                    &[
+                        ("Back", BACK_TARGET),
+                        ("Start display check", paper_mesh_app::diagnostics::START),
+                    ]
+                }
             } else if power.is_open() && power.off.open {
                 &[
                     ("Back", BACK_TARGET),
@@ -671,6 +701,7 @@ impl Simulation {
                 ]
             } else {
                 &[
+                    ("Diagnostics", paper_mesh_app::diagnostics::HOME_TARGET),
                     ("Tap counter", TAP_TARGET),
                     ("Radio debugger", DEBUGGER_TARGET),
                     ("GNSS", paper_mesh_app::location::LOCATION_TARGET),
@@ -725,6 +756,13 @@ impl Simulation {
                 })
                 .collect(),
             hardware_buttons: self.buttons.snapshot(),
+            diagnostics_open: self.app.diagnostics().is_open(),
+            diagnostic_pattern: self
+                .app
+                .diagnostics()
+                .pattern()
+                .map(|pattern| pattern.label()),
+            diagnostic_ready: self.app.diagnostics().held_pattern().is_some(),
             power_open: power.is_open(),
             power_charger_tab: power.charger_tab(),
             power_scenario: self.power.scenario,
@@ -758,6 +796,7 @@ impl Simulation {
             next_heartbeat_ms: self.app.next_heartbeat_ms(),
             display_busy: self.display.is_busy(),
             completed_refreshes: self.display.completed_refreshes,
+            full_refreshes: self.display.full_refreshes,
             debugger_open: debugger.is_open(),
             scan_kind: match debugger.kind() {
                 RadioKind::Wifi => "wifi",

@@ -65,6 +65,21 @@ pub struct Client {
 }
 
 impl Client {
+    pub fn inspect_frame(&self) -> Result<serde_json::Value, Error> {
+        self.panel.as_ref().ok_or(Error::Busy)?.inspect_frame()
+    }
+
+    pub fn read_frame_chunk(
+        &self,
+        offset: usize,
+        length: usize,
+    ) -> Result<alloc::string::String, Error> {
+        self.panel
+            .as_ref()
+            .ok_or(Error::Busy)?
+            .read_frame_chunk(offset, length)
+    }
+
     pub fn new(panel: Panel) -> Self {
         Self { panel: Some(panel) }
     }
@@ -114,6 +129,14 @@ impl DrawTarget for Client {
 impl Display for Client {
     fn is_busy(&self) -> bool {
         self.panel.is_none()
+    }
+
+    fn refresh_full(&mut self) -> Result<(), Error> {
+        self.panel
+            .as_mut()
+            .ok_or(Error::Busy)?
+            .require_full_refresh();
+        self.refresh()
     }
 
     fn refresh(&mut self) -> Result<(), Error> {

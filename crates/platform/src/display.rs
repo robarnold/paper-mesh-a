@@ -10,11 +10,33 @@ pub fn present<D: Display>(
     requested: bool,
     render: impl FnOnce(&mut D) -> Result<(), D::Error>,
 ) -> Result<bool, D::Error> {
+    submit(display, requested, false, render)
+}
+
+/// Request a complete refresh through the same readiness and error rules.
+pub fn present_full<D: Display>(
+    display: &mut D,
+    requested: bool,
+    render: impl FnOnce(&mut D) -> Result<(), D::Error>,
+) -> Result<bool, D::Error> {
+    submit(display, requested, true, render)
+}
+
+fn submit<D: Display>(
+    display: &mut D,
+    requested: bool,
+    full: bool,
+    render: impl FnOnce(&mut D) -> Result<(), D::Error>,
+) -> Result<bool, D::Error> {
     if !requested || display.is_busy() {
         return Ok(false);
     }
     render(display)?;
-    display.refresh()?;
+    if full {
+        display.refresh_full()?;
+    } else {
+        display.refresh()?;
+    }
     Ok(true)
 }
 

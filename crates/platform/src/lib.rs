@@ -81,4 +81,10 @@ impl TouchEvent {
 pub trait Display: DrawTarget<Color = Gray4> {
     fn is_busy(&self) -> bool;
     fn refresh(&mut self) -> Result<(), Self::Error>;
+
+    /// Submit a complete refresh, including unchanged pixels, without a partial waveform.
+    /// Backends with one refresh mode can use the default implementation.
+    fn refresh_full(&mut self) -> Result<(), Self::Error> {
+        self.refresh()
+    }
 }

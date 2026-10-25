@@ -122,6 +122,20 @@ These scenarios do not model charger leakage or prove physical supply removal.
 Large and small time advances produce the same state and completed frame.
 Separate native tests execute the firmware register adapter with simulated I2C responses.
 
+## Diagnostics
+
+1. Select Diagnostics on Home.
+2. Select Start display check.
+3. Wait for black, then press and release BOOT.
+4. Repeat for white and gray.
+5. Press Function or Home to exit a pattern early.
+
+The simulator uses the same application state and rendering as firmware.
+Each pattern requests a complete refresh and remains unchanged across heartbeat intervals.
+Input during a refresh cannot advance the sequence or start power off.
+The simulator records requested full refreshes but uses its existing synthetic delay.
+These scenarios do not establish physical panel quality or USB register responses.
+
 ## USB touchpad
 
 1. Select `USB touchpad` on the device screen or in the browser controls.

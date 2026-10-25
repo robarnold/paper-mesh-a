@@ -93,6 +93,10 @@ impl<D: Display> Display for PortraitDisplay<'_, D> {
     fn refresh(&mut self) -> Result<(), Self::Error> {
         self.native.refresh()
     }
+
+    fn refresh_full(&mut self) -> Result<(), Self::Error> {
+        self.native.refresh_full()
+    }
 }
 
 #[cfg(test)]

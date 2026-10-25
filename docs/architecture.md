@@ -45,6 +45,12 @@ Backend adapters import service types directly from `paper-mesh-platform`.
 Runtime code connects the application to backend services.
 The application crate does not export the platform API.
 
+The Diagnostics screen, pattern sequence, and input policy belong to the application crate.
+The runtime supplies control identities and display completion events.
+USB inspection reads a held frame without starting a display operation.
+The display backend retains power sequencing and resource ownership.
+The [display profile](boards/lilygo-t5-s3-pro-display.md#basic-display-check) defines the hardware procedure and its limits.
+
 The [clock contract](services/time.md) separates monotonic deadlines from optional UTC calendar time.
 The RTC backend consumes complete GNSS observations and controls persistent calendar access.
 The platform supplies calendar types and elapsed-time conversion without hardware dependencies.

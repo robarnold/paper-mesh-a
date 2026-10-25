@@ -6,13 +6,11 @@ extern crate alloc;
 mod bus;
 mod buttons;
 mod device_control;
-
 mod diagnostics;
 mod discovery;
 mod display;
-
+mod display_inspection;
 mod display_recovery;
-
 mod display_worker;
 mod gnss;
 mod power;
@@ -189,6 +187,11 @@ async fn run_app(
     app.set_suspend_controls(&buttons::CONTROLS[..2]);
     app.set_power_off_restart_hint("Hold Power for 2 seconds or connect USB.");
     app.set_power_off_control(buttons::BOOT);
+    app.set_diagnostic_controls(buttons::CONTROLS[0], "Press Function or Home.");
+    if panel.is_none() {
+        app.display_failed();
+    }
+    let mut inspection_hold: Option<display_inspection::Hold> = None;
     let mut discovery = discovery::FirmwareDiscovery;
     let mut location = gnss::FirmwareLocation;
     let mut power = power::FirmwarePower;
@@ -210,6 +213,10 @@ async fn run_app(
             app.hardware_button(event, &[buttons::FUNCTION, buttons::HOME]);
         }
         touchpad_session.set_active(app.touchpad_open(), &mut touchpad);
+        // Revoke readback before any application frame or lifecycle transition.
+        if app.diagnostics().held_pattern().is_none() {
+            inspection_hold = None;
+        }
         if app.take_power_off_request() {
             app.cancel_touchpad();
             touchpad_session.set_active(false, &mut touchpad);
@@ -225,6 +232,9 @@ async fn run_app(
         }
         if let Some(display) = panel.as_mut()
             && let Err(error) = display.complete().and_then(|()| {
+                if !display.is_busy() {
+                    app.display_completed(clock.now_ms());
+                }
                 let submitted = app.present(&mut PortraitDisplay::new(display))?;
                 if submitted {
                     info!("display: submitted; count={}", app.taps());
@@ -234,42 +244,68 @@ async fn run_app(
         {
             error!("display: refresh failed: {}; updates stopped", error);
             panel = None;
+            inspection_hold = None;
+            app.display_failed();
         }
-        select4(
-            select(touch::changed(), select(buttons::changed(), usb::changed())),
-            display_worker::changed(),
-            select(
-                discovery::changed(),
-                select(gnss::changed(), power::changed()),
-            ),
-            Timer::at(Instant::from_millis(app.next_deadline_ms())),
-        )
-        .await;
-        if let Some(uptime) = app.tick(&clock) {
-            info!("heartbeat: uptime={}s; utc={:?}", uptime, clock.now_utc());
-            info!("touch: stats={:?}", touch::statistics());
-            let snapshot = location.snapshot(clock.now_ms());
+        if inspection_hold.is_none()
+            && panel.is_some()
+            && let Some(pattern) = app.diagnostics().held_pattern()
+        {
             info!(
-                "GNSS: messages={}; response_age_ms={:?}; in_view={:?}; with_signal={:?}; fix={}",
-                snapshot
-                    .activity
-                    .map_or(0, |activity| activity.valid_messages),
-                snapshot
-                    .activity
-                    .map(|activity| clock.now_ms().saturating_sub(activity.received_at_ms)),
-                snapshot
-                    .satellites
-                    .map(|satellites| satellites.satellites_in_view),
-                snapshot
-                    .satellites
-                    .map(|satellites| satellites.satellites_with_signal),
-                snapshot
-                    .observation
-                    .is_some_and(|observation| observation.coordinates.is_some()
-                        && clock.now_ms().saturating_sub(observation.observed_at_ms) < 5_000),
+                "display check: holding {}; BOOT advances; Function/Home exits",
+                pattern.label()
             );
+            inspection_hold = Some(display_inspection::Hold::new(pattern.label()));
+        }
+        if let Either::Second(pending) = select(
+            select4(
+                select(touch::changed(), select(buttons::changed(), usb::changed())),
+                display_worker::changed(),
+                select(
+                    discovery::changed(),
+                    select(gnss::changed(), power::changed()),
+                ),
+                Timer::at(Instant::from_millis(app.next_deadline_ms())),
+            ),
+            display_inspection::request(),
+        )
+        .await
+        {
+            if let Some(hold) = &inspection_hold {
+                hold.serve(panel.as_ref(), pending).await;
+            } else {
+                display_inspection::reject(pending).await;
+            }
+        }
+        if let Some(uptime) = app.tick(&clock) {
+            log_heartbeat(uptime, &clock, &mut location);
         }
     }
+}
+
+fn log_heartbeat(uptime: u64, clock: &FirmwareClock, location: &mut impl Location) {
+    info!("heartbeat: uptime={}s; utc={:?}", uptime, clock.now_utc());
+    info!("touch: stats={:?}", touch::statistics());
+    let snapshot = location.snapshot(clock.now_ms());
+    info!(
+        "GNSS: messages={}; response_age_ms={:?}; in_view={:?}; with_signal={:?}; fix={}",
+        snapshot
+            .activity
+            .map_or(0, |activity| activity.valid_messages),
+        snapshot
+            .activity
+            .map(|activity| clock.now_ms().saturating_sub(activity.received_at_ms)),
+        snapshot
+            .satellites
+            .map(|satellites| satellites.satellites_in_view),
+        snapshot
+            .satellites
+            .map(|satellites| satellites.satellites_with_signal),
+        snapshot
+            .observation
+            .is_some_and(|observation| observation.coordinates.is_some()
+                && clock.now_ms().saturating_sub(observation.observed_at_ms) < 5_000),
+    );
 }
 
 fn process_touch(app: &mut App, session: &mut TouchpadSession, host: &mut usb::FirmwareTouchpad) {

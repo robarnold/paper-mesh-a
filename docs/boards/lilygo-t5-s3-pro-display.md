@@ -152,6 +152,23 @@ Power-sequence tests inject transaction failures and verify control order, readb
 Recovery tests cover retained checkpoints, watchdog ownership, and interrupted operations.
 These results do not establish calibrated shades, electrical timing margins, or long-term image retention.
 
+### Basic display check
+
+Open Diagnostics from Home, then select Start display check.
+The [application sequence](../application.md#diagnostics) uses normal full refreshes in the normal firmware build.
+After each refresh finishes, press and release BOOT to advance.
+Press Function or Home to exit.
+Keep USB connected when inspection or logs are necessary.
+BOOT advances from black to white, then gray, then the Diagnostics screen.
+USB logs identify each completed pattern.
+A display failure stops updates and disables inspection.
+Simulator scenarios verify the integrated application flow. Physical validation of that flow remains outstanding.
+
+The diagnostic permits [read-only inspection](lilygo-t5-s3-pro-usb.md#inspect-the-held-framebuffer) while an image stays on screen.
+Inspection reports framebuffer data, control state, and retained register observations from the last refresh.
+It does not change voltages or timing, program calibration, or drive selected defect locations.
+These checks do not measure electrical signals or the physical image.
+
 ### Current limits
 
 Temperature-dependent waveform selection stays planned work.

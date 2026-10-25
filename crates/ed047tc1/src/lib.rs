@@ -96,6 +96,15 @@ impl<'a> FrameHistory<'a> {
         self.valid = false;
     }
 
+    /// Identify only a frame whose refresh and shutdown completed successfully.
+    pub fn checksum(&self) -> Option<u32> {
+        self.valid.then(|| {
+            self.bytes.iter().fold(0x811c9dc5_u32, |hash, byte| {
+                (hash ^ u32::from(*byte)).wrapping_mul(0x01000193)
+            })
+        })
+    }
+
     pub fn commit(&mut self, target: &Framebuffer<'_>) {
         self.bytes.copy_from_slice(target.bytes);
         self.valid = true;
@@ -222,8 +231,11 @@ mod tests {
         let mut previous = vec![0; FRAME_BYTES];
         let mut frame = Framebuffer::new(bytes.as_mut_slice().try_into().unwrap());
         let mut history = FrameHistory::new(previous.as_mut_slice().try_into().unwrap());
+        assert_eq!(history.checksum(), None);
         assert_eq!(history.plan(&frame), Update::Full);
         history.commit(&frame);
+        let completed = frame.checksum();
+        assert_eq!(history.checksum(), Some(completed));
         assert_eq!(history.plan(&frame), Update::Unchanged);
         frame
             .draw_iter([
@@ -238,9 +250,13 @@ mod tests {
                 pixels: 2,
             })
         );
+        assert_eq!(history.checksum(), Some(completed));
+        assert_ne!(history.checksum(), Some(frame.checksum()));
         history.invalidate();
+        assert_eq!(history.checksum(), None);
         assert_eq!(history.plan(&frame), Update::Full);
         history.commit(&frame);
+        assert_eq!(history.checksum(), Some(frame.checksum()));
         assert_eq!(history.plan(&frame), Update::Unchanged);
         frame
             .draw_iter([Pixel(Point::new(2, 4), Gray4::new(7))])

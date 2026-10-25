@@ -30,6 +30,13 @@ more refreshes. Input and timers can update application state.
 The [application](../application.md#deadlines-and-display-submission) specifies its redraw state and retry behavior.
 The platform controls driver recovery and retry delays.
 
+The `refresh_full()` method requests a complete refresh, including unchanged pixels, without a partial waveform.
+Backends with one refresh mode can use its default implementation.
+The orientation adapter forwards the request to the native display.
+The `present_full()` helper applies the same readiness, submission, and error rules as `present()`.
+The [Diagnostics screen](../application.md#diagnostics) uses this contract.
+The runtime supplies its completion event only after it regains an idle display without an error.
+
 The current interface has no notification for asynchronous failure after acceptance.
 Backend supervision controls these failures.
 The [backend profiles](../hardware.md) specify the available recovery behavior.

@@ -189,3 +189,22 @@ An external supply, busy service, or preparation error rejects the request.
 The error permits a new request after the condition changes.
 
 See the [power-off contract](services/power.md#explicit-power-off) for completion and failure semantics.
+
+## Diagnostics
+
+Home provides a Diagnostics screen in the normal application.
+Start display check submits solid black, white, and gray images in that order.
+Each image requests a complete refresh through the portable display contract.
+The runtime reports completion after it regains the idle display.
+A fresh press and release of the specified advance control selects the next image.
+Input during a refresh cannot advance the sequence.
+
+Each completed image stays unchanged until the user advances or exits.
+Heartbeat updates and touch events do not redraw these images.
+After gray, the next advance returns to the Diagnostics screen.
+The backend supplies the advance control and exit instructions.
+An exit returns Home with a complete refresh after any active operation finishes.
+Display failure disables the check and restores the normal power-off fallback.
+
+The [board procedure](boards/lilygo-t5-s3-pro-display.md#basic-display-check) specifies physical controls and inspection limits.
+The simulator exercises this same screen and sequence with virtual time.

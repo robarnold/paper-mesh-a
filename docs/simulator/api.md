@@ -42,6 +42,11 @@ Power fields include the selected scenario, open screen, selected tab, and each 
 Battery percentage, presence, voltage, current, source, and charge phase use `null` when unavailable.
 The device screen shows the complete power details.
 
+Diagnostics fields include `diagnostics_open`, `diagnostic_pattern`, and `diagnostic_ready`.
+The pattern is `black`, `white`, `gray`, or `null` outside a pattern.
+Readiness confirms completion of the simulated refresh.
+The `full_refreshes` count records accepted requests for a complete refresh.
+
 ## Pointer conversion
 
 The browser converts pointer positions into portrait display coordinates.

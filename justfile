@@ -53,7 +53,6 @@ firmware-build:
 image: firmware-build
     bash scripts/build-image.sh
 
-
 fmt:
     bash scripts/require-container.sh
     cargo fmt --all

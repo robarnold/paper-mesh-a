@@ -5,7 +5,7 @@
 //! Each platform delivers input and schedules application polls.
 
 pub mod debugger;
-
+pub mod diagnostics;
 pub mod location;
 pub mod power;
 pub mod power_off;
@@ -50,9 +50,12 @@ enum HomeAction {
     Debugger,
     Location,
     Power,
+    Diagnostics,
 }
 
 pub struct App {
+    diagnostics: diagnostics::Diagnostics,
+    full_refresh: bool,
     power_off_control: Option<paper_mesh_platform::input::buttons::ButtonId>,
     power_off_deadline: Option<u64>,
     touchpad_open: bool,
@@ -76,6 +79,8 @@ impl App {
     /// This constructor permits static storage with a specified start time in the platform epoch.
     pub const fn new_at(now: u64) -> Self {
         Self {
+            diagnostics: diagnostics::Diagnostics::new(),
+            full_refresh: false,
             power_off_control: None,
             power_off_deadline: None,
             touchpad_open: false,
@@ -103,6 +108,7 @@ impl App {
         {
             self.power_off_deadline = None;
             self.cancel_touchpad();
+            self.diagnostics.close();
             self.power.open();
             self.power.off.request();
             self.dirty = true;
@@ -111,7 +117,7 @@ impl App {
             return None;
         }
         self.uptime_seconds = now.saturating_sub(self.started_at_ms) / 1000;
-        self.dirty |= !self.touchpad_open;
+        self.dirty |= !self.touchpad_open && self.diagnostics.pattern().is_none();
         Some(self.uptime_seconds)
     }
 
@@ -139,6 +145,23 @@ impl App {
         event: paper_mesh_platform::input::buttons::ButtonEvent,
         exit_controls: &[paper_mesh_platform::input::buttons::ButtonId],
     ) {
+        if self.diagnostics.pattern().is_some() {
+            self.power_off_deadline = None;
+            let changed = if exit_controls.contains(&event.id)
+                && matches!(
+                    event.state,
+                    paper_mesh_platform::input::buttons::ButtonState::Pressed
+                        | paper_mesh_platform::input::buttons::ButtonState::Activated
+                ) {
+                self.diagnostics.close();
+                true
+            } else {
+                self.diagnostics.advance(event)
+            };
+            self.dirty |= changed;
+            self.full_refresh |= changed;
+            return;
+        }
         if Some(event.id) == self.power_off_control {
             self.power_off_deadline = match event.state {
                 paper_mesh_platform::input::buttons::ButtonState::Pressed => {
@@ -152,6 +175,27 @@ impl App {
         {
             self.cancel_touchpad();
         }
+    }
+
+    pub fn diagnostics(&self) -> &diagnostics::Diagnostics {
+        &self.diagnostics
+    }
+
+    pub fn set_diagnostic_controls(
+        &mut self,
+        advance: paper_mesh_platform::input::buttons::ButtonDescriptor,
+        exit_hint: &'static str,
+    ) {
+        self.diagnostics.set_controls(advance, exit_hint);
+    }
+
+    pub fn display_completed(&mut self, at_ms: u64) {
+        self.diagnostics.display_completed(at_ms);
+    }
+
+    pub fn display_failed(&mut self) {
+        self.diagnostics.display_failed();
+        self.dirty |= self.diagnostics.is_open();
     }
 
     pub fn touchpad_open(&self) -> bool {
@@ -236,6 +280,15 @@ impl App {
     }
 
     pub fn touch(&mut self, event: TouchEvent) {
+        if self.diagnostics.is_open() {
+            let changed = self.diagnostics.touch(event);
+            self.dirty |= changed;
+            self.full_refresh |= changed;
+            if self.diagnostics.pattern().is_some() {
+                self.power_off_deadline = None;
+            }
+            return;
+        }
         if self.touchpad_open {
             return;
         }
@@ -253,6 +306,7 @@ impl App {
         }
         if let Some(action) = self.home_gesture.update(event, |point| {
             [
+                (diagnostics::HOME_TARGET, HomeAction::Diagnostics),
                 (TAP_TARGET, HomeAction::Count),
                 (DEBUGGER_TARGET, HomeAction::Debugger),
                 (LOCATION_TARGET, HomeAction::Location),
@@ -267,6 +321,7 @@ impl App {
                 HomeAction::Debugger => self.debugger.open(),
                 HomeAction::Location => self.location.open(),
                 HomeAction::Power => self.power.open(),
+                HomeAction::Diagnostics => self.diagnostics.open(),
                 HomeAction::Touchpad => self.touchpad_open = true,
             }
             self.dirty = true;
@@ -277,14 +332,23 @@ impl App {
     /// Returns true only after successful submission of a new frame.
     /// A drawing or refresh error leaves the frame pending.
     pub fn present<D: Display>(&mut self, display: &mut D) -> Result<bool, D::Error> {
-        let submitted = display::present(display, self.dirty, |target| self.render(target))?;
+        let submitted = if self.full_refresh {
+            display::present_full(display, self.dirty, |target| self.render(target))?
+        } else {
+            display::present(display, self.dirty, |target| self.render(target))?
+        };
         if submitted {
             self.dirty = false;
+            self.full_refresh = false;
+            self.diagnostics.submitted();
         }
         Ok(submitted)
     }
 
     pub fn render<D: DrawTarget<Color = Gray4>>(&self, display: &mut D) -> Result<(), D::Error> {
+        if self.diagnostics.is_open() {
+            return self.diagnostics.render(display);
+        }
         if self.touchpad_open {
             return touchpad::render(display, self.touchpad_host);
         }
@@ -302,6 +366,13 @@ impl App {
         let muted = MonoTextStyle::new(&FONT_10X20, Gray4::new(6));
         Text::new("PAPER MESH", Point::new(48, 60), black).draw(display)?;
         Text::new("Hello from shared Rust", Point::new(48, 110), muted).draw(display)?;
+        button(
+            display,
+            diagnostics::HOME_TARGET,
+            "Diagnostics",
+            false,
+            true,
+        )?;
         button(display, DEBUGGER_TARGET, "Radio debugger", false, true)?;
         button(display, LOCATION_TARGET, "GNSS", false, true)?;
         button(display, POWER_TARGET, "Power", false, true)?;

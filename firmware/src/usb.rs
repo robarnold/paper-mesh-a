@@ -511,7 +511,7 @@ fn handle_command(bytes: &[u8], owner: u32) -> Option<alloc::string::String> {
                 Some(usb_protocol::error(id, -32000, "USB connection changed"))
             }
         }
-        Ok(Route::Diagnostic(id)) => Some(usb_protocol::error(id, -32601, "Method not found")),
+        Ok(Route::Diagnostic(_)) => crate::display_inspection::handle(bytes, owner),
         Err(reply) => Some(reply),
     }
 }

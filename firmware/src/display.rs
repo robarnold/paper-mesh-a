@@ -24,7 +24,7 @@ use paper_mesh_ed047tc1::{
 use paper_mesh_platform::Display;
 mod scanout;
 use scanout::{Resources, Scanout};
-
+mod inspection;
 mod power_sequence;
 use power_sequence::{MODE, OE};
 
@@ -208,11 +208,70 @@ pub struct Panel {
     scanout: Option<Resources>,
     dma: Option<DmaTxBuf>,
     power: Box<power_sequence::State>,
+    inspection: Box<inspection::State>,
 }
 
 impl Panel {
+    pub fn require_full_refresh(&mut self) {
+        self.history.invalidate();
+    }
+
     pub fn frame_checksum(&self) -> u32 {
         self.frame.checksum()
+    }
+
+    fn inspection_ready(&self) -> Result<(), Error> {
+        if self.power.faulted() || crate::display_recovery::blocked() {
+            return Err(Error::Faulted);
+        }
+        if self.scanout.is_none() || self.dma.is_none() {
+            return Err(Error::Busy);
+        }
+        if !self.power.discharged() || self.power.control() & power_sequence::DISPLAY_OUTPUTS != 0 {
+            return Err(Error::PowerVerification(
+                "inspection requires completed shutdown",
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn inspect_frame(&self) -> Result<serde_json::Value, Error> {
+        self.inspection_ready()?;
+        let mut access = ReadOnlyPowerAccess {
+            bus: lock_bus(self.bus)?,
+        };
+        let controls = power_sequence::inspect_controls(&mut access).map_err(power_error)?;
+        drop(access);
+        let result = serde_json::json!({
+            "width": WIDTH,
+            "height": HEIGHT,
+            "format": "gray4",
+            "length": self.frame.bytes().len(),
+            "packing": "low-nibble-first",
+            "checksum": self.frame.checksum(),
+            "committed_checksum": self.history.checksum(),
+            "shutdown_complete": controls.controls_off(),
+            "sampled_at_ms": Instant::now().duration_since_epoch().as_millis(),
+            "expander_port1": {
+                "input": controls.input,
+                "output": controls.output,
+                "configuration": controls.configuration,
+                "inversion": controls.inversion,
+                "cached_output": self.power.control(),
+                "controls_off": controls.controls_off(),
+            },
+            "most_recent_refresh": self.inspection.value(),
+        });
+        Ok(result)
+    }
+
+    pub fn read_frame_chunk(
+        &self,
+        offset: usize,
+        length: usize,
+    ) -> Result<alloc::string::String, Error> {
+        self.inspection_ready()?;
+        inspection::hex_chunk(self.frame.bytes(), offset, length).ok_or(Error::Configuration)
     }
 
     pub fn resume_from_suspend(&mut self, before: u32) {
@@ -278,6 +337,7 @@ impl Panel {
             scanout: Some(scanout),
             dma: Some(dma),
             power: Box::new(power_sequence::State::new()),
+            inspection: Box::default(),
         };
         panel
             .power
@@ -529,6 +589,11 @@ impl Display for Panel {
         false
     }
 
+    fn refresh_full(&mut self) -> Result<(), Error> {
+        self.require_full_refresh();
+        self.refresh()
+    }
+
     fn refresh(&mut self) -> Result<(), Error> {
         if self.power.faulted() || crate::display_recovery::blocked() {
             return Err(Error::Faulted);
@@ -559,7 +624,11 @@ impl Display for Panel {
             self.frame.checksum()
         );
         self.history.invalidate();
-
+        self.inspection.begin(
+            mode,
+            self.frame.checksum(),
+            Instant::now().duration_since_epoch().as_millis(),
+        );
         let guard = crate::display_recovery::Guard::begin().map_err(|_| Error::Faulted)?;
         let mut resources = self.scanout.take().ok_or(Error::Busy)?;
         let mut shutdown_confirmed = false;
@@ -611,7 +680,12 @@ impl Display for Panel {
         if shutdown_confirmed {
             crate::display_recovery::mark(crate::display_recovery::Stage::ControlsLow);
         }
-
+        self.inspection.finish(
+            result.is_ok(),
+            shutdown_confirmed,
+            self.power.measurement(),
+            Instant::now().duration_since_epoch().as_millis(),
+        );
         guard.finish(shutdown_confirmed, result.is_ok());
         self.scanout = Some(resources);
         result?;
