@@ -1,9 +1,7 @@
 //! Export the power-off instructions for layout review.
 
-use paper_mesh_app::{
-    power::{OFF_TAB, POWER_TARGET},
-    power_off::START,
-};
+use paper_mesh_app::diagnostics::{Component, HOME_TARGET};
+use paper_mesh_app::{power::OFF_TAB, power_off::START};
 use paper_mesh_platform::TouchEvent;
 use paper_mesh_simulator::{REFRESH_MS, Simulation, power::PowerScenario};
 
@@ -13,7 +11,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_else(|| "target/power-off.png".into());
     let mut sim = Simulation::default();
     sim.set_power_scenario(PowerScenario::Charging);
-    for target in [POWER_TARGET, OFF_TAB] {
+    for target in [HOME_TARGET, Component::Power.target(), OFF_TAB] {
         sim.touch_portrait(TouchEvent::touch(0, target.center()));
         sim.touch_portrait(TouchEvent::release(0, target.center()));
         sim.advance(2 * REFRESH_MS);

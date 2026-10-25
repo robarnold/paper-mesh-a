@@ -1,9 +1,10 @@
 //! Shared discovery controls and grayscale rendering.
 
-use crate::BACK_TARGET;
+use crate::screen::{STYLE, button};
+use paper_mesh_platform::ui::TextRole;
+
 use core::fmt::Write;
 use embedded_graphics::{
-    mono_font::{MonoTextStyle, ascii::FONT_10X20},
     pixelcolor::Gray4,
     prelude::*,
     primitives::{PrimitiveStyle, Rectangle},
@@ -16,12 +17,10 @@ use paper_mesh_platform::{
         AddressKind, Discovery, RadioKind, ScanError, ScanRequest, ScanResults, ScanSource,
     },
     input::TapGesture,
-    ui::button,
 };
 
 pub const SCAN_TIMEOUT_MS: u64 = 10_000;
 
-pub const DEBUGGER_TARGET: Rectangle = Rectangle::new(Point::new(48, 190), Size::new(444, 64));
 pub const WIFI_TARGET: Rectangle = Rectangle::new(Point::new(28, 112), Size::new(228, 60));
 pub const BLUETOOTH_TARGET: Rectangle = Rectangle::new(Point::new(268, 112), Size::new(244, 60));
 pub const SCAN_TARGET: Rectangle = Rectangle::new(Point::new(28, 808), Size::new(484, 60));
@@ -40,7 +39,6 @@ pub enum ScanState {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Action {
-    Back,
     Wifi,
     Bluetooth,
     Scan,
@@ -102,6 +100,15 @@ impl Debugger {
     }
     pub fn page(&self) -> usize {
         self.page
+    }
+
+    pub fn has_next_page(&self) -> bool {
+        (self.page + 1) * PAGE_SIZE < self.results.networks().len()
+    }
+
+    pub fn close(&mut self) {
+        self.open = false;
+        self.gesture.cancel();
     }
 
     pub fn open(&mut self) {
@@ -181,7 +188,6 @@ impl Debugger {
 
     fn action(point: Point) -> Option<Action> {
         [
-            (BACK_TARGET, Action::Back),
             (WIFI_TARGET, Action::Wifi),
             (BLUETOOTH_TARGET, Action::Bluetooth),
             (SCAN_TARGET, Action::Scan),
@@ -197,7 +203,6 @@ impl Debugger {
             return false;
         };
         match action {
-            Action::Back => self.open = false,
             Action::Wifi | Action::Bluetooth => {
                 let kind = if action == Action::Wifi {
                     RadioKind::Wifi
@@ -223,7 +228,7 @@ impl Debugger {
                 self.page -= 1;
             }
             Action::Next => {
-                if (self.page + 1) * PAGE_SIZE >= self.results.networks().len() {
+                if !self.has_next_page() {
                     return false;
                 }
                 self.page += 1;
@@ -233,11 +238,9 @@ impl Debugger {
     }
 
     pub fn render<D: DrawTarget<Color = Gray4>>(&self, display: &mut D) -> Result<(), D::Error> {
-        display.clear(Gray4::WHITE)?;
-        let black = MonoTextStyle::new(&FONT_10X20, Gray4::BLACK);
-        let muted = MonoTextStyle::new(&FONT_10X20, Gray4::new(6));
-        Text::new("RADIO DEBUGGER", Point::new(28, 58), black).draw(display)?;
-        button(display, BACK_TARGET, "Back", false, true)?;
+        display.clear(STYLE.background)?;
+        let black = STYLE.text(TextRole::Body);
+        let muted = STYLE.text(TextRole::Secondary);
         button(
             display,
             WIFI_TARGET,
@@ -328,7 +331,7 @@ impl Debugger {
             }
             Text::new(&label, Point::new(28, y + 52), black).draw(display)?;
             Rectangle::new(Point::new(28, y + 68), Size::new(484, 1))
-                .into_styled(PrimitiveStyle::with_fill(Gray4::new(12)))
+                .into_styled(PrimitiveStyle::with_fill(STYLE.alternating_row))
                 .draw(display)?;
         }
         let active = matches!(self.state, ScanState::Active | ScanState::Requested);
@@ -344,13 +347,7 @@ impl Debugger {
             !active,
         )?;
         button(display, PREVIOUS_TARGET, "Previous", false, self.page > 0)?;
-        button(
-            display,
-            NEXT_TARGET,
-            "Next",
-            false,
-            (self.page + 1) * PAGE_SIZE < self.results.networks().len(),
-        )?;
+        button(display, NEXT_TARGET, "Next", false, self.has_next_page())?;
         label.clear();
         let pages = self.results.networks().len().div_ceil(PAGE_SIZE).max(1);
         let _ = write!(label, "{} / {}", self.page + 1, pages);

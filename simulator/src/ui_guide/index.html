@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Paper Mesh · UI guide</title>
+<style>
+:root{color-scheme:light;font-family:ui-sans-serif,system-ui,sans-serif;color:#283029;background:#f2f1e9;--ink:#344c34;--line:#d5d9cd;--muted:#616b5c}
+*{box-sizing:border-box}body{margin:0;padding:32px}main{max-width:1120px;margin:auto}a{color:var(--ink);text-underline-offset:4px}button{font:inherit;cursor:pointer}button:disabled{cursor:default;opacity:.5}a:focus-visible,button:focus-visible,summary:focus-visible,img:focus-visible{outline:3px solid #6d8854;outline-offset:4px}
+header{display:flex;justify-content:space-between;align-items:center;gap:20px}header p{margin:0}.eyebrow{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--muted)}h1{font-size:36px;line-height:1.1;letter-spacing:-1px;margin:8px 0 10px;font-weight:600}.intro{color:var(--muted);line-height:1.6;margin:0 0 24px}nav{display:flex;flex-wrap:wrap;gap:8px;border-bottom:1px solid var(--line);padding-bottom:16px;margin-bottom:28px}nav a{text-decoration:none;padding:10px 14px;border-radius:7px;font-size:14px}nav a[aria-current="page"]{background:var(--ink);color:white}nav a:hover{box-shadow:inset 0 0 0 1px var(--ink)}
+[hidden]{display:none!important}.lesson{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,400px);gap:48px;align-items:start}.copy{grid-column:1;grid-row:1;min-width:0}.preview{grid-column:2;grid-row:1;min-width:0}.step{font:12px ui-monospace,monospace;color:var(--muted);margin-top:0}h2{font-size:26px;line-height:1.2;letter-spacing:-.5px;margin:0 0 14px;font-weight:600}h3{font-size:18px;margin:28px 0 10px;font-weight:600}p,li{font-size:15px;line-height:1.7}ul,ol{padding-left:22px}li{margin-bottom:8px}.rule{border-left:3px solid #7e936c;padding:4px 0 4px 16px;color:#46533e;margin:20px 0}.hint{font-size:13px;color:var(--muted)}.badge{display:inline-block;border:1px solid var(--line);border-radius:20px;padding:4px 10px;font-size:12px;background:#fbfcf6}
+figure{margin:0}.frame{background:#292f29;padding:12px;border-radius:14px;max-width:360px;margin:auto;box-shadow:0 10px 24px #27332112}.frame img{display:block;width:100%;height:auto;background:white}.frame.interactive img{cursor:pointer;touch-action:none}figcaption{font-size:12px;text-align:center;color:var(--muted);margin:12px 0}.controls{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.controls button{border:1px solid #b9c2af;border-radius:6px;padding:9px 12px;background:#fafbf5;color:var(--ink);font-size:13px}.controls button:hover:not(:disabled){background:white;border-color:var(--ink)}.controls .primary{background:var(--ink);color:white}.preview-label{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:0 0 12px}.preview-label strong{font-size:13px;font-weight:600}.metrics{display:grid;grid-template-columns:1fr 1fr;gap:8px;border-top:1px solid var(--line);padding-top:12px;margin:12px 0}.metrics dt{font-size:11px;color:var(--muted)}.metrics dd{margin:4px 0;font:13px ui-monospace,monospace}.transition{font:12px ui-monospace,monospace;overflow-wrap:anywhere}.state-note{font-size:13px;line-height:1.6;margin:12px 0;padding:12px;background:#e5ebde;border-radius:6px}
+details{border:1px solid var(--line);border-radius:8px;margin:14px 0;background:#f8f9f3}summary{cursor:pointer;font-size:13px;font-weight:600;padding:14px}pre{margin:0;padding:0 14px 16px;overflow:auto;font:12px/1.65 ui-monospace,monospace;tab-size:4}code{font-family:ui-monospace,monospace;font-size:.88em}pre code{font-size:inherit}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;font-size:14px;line-height:1.6}th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--line);vertical-align:top}th{font-size:12px;color:var(--muted);font-weight:600}footer{margin-top:40px;border-top:1px solid var(--line);padding-top:20px;display:flex;flex-wrap:wrap;gap:16px;font-size:13px}#error{color:#8f3422;font-size:14px}#error:empty{display:none}
+@media(min-width:851px){.frame{max-width:min(360px,calc((100dvh - 230px)*9/16 + 24px));min-width:240px}}@media(max-width:850px){body{padding:20px}.lesson{grid-template-columns:minmax(0,1fr);gap:28px}.preview{grid-column:1;grid-row:1;position:static}.copy{grid-row:2}.frame{max-width:320px}h1{font-size:30px}header{align-items:start;flex-wrap:wrap}nav{gap:4px}nav a{padding:9px 10px;font-size:13px}.preview-label,.controls,.metrics,.transition,.state-note{max-width:460px;margin-left:auto;margin-right:auto}}@media(max-width:380px){body{padding:16px}header a{font-size:13px}nav{gap:2px}nav a{font-size:12px;padding:9px 8px}.lesson{gap:24px}}
+</style>
+</head>
+<body><main>
+<header><div><p class="eyebrow">Paper Mesh / Platform toolkit</p><h1>UI guide</h1></div><a href="/">← Device simulator</a></header>
+<p class="intro">Learn the shared language. Tap each device screen to try its example.</p>
+<nav aria-label="Guide sections"><a href="#composition" data-section="composition">Shell &amp; Page</a><a href="#text" data-section="text">Text &amp; spacing</a><a href="#controls" data-section="controls">Controls</a></nav>
+<p id="error" role="alert"></p>
+<section id="composition" class="lesson" aria-label="Shell and Page">
+<aside class="preview" aria-label="Working example">
+<div class="preview-label"><strong>Working example</strong><span class="badge" id="page-badge">Loading</span></div>
+<figure><div class="frame interactive"><img id="demo-screen" src="/ui-guide/frame.png" width="540" height="960" draggable="false" tabindex="0" alt="Interactive example application. Tap the device screen to open pages and try their controls. Keyboard controls follow the preview."></div><figcaption>Interactive example · tap the device screen</figcaption></figure>
+<details><summary>Keyboard controls</summary><div class="controls" id="demo-controls" role="group" aria-label="Example page controls"></div></details>
+<div class="controls" role="group" aria-label="Example host controls"><button id="home-key">Hardware Home</button><button id="finish" disabled>Finish operation</button><button id="reset">Reset example</button></div>
+<p class="state-note" id="state-note" aria-live="polite">Loading the example…</p>
+<dl class="metrics"><div><dt>Retained count</dt><dd id="count">0</dd></div><div><dt>Retained choice</dt><dd id="choice">Unselected</dd></div><div><dt>Home · entry / exit</dt><dd id="home-visits">0 / 0</dd></div><div><dt>Detail · entry / exit</dt><dd id="detail-visits">0 / 0</dd></div></dl>
+<p class="transition" id="transition">Home.enter</p>
+</aside>
+<div class="copy"><p class="step">01 / COMPOSITION</p><h2>One shell. Three pages.</h2><p>The navigator manages transitions and return history. The shell supplies the frame. Each page owns its content and local state.</p>
+<ol><li>Select <strong>Open Detail</strong>, then <strong>Count a tap</strong>.</li><li>Select <strong>Back</strong>. Select <strong>Open Tools</strong>, then <strong>Open Detail</strong>. The count remains.</li><li>Select <strong>Back</strong>. You return to Tools, which opened Detail.</li><li>Open Detail again. Select <strong>Enter full screen</strong>. Use <strong>Hardware Home</strong> to exit.</li></ol>
+<p class="hint">Tap the device screen or expand Keyboard controls below it. With the preview focused, the Home key returns Home.</p>
+<h3>Navigator: launch and transitions</h3><p>Launch one shell with the root identity and retained page collection. The platform navigator handles input dispatch, return history, and lifecycle callbacks.</p><p class="rule">Open records the caller. Back returns to that caller. Home returns to the root and clears history.</p>
+<details><summary>Code · launch the shell and pages</summary><pre><code data-snippet="composition">Loading source…</code></pre></details>
+<details><summary>Code · request a transition</summary><pre><code data-snippet="navigation">Loading source…</code></pre></details>
+<h3>Shell: the shared frame</h3><p>The shell draws the header, recognizes Back gestures, and clips page content. The navigator supplies the active page and return availability.</p><h3>Page: one destination</h3><p>A page supplies a title, presentation mode, and navigation availability. It handles local input and draws its content.</p><p class="rule">Keep page objects in the collection when their state must survive navigation. The navigator calls leave before enter. Pages do not declare parents.</p>
+<details><summary>Code · describe a page</summary><pre><code data-snippet="page">Loading source…</code></pre></details>
+<details><summary>Code · entry and exit callbacks</summary><pre><code data-snippet="lifecycle">Loading source…</code></pre></details>
+<h3>Connect input and output</h3><p>Send touch input and navigation requests to the navigator. It completes each transition before returning. Render the active page through the navigator.</p>
+<details><summary>Code · route touch input</summary><pre><code data-snippet="input">Loading source…</code></pre></details>
+<details><summary>Code · render the active page</summary><pre><code data-snippet="render">Loading source…</code></pre></details>
+<h3>Try the exceptions</h3><ul><li><strong>Full screen:</strong> the header disappears. Hardware Home keeps its meaning.</li><li><strong>Pending operation:</strong> start the example operation. Back becomes disabled and Home cannot leave. Select Finish operation to restore navigation.</li></ul>
+<p class="hint">The example reserves eight return entries. A full stack rejects Open without changing the active page.</p><p class="hint">This example has independent state and performs no device operations. Frames update immediately. It does not model display refresh timing.</p>
+<p><a href="/ui-guide/source.rs" target="_blank">Read the complete example source</a></p>
+</div></section>
+<section id="text" class="lesson" aria-label="Text and spacing" hidden>
+<aside class="preview" aria-label="Interactive style example"><div class="preview-label"><strong>Explore the style</strong><span class="badge" id="text-badge">Body</span></div>
+<figure><div class="frame interactive"><img id="text-screen" src="/ui-guide/text.png" width="540" height="960" draggable="false" tabindex="0" alt="Interactive style example. Tap a text role, Underline, Bubbled, a spacing control, or a color swatch. Keyboard controls follow the preview."></div><figcaption>Interactive example · tap the device screen</figcaption></figure>
+<p class="state-note" id="text-note" aria-live="polite">Loading the style example…</p>
+<div class="controls"><button id="text-reset">Reset style</button></div>
+<details><summary>Keyboard controls</summary><div class="controls" id="text-actions" role="group" aria-label="Equivalent style controls"></div></details>
+</aside>
+<div class="copy"><p class="step">02 / VISUAL LANGUAGE</p><h2>Choose a purpose.</h2><p>Start with four text roles. Controls select their own label styles. Use Body for status messages.</p>
+<div class="table-wrap"><table><thead><tr><th>Role</th><th>Use it for</th></tr></thead><tbody><tr><td><code>Title</code></td><td>Page and section names.</td></tr><tr><td><code>Body</code></td><td>Instructions, values, and status messages.</td></tr><tr><td><code>Caption</code></td><td>Page context and short group labels, such as PLATFORM UI and TEXT ROLES.</td></tr><tr><td><code>Secondary</code></td><td>Supporting information.</td></tr></tbody></table></div>
+<h3>Fonts, sizes, and weights</h3>
+<p>The device uses the built-in ASCII monospace bitmap fonts from <code>embedded-graphics</code>. Each character occupies a cell with a fixed width.</p>
+<div class="table-wrap"><table><thead><tr><th>Font</th><th>Cell size</th><th>Weight</th><th>Roles</th></tr></thead><tbody><tr><td><code>FONT_10X20</code></td><td>10 × 20 px</td><td>Fixed bitmap</td><td>Title, Body, Secondary</td></tr><tr><td><code>FONT_6X10</code></td><td>6 × 10 px</td><td>Fixed bitmap</td><td>Caption</td></tr></tbody></table></div>
+<p>Cell sizes give width × height in logical device pixels. The browser scales the preview to fit its frame.</p>
+<p>Stroke weight is part of each bitmap. The current style has no bold variant or numeric weight setting.</p>
+<p>Title and Body share the same font, size, and weight. Secondary uses a lighter color. Selected controls invert colors without changing font weight.</p>
+<p class="rule">Use words to explain unavailable data, pending work, and failures. Grayscale supports the message.</p>
+<h3>Underline variants</h3>
+<p>Each text role has a normal and an underlined variant. Underline keeps the same font, size, weight, and color.</p>
+<p>Use underline for short emphasis. An underline alone does not identify an action or explain status.</p>
+<p>Tap a text role on the device screen. Tap <strong>Underline</strong> to compare its variants. The selection stays active when you change roles.</p>
+<p>Use <code>Style::text(role)</code> for normal text and <code>Style::underlined_text(role)</code> for underlined text. The current fonts have no italic variant.</p>
+<h3>Bubbled text</h3>
+<p>Use a rounded badge for a short label or notification count. It grows with the text and adds padding on all sides.</p>
+<p>The default style uses a black bubble with white text on a white page. The text keeps its role's font and size.</p>
+<p>Tap <strong>Bubbled</strong> to compare the New, 3, 12, and 99+ samples. Try Caption for smaller badges. Underline also works inside a bubble.</p>
+<p><code>TextBadge</code> supplies this style in the platform toolkit. Its default padding is 8 px horizontally and 4 px vertically, with an 8 px corner radius.</p>
+<p>Badges display information. Use a separate control for actions. The application supplies the label and decides when to hide or cap a count.</p>
+<details><summary>Code · text, underline, and badges</summary><pre><code data-snippet="text">Loading source…</code></pre></details>
+<h3>Give content room</h3><p>Use the shared spacing profile for control insets and gaps. The application chooses its layout and viewport.</p><p>Tap Control gap or Section gap to compare their values and the space between the blocks.</p><p>Keep essential text within its assigned region. Add lines or pages when it does not fit.</p>
+<h3>Keep the palette small</h3><p>Use named colors for foreground, background, supporting text, dividers, controls, and data. Selected controls use inverse text.</p><p>Tap a swatch to see its color role and grayscale value.</p>
+<p class="hint">Validate readability on the physical display.</p>
+<p><a href="/ui-guide/text.rs" target="_blank">Read the style example source</a></p><p><a href="/ui-guide/catalog.png" target="_blank">Open the static visual catalog</a></p>
+</div></section>
+<section id="controls" class="lesson" aria-label="Controls" hidden>
+<aside class="preview" aria-label="Interactive controls example"><div class="preview-label"><strong>Tap the controls</strong><span class="badge" id="controls-badge">Controls</span></div>
+<figure><div class="frame interactive"><img id="controls-screen" src="/ui-guide/controls.png" width="540" height="960" draggable="false" tabindex="0" alt="Interactive controls example. Tap Action, Selected, Start operation, or the Component details card. Keyboard controls follow the preview."></div><figcaption>Interactive example · tap the device screen</figcaption></figure>
+<p class="state-note" id="controls-note" aria-live="polite">Loading the controls…</p>
+<div class="controls"><button id="controls-reset">Reset controls</button></div>
+<details><summary>Keyboard controls</summary><div class="controls" id="controls-actions" role="group" aria-label="Equivalent controls"></div></details>
+</aside>
+<div class="copy"><p class="step">03 / CONTROLS</p><h2>Make the action clear.</h2><p>Tap the device screen to try each control. This example stays in the Controls tab.</p><h3>Button</h3><p>Use a button for an action or selection. Its bounds and enabled state must agree for drawing and hit testing.</p><p class="rule">Activate after a complete press and release inside the same target. Movement outside cancels the tap.</p>
+<details><summary>Code · define the buttons</summary><pre><code data-snippet="button">Loading source…</code></pre></details>
+<h3>Control states</h3><ul><li><strong>Normal:</strong> tap Action to increase the count.</li><li><strong>Selected:</strong> tap Selected to toggle the selection and inverse text.</li><li><strong>Unavailable:</strong> this control stays disabled and ignores taps.</li><li><strong>Pending:</strong> tap Start operation. Select Finish operation on the screen to restore the controls.</li></ul>
+<h3>NavigationCard</h3><p>Use a card to open a destination. Give it a short title and a description of what the user will find.</p>
+<details><summary>Code · define a destination card</summary><pre><code data-snippet="card">Loading source…</code></pre></details>
+<p class="hint">Tap the Component details card, then Back. Drag outside a control before release to cancel activation.</p>
+<p><a href="/ui-guide/controls.rs" target="_blank">Read the controls example source</a></p>
+</div></section>
+<footer aria-label="Further guidance"><a href="/ui-guide/reference/shared" target="_blank">Shared standard · Markdown</a><a href="/ui-guide/reference/application" target="_blank">Application rules · Markdown</a><a href="/ui-guide/reference/toolkit" target="_blank">Platform API · Markdown</a></footer>
+<noscript><p>Enable JavaScript to change guide sections and interact with the example. The preview images and reference links remain available.</p></noscript>
+</main>
+<script>
+const error = document.querySelector('#error');
+async function checked(response) { if (!response.ok) throw new Error(await response.text()); return response; }
+
+// All device previews use the same input transport and image updates.
+function createPreview({screenId, actionsId, stateUrl, eventUrl, frameUrl, resetId, homeId, finishId, showState}) {
+  const screen = document.querySelector(screenId);
+  const actions = document.querySelector(actionsId);
+  const pointers = new Map();
+  let queue = Promise.resolve(), imageUrl = null, controlsKey = '', lastState = null;
+  function update(state) {
+    lastState = state;
+    showState(state);
+    const key = JSON.stringify(state.controls);
+    if (key !== controlsKey) {
+      actions.replaceChildren(...state.controls.map(control => {
+        const button = document.createElement('button'); button.textContent = control.label; button.disabled = !control.enabled;
+        button.addEventListener('click', () => {
+          send({type:'touch_down',id:15,x:control.x,y:control.y});
+          send({type:'touch_up',id:15,x:control.x,y:control.y});
+        });
+        return button;
+      }));
+      controlsKey = key;
+    }
+  }
+  async function frame() {
+    const response = await checked(await fetch(frameUrl));
+    const url = URL.createObjectURL(await response.blob()); const old = imageUrl;
+    screen.src = url; imageUrl = url;
+    try { await screen.decode(); } finally { if (old) URL.revokeObjectURL(old); }
+  }
+  function send(event) {
+    queue = queue.then(async () => {
+      const response = await checked(await fetch(eventUrl, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(event)}));
+      const state = await response.json();
+      const changed = JSON.stringify(state) !== JSON.stringify(lastState);
+      update(state); if (changed) await frame(); error.textContent = '';
+    }).catch(reason => { error.textContent = `The example could not update. ${reason.message}`; });
+  }
+  function cancel() { pointers.clear(); send({type:'cancel'}); }
+  function cancelActive() { if (pointers.size) cancel(); }
+  function position(event) {
+    const box = screen.getBoundingClientRect();
+    if (event.clientX < box.left || event.clientX >= box.right || event.clientY < box.top || event.clientY >= box.bottom) return null;
+    return {x:Math.floor((event.clientX-box.left)*540/box.width),y:Math.floor((event.clientY-box.top)*960/box.height)};
+  }
+  screen.addEventListener('pointerdown', event => {
+    if (event.button !== 0 || pointers.size >= 5) return;
+    const p = position(event); if (!p) return;
+    event.preventDefault(); screen.focus({preventScroll:true});
+    const id = Array.from({length:5},(_,i)=>i).find(id=>![...pointers.values()].includes(id));
+    pointers.set(event.pointerId,id); screen.setPointerCapture(event.pointerId); send({type:'touch_down',id,...p});
+  });
+  screen.addEventListener('pointermove', event => {
+    if (!pointers.has(event.pointerId)) return;
+    const p = position(event); if (!p) { cancel(); return; }
+    send({type:'touch_move',id:pointers.get(event.pointerId),...p});
+  });
+  screen.addEventListener('pointerup', event => {
+    if (!pointers.has(event.pointerId)) return;
+    const id=pointers.get(event.pointerId), p=position(event); pointers.delete(event.pointerId);
+    if (p) send({type:'touch_up',id,...p}); else cancel();
+  });
+  screen.addEventListener('pointercancel',cancel);
+  screen.addEventListener('lostpointercapture',event=>{if(pointers.has(event.pointerId))cancel();});
+  screen.addEventListener('keydown',event=>{if(event.key==='Home'){event.preventDefault();send({type:'home'});}if(event.key==='Escape')cancel();});
+  window.addEventListener('blur',cancelActive);
+  if (homeId) document.querySelector(homeId).addEventListener('click',()=>send({type:'home'}));
+  if (finishId) document.querySelector(finishId).addEventListener('click',()=>send({type:'finish'}));
+  document.querySelector(resetId).addEventListener('click',()=>{pointers.clear();send({type:'reset'});});
+  queue = fetch(stateUrl).then(checked).then(r=>r.json()).then(async state=>{update(state);await frame();})
+    .catch(reason=>{error.textContent=`The example could not load. ${reason.message}`;});
+  return {cancelActive};
+}
+
+const previews = [
+  createPreview({
+    screenId:'#text-screen', actionsId:'#text-actions', stateUrl:'/ui-guide/text/state', eventUrl:'/ui-guide/text/event', frameUrl:'/ui-guide/text.png', resetId:'#text-reset',
+    showState(state) {
+      const variant = [state.bubbled && 'Bubbled', state.underlined && 'Underlined'].filter(Boolean).join(' + ') || 'Normal';
+      document.querySelector('#text-badge').textContent = `${state.role} · ${variant}`;
+      document.querySelector('#text-note').textContent = `${state.role}, ${variant.toLowerCase()}. ${state.spacing}: ${state.gap} px. ${state.color}: shade ${state.shade}.`;
+    }
+  }),
+  createPreview({
+    screenId:'#demo-screen', actionsId:'#demo-controls', stateUrl:'/ui-guide/state', eventUrl:'/ui-guide/event', frameUrl:'/ui-guide/frame.png',
+    resetId:'#reset', homeId:'#home-key', finishId:'#finish',
+    showState(state) {
+      document.querySelector('#page-badge').textContent = [...state.back_stack, state.page].join(' → ') + (state.full_screen ? ' · Full screen' : '');
+      document.querySelector('#count').textContent = state.count;
+      document.querySelector('#choice').textContent = state.selected ? 'Selected' : 'Unselected';
+      document.querySelector('#home-visits').textContent = `${state.home_entries} / ${state.home_exits}`;
+      document.querySelector('#detail-visits').textContent = `${state.detail_entries} / ${state.detail_exits}`;
+      document.querySelector('#transition').textContent = state.transition;
+      document.querySelector('#finish').disabled = !state.pending;
+      document.querySelector('#state-note').textContent = state.pending ? 'Operation pending. Back and Home cannot leave. Select Finish operation to continue.' : state.full_screen ? 'The header is hidden. Hardware Home still returns Home.' : state.page === 'Home' ? 'Home has no Back control. Open Detail to explore page behavior.' : `Back returns to ${state.return_to}. The Detail page keeps its count and choice.`;
+    }
+  }),
+  createPreview({
+    screenId:'#controls-screen', actionsId:'#controls-actions', stateUrl:'/ui-guide/controls/state', eventUrl:'/ui-guide/controls/event', frameUrl:'/ui-guide/controls.png', resetId:'#controls-reset',
+    showState(state) {
+      document.querySelector('#controls-badge').textContent = state.page;
+      document.querySelector('#controls-note').textContent = state.pending ? 'Operation pending. Select Finish operation on the device screen.' : state.page === 'Controls' ? `Action count: ${state.count}. ${state.selected ? 'Selected' : 'Unselected'}. Tap the device screen to try the controls.` : 'The card opened this page. Select Back on the device screen to return to Controls.';
+    }
+  })
+];
+function section() {
+  const id = ['composition','text','controls'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'composition';
+  document.querySelectorAll('.lesson').forEach(el => el.hidden = el.id !== id);
+  document.querySelectorAll('[data-section]').forEach(el => { if (el.dataset.section === id) el.setAttribute('aria-current','page'); else el.removeAttribute('aria-current'); });
+  previews.forEach(preview=>preview.cancelActive());
+}
+window.addEventListener('hashchange', section); section();
+fetch('/ui-guide/snippets').then(checked).then(r=>r.json()).then(snippets=>{document.querySelectorAll('[data-snippet]').forEach(el=>el.textContent=snippets[el.dataset.snippet]);})
+  .catch(reason=>{error.textContent=`The guide source could not load. ${reason.message}`;});
+</script>
+</body></html>

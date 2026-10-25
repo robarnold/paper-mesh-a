@@ -34,6 +34,8 @@ Do not create a document for each source file or small feature.
 | [README.md](README.md) | Project purpose, startup commands, and navigation |
 | [Architecture](docs/architecture.md) | Code boundaries, dependencies, and ownership |
 | [Application](docs/application.md) | Application screens, workflows, layout, and policy choices |
+| [Shared UI standard](docs/ui.md) | Common visual language, navigation, control behavior, and review rules |
+| [Application UI rules](docs/application-ui.md) | Application destinations, operation restrictions, style selection, and layout |
 | [Platform](docs/platform.md) | General platform responsibilities and links to detailed topics |
 | `docs/platform/` | Specific toolkit mechanisms, execution, and shared state |
 | [Device services](docs/device-interfaces.md) | Common contract requirements and links to service topics |

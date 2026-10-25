@@ -1,21 +1,15 @@
 //! Explicit power-off controls and restart instructions from the backend.
 
-use embedded_graphics::{
-    mono_font::{MonoTextStyle, ascii::FONT_10X20},
-    pixelcolor::Gray4,
-    prelude::*,
-    primitives::Rectangle,
-    text::Text,
-};
-use paper_mesh_platform::{TouchEvent, input::TapGesture, power_off::PowerOffError, ui::button};
+use crate::screen::{STYLE, button};
+use paper_mesh_platform::ui::TextRole;
 
-use crate::BACK_TARGET;
+use embedded_graphics::{pixelcolor::Gray4, prelude::*, primitives::Rectangle, text::Text};
+use paper_mesh_platform::{TouchEvent, input::TapGesture, power_off::PowerOffError};
 
 pub const START: Rectangle = Rectangle::new(Point::new(28, 420), Size::new(484, 64));
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Action {
-    Back,
     Start,
 }
 
@@ -46,6 +40,23 @@ impl PowerOffScreen {
         }
     }
 
+    pub fn pending(&self) -> bool {
+        self.pending
+    }
+    pub fn can_start(&self) -> bool {
+        !self.pending && self.restart_hint.is_some()
+    }
+
+    pub fn open(&mut self) {
+        self.open = true;
+        self.gesture.cancel();
+    }
+
+    pub fn close(&mut self) {
+        self.open = false;
+        self.gesture.cancel();
+    }
+
     pub fn set_restart_hint(&mut self, hint: &'static str) {
         self.restart_hint = Some(hint);
     }
@@ -55,7 +66,7 @@ impl PowerOffScreen {
     }
 
     pub fn request(&mut self) {
-        if self.restart_hint.is_some() && !self.pending {
+        if self.can_start() {
             self.open = true;
             self.error = None;
             self.pending = true;
@@ -79,16 +90,13 @@ impl PowerOffScreen {
             return false;
         }
         let action = self.gesture.update(event, |point| {
-            if BACK_TARGET.contains(point) {
-                Some(Action::Back)
-            } else if self.restart_hint.is_some() && START.contains(point) {
+            if self.restart_hint.is_some() && START.contains(point) {
                 Some(Action::Start)
             } else {
                 None
             }
         });
         match action {
-            Some(Action::Back) => self.open = false,
             Some(Action::Start) => {
                 self.request();
             }
@@ -98,10 +106,8 @@ impl PowerOffScreen {
     }
 
     pub fn render<D: DrawTarget<Color = Gray4>>(&self, display: &mut D) -> Result<(), D::Error> {
-        display.clear(Gray4::WHITE)?;
-        button(display, BACK_TARGET, "Back", false, !self.pending)?;
+        display.clear(STYLE.background)?;
         for (y, text) in [
-            (58, "POWER OFF"),
             (170, "Disconnect USB and external power."),
             (210, "Then press Power off."),
             (280, "The screen image remains without power."),
@@ -122,21 +128,21 @@ impl PowerOffScreen {
                 "Power off"
             },
             false,
-            !self.pending && self.restart_hint.is_some(),
+            self.can_start(),
         )?;
         if let Some(error) = self.error {
-            line(display, 540, error.label())?;
+            Text::new(
+                error.label(),
+                Point::new(28, 540),
+                STYLE.text(TextRole::Body),
+            )
+            .draw(display)?;
         }
         Ok(())
     }
 }
 
 fn line<D: DrawTarget<Color = Gray4>>(display: &mut D, y: i32, text: &str) -> Result<(), D::Error> {
-    Text::new(
-        text,
-        Point::new(28, y),
-        MonoTextStyle::new(&FONT_10X20, Gray4::BLACK),
-    )
-    .draw(display)?;
+    Text::new(text, Point::new(28, y), STYLE.text(TextRole::Body)).draw(display)?;
     Ok(())
 }

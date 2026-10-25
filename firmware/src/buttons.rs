@@ -18,6 +18,8 @@ use crate::bus::Bus;
 pub const BOOT: ButtonId = ButtonId(0);
 pub const FUNCTION: ButtonId = ButtonId(1);
 pub const HOME: ButtonId = ButtonId(2);
+pub const NAVIGATION: paper_mesh_platform::input::navigation::NavigationBindings =
+    paper_mesh_platform::input::navigation::NavigationBindings { home: Some(HOME) };
 pub const CONTROLS: [ButtonDescriptor; 5] = [
     ButtonDescriptor {
         id: BOOT,

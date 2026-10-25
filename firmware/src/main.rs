@@ -36,7 +36,7 @@ use paper_mesh_platform::{Clock, Display, location::Location, rotation::Portrait
 use rtc::FirmwareClock;
 use static_cell::{ConstStaticCell, StaticCell};
 
-static APP: ConstStaticCell<App> = ConstStaticCell::new(App::new_at(0));
+static APP: StaticCell<App> = StaticCell::new();
 static DISPLAY_STACK: ConstStaticCell<Stack<8192>> = ConstStaticCell::new(Stack::new());
 static DISPLAY_EXECUTOR: StaticCell<esp_rtos::embassy::Executor> = StaticCell::new();
 
@@ -183,7 +183,7 @@ async fn run_app(
 ) -> ! {
     let clock = FirmwareClock;
     // The application and its scan results use static RAM instead of the task stack.
-    let app = APP.take();
+    let app = APP.init_with(|| App::new_at(0));
     app.set_suspend_controls(&buttons::CONTROLS[..2]);
     app.set_power_off_restart_hint("Hold Power for 2 seconds or connect USB.");
     app.set_power_off_control(buttons::BOOT);
@@ -210,11 +210,20 @@ async fn run_app(
         // Drain earlier touch frames before applying an exit button.
         while let Some(event) = buttons::next_event() {
             info!("button: {:?}", event);
-            app.hardware_button(event, &[buttons::FUNCTION, buttons::HOME]);
+            use paper_mesh_platform::input::navigation::ButtonRoute;
+            match buttons::NAVIGATION.route(event) {
+                ButtonRoute::Home => {
+                    touchpad_session.suppress_until_release();
+                    app.touch(paper_mesh_platform::TouchEvent::Cancel);
+                    app.go_home();
+                }
+                ButtonRoute::Application(event) => app.hardware_button(event, &[buttons::FUNCTION]),
+                ButtonRoute::Consumed => {}
+            }
         }
         touchpad_session.set_active(app.touchpad_open(), &mut touchpad);
         // Revoke readback before any application frame or lifecycle transition.
-        if app.diagnostics().held_pattern().is_none() {
+        if app.display_check().held_pattern().is_none() {
             inspection_hold = None;
         }
         if app.take_power_off_request() {
@@ -249,7 +258,7 @@ async fn run_app(
         }
         if inspection_hold.is_none()
             && panel.is_some()
-            && let Some(pattern) = app.diagnostics().held_pattern()
+            && let Some(pattern) = app.display_check().held_pattern()
         {
             info!(
                 "display check: holding {}; BOOT advances; Function/Home exits",

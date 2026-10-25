@@ -1,8 +1,10 @@
 //! Power details, observation expiry, and application display policy.
 
+use crate::screen::{STYLE, button};
+use paper_mesh_platform::ui::TextRole;
+
 use core::fmt::{self, Write};
 use embedded_graphics::{
-    mono_font::{MonoTextStyle, ascii::FONT_10X20},
     pixelcolor::Gray4,
     prelude::*,
     primitives::{PrimitiveStyle, Rectangle},
@@ -17,15 +19,9 @@ use paper_mesh_platform::{
         PowerReading, PowerSnapshot, PowerSource, ThermistorState,
     },
     time::ObservationWindow,
-    ui::{
-        button,
-        format::{measurement, temperature_celsius},
-    },
+    ui::format::{measurement, temperature_celsius},
 };
 
-use crate::BACK_TARGET;
-
-pub const POWER_TARGET: Rectangle = Rectangle::new(Point::new(48, 620), Size::new(444, 64));
 pub const BATTERY_TAB: Rectangle = Rectangle::new(Point::new(28, 104), Size::new(112, 56));
 pub const CHARGER_TAB: Rectangle = Rectangle::new(Point::new(152, 104), Size::new(112, 56));
 pub const SUSPEND_TAB: Rectangle = Rectangle::new(Point::new(276, 104), Size::new(112, 56));
@@ -126,7 +122,6 @@ fn reading<T: Copy>(
 enum Action {
     Suspend,
     PowerOff,
-    Back,
     Battery,
     Charger,
 }
@@ -173,12 +168,30 @@ impl PowerScreen {
     }
 
     pub fn open(&mut self) {
-        self.suspend.open = false;
-        self.off.open = false;
+        self.suspend.close();
+        self.off.close();
         self.open = true;
         self.charger_tab = false;
         self.gesture.cancel();
         self.next_update_ms = 0;
+    }
+
+    pub fn close(&mut self) {
+        self.open = false;
+        self.suspend.close();
+        self.off.close();
+        self.gesture.cancel();
+    }
+
+    pub fn enter_page(&mut self) {
+        if !self.open {
+            self.open();
+        }
+        self.gesture.cancel();
+    }
+
+    pub fn leave_page(&mut self) {
+        self.gesture.cancel();
     }
 
     pub fn next_deadline_ms(&self) -> Option<u64> {
@@ -218,16 +231,14 @@ impl PowerScreen {
         false
     }
 
-    pub fn touch(&mut self, event: TouchEvent) -> bool {
-        if self.off.open {
-            return self.off.touch(event);
-        }
-        if self.suspend.open {
-            return self.suspend.touch(event);
-        }
+    pub fn touch(
+        &mut self,
+        event: TouchEvent,
+    ) -> paper_mesh_platform::ui::PageEvent<crate::pages::Route> {
+        use crate::pages::Route;
+        use paper_mesh_platform::ui::{Navigation, PageEvent};
         let action = self.gesture.update(event, |point| {
             [
-                (BACK_TARGET, Action::Back),
                 (BATTERY_TAB, Action::Battery),
                 (CHARGER_TAB, Action::Charger),
                 (SUSPEND_TAB, Action::Suspend),
@@ -237,26 +248,19 @@ impl PowerScreen {
             .find_map(|(target, action)| target.contains(point).then_some(action))
         });
         match action {
-            Some(Action::Suspend) => self.suspend.open = true,
-            Some(Action::PowerOff) => self.off.open = true,
-            Some(Action::Back) => self.open = false,
+            Some(Action::Suspend) => return PageEvent::Navigate(Navigation::Open(Route::Suspend)),
+            Some(Action::PowerOff) => {
+                return PageEvent::Navigate(Navigation::Open(Route::PowerOff));
+            }
             Some(Action::Battery) => self.charger_tab = false,
             Some(Action::Charger) => self.charger_tab = true,
-            None => return false,
+            None => return PageEvent::None,
         }
-        true
+        PageEvent::Changed
     }
 
     pub fn render<D: DrawTarget<Color = Gray4>>(&self, display: &mut D) -> Result<(), D::Error> {
-        if self.off.open {
-            return self.off.render(display);
-        }
-        if self.suspend.open {
-            return self.suspend.render(display);
-        }
-        display.clear(Gray4::WHITE)?;
-        text(display, "POWER", 28, 58, false)?;
-        button(display, BACK_TARGET, "Back", false, true)?;
+        display.clear(STYLE.background)?;
         button(display, BATTERY_TAB, "Battery", !self.charger_tab, true)?;
         button(display, CHARGER_TAB, "Charger", self.charger_tab, true)?;
         button(display, SUSPEND_TAB, "Suspend", false, true)?;
@@ -301,14 +305,14 @@ impl PowerScreen {
             format_args!("{}", measurement(soc, "%")),
         )?;
         Rectangle::new(Point::new(28, 232), Size::new(484, 20))
-            .into_styled(PrimitiveStyle::with_stroke(Gray4::BLACK, 1))
+            .into_styled(PrimitiveStyle::with_stroke(STYLE.foreground, 1))
             .draw(display)?;
         if let Some(soc) = soc {
             Rectangle::new(
                 Point::new(31, 235),
                 Size::new(478 * u32::from(soc.min(100)) / 100, 14),
             )
-            .into_styled(PrimitiveStyle::with_fill(Gray4::new(5)))
+            .into_styled(PrimitiveStyle::with_fill(STYLE.data_fill))
             .draw(display)?;
         }
         row(
@@ -627,10 +631,11 @@ fn text<D: DrawTarget<Color = Gray4>>(
     Text::new(
         value,
         Point::new(x, y),
-        MonoTextStyle::new(
-            &FONT_10X20,
-            if muted { Gray4::new(6) } else { Gray4::BLACK },
-        ),
+        STYLE.text(if muted {
+            TextRole::Secondary
+        } else {
+            TextRole::Body
+        }),
     )
     .draw(display)?;
     Ok(())
@@ -647,7 +652,7 @@ fn row<D: DrawTarget<Color = Gray4>>(
     Text::with_alignment(
         &label,
         Point::new(512, y),
-        MonoTextStyle::new(&FONT_10X20, Gray4::BLACK),
+        STYLE.text(TextRole::Body),
         Alignment::Right,
     )
     .draw(display)?;

@@ -4,7 +4,7 @@ use paper_mesh_simulator::{REFRESH_MS, Simulation};
 
 fn open(sim: &mut Simulation) {
     sim.advance(REFRESH_MS);
-    let point = Point::new(200, 730);
+    let point = paper_mesh_app::touchpad::TOUCHPAD_TARGET.center();
     sim.touch_portrait(TouchEvent::touch(0, point));
     sim.touch_portrait(TouchEvent::release(0, point));
     sim.advance(REFRESH_MS);
@@ -36,16 +36,28 @@ fn function_and_home_exit_and_suppress_a_held_contact() {
     for button in [1, 2] {
         let mut sim = Simulation::default();
         open(&mut sim);
-        sim.touch_portrait(TouchEvent::touch(3, Point::new(200, 730)));
+        sim.touch_portrait(TouchEvent::touch(
+            3,
+            paper_mesh_app::touchpad::TOUCHPAD_TARGET.center(),
+        ));
         sim.hardware_button(button, true).unwrap();
         assert!(!sim.snapshot().touchpad_open);
         assert_eq!(sim.snapshot().touchpad_detachments, 1);
-        sim.touch_portrait(TouchEvent::release(3, Point::new(200, 730)));
+        sim.touch_portrait(TouchEvent::release(
+            3,
+            paper_mesh_app::touchpad::TOUCHPAD_TARGET.center(),
+        ));
         assert!(!sim.snapshot().touchpad_open);
         assert_eq!(sim.snapshot().touchpad_reports, 1);
         sim.hardware_button(button, false).unwrap();
-        sim.touch_portrait(TouchEvent::touch(3, Point::new(200, 730)));
-        sim.touch_portrait(TouchEvent::release(3, Point::new(200, 730)));
+        sim.touch_portrait(TouchEvent::touch(
+            3,
+            paper_mesh_app::touchpad::TOUCHPAD_TARGET.center(),
+        ));
+        sim.touch_portrait(TouchEvent::release(
+            3,
+            paper_mesh_app::touchpad::TOUCHPAD_TARGET.center(),
+        ));
         assert!(sim.snapshot().touchpad_open);
     }
 }

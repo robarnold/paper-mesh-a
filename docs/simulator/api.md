@@ -42,10 +42,50 @@ Power fields include the selected scenario, open screen, selected tab, and each 
 Battery percentage, presence, voltage, current, source, and charge phase use `null` when unavailable.
 The device screen shows the complete power details.
 
-Diagnostics fields include `diagnostics_open`, `diagnostic_pattern`, and `diagnostic_ready`.
+Each entry in `controls` includes `enabled`, which the browser uses to disable unavailable controls.
+Header controls use the same bounds and enabled state as the application.
+
+`diagnostics_open` is true in the Diagnostics menu and its component pages.
+`diagnostic_component` identifies `Display`, `Touch`, `Radio`, `GNSS`, or `Power`. It is `null` outside a component page.
+Display checks also supply `diagnostic_pattern` and `diagnostic_ready`.
 The pattern is `black`, `white`, `gray`, or `null` outside a pattern.
 Readiness confirms completion of the simulated refresh.
 The `full_refreshes` count records accepted requests for a complete refresh.
+
+## UI guide
+
+Each section of the [visual guide](execution.md#ui-guide) has a separate interactive example.
+Their events do not change device application state or each other.
+
+| Endpoint | Result or input |
+| --- | --- |
+| `GET /ui-guide` | Browser guide |
+| `GET /ui-guide/state` | Shell and Page state, complete back stack, return destination, lifecycle counts, and equivalent controls |
+| `GET /ui-guide/frame.png` | Current Shell and Page example |
+| `GET /ui-guide/controls/state` | Controls state, action count, selection, and equivalent controls |
+| `GET /ui-guide/controls.png` | Current Controls example |
+| `GET /ui-guide/text/state` | Selected text role, underline and bubble states, spacing, color role, and equivalent controls |
+| `GET /ui-guide/text.png` | Current Text and spacing example |
+| `GET /ui-guide/catalog.png` | Static visual catalog |
+| `GET /ui-guide/snippets` | Named Rust excerpts from the compiled example source |
+| `GET /ui-guide/source.rs`, `/ui-guide/controls.rs`, `/ui-guide/text.rs`, `/ui-guide/catalog.rs` | Complete example sources |
+| `GET /ui-guide/reference/shared`, `/ui-guide/reference/application`, `/ui-guide/reference/toolkit` | Repository documentation as Markdown |
+| `POST /ui-guide/event` | Shell and Page command, with the updated state as its response |
+| `POST /ui-guide/controls/event` | Controls command, with the updated state as its response |
+| `POST /ui-guide/text/event` | Text and spacing command, with the updated state as its response |
+
+Guide commands use a `type` field.
+`touch_down`, `touch_move`, and `touch_up` require `id`, `x`, and `y`.
+Contact IDs range from 0 through 15. Coordinates must be inside the 540 × 960 viewport.
+`cancel`, `home`, `finish`, and `reset` have no additional fields.
+The host routes `home` through the platform's reserved Home binding and suppresses held contacts.
+`finish` completes the example's pending operation. `reset` resets only the example at that endpoint.
+The Text and spacing example has no pending operation and ignores `finish`.
+Its `underlined` and `bubbled` fields apply independently to the selected text role. Reset clears both selections.
+In the Shell and Page state, `return_to` identifies the latest caller.
+It is null at Home after launch or a Home request.
+`back_stack` lists all return destinations, with the oldest caller first and the next Back destination last.
+It excludes the current page and is empty at Home or after reset.
 
 ## Pointer conversion
 

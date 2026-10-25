@@ -38,6 +38,8 @@ standard's dictionary or permit other meanings and parts of speech.
 | Native coordinates | Coordinates that use the display backend's storage orientation |
 | NMEA | Message protocol that the GNSS adapter decodes |
 | Observation | Service value with units, validity, and an observation time |
+| Page | One application destination with content, input behavior, and entry and exit callbacks |
+| Panel | A related content region within a page; no separate platform API exists yet |
 | Platform | Application toolkit, service contracts, adapters, resources, and execution |
 | Platform crate | Reusable toolkit implementations and portable contracts in `crates/platform`, without an application dependency |
 | Position fix | Geographic position that a location provider marks as valid |
@@ -48,6 +50,9 @@ standard's dictionary or permit other meanings and parts of speech.
 | Radio debugger | Application screen that shows discovery results and scan controls |
 | Runtime | Code that connects an application to services and controls execution and event delivery |
 | Scenario profile | Simulator configuration for capabilities, timing, and faults |
+| Navigator | Platform owner of shell launch, return history, active destination, and page lifecycle |
+| Shell | Persistent UI frame that supplies the shared header, Back gesture, and content bounds |
+| Style role | Named visual purpose that resolves to a selected font, color, or spacing value |
 | SSID | Name that identifies a Wi-Fi network |
 | Staging buffer | Pixel storage that accepts drawing before refresh submission |
 | UTC | Coordinated Universal Time |

@@ -1,16 +1,28 @@
-//! Common controls and value formatting for application screens.
+//! Reusable presentation components without screen destinations or fixed layouts.
 
-use embedded_graphics::{
-    mono_font::{MonoTextStyle, ascii::FONT_10X20},
-    pixelcolor::Gray4,
-    prelude::*,
-    primitives::{PrimitiveStyle, Rectangle},
-    text::Text,
-};
+use embedded_graphics::{pixelcolor::Gray4, prelude::*, primitives::Rectangle};
 
+pub mod controls;
 pub mod format;
+pub mod header;
+pub mod navigation;
+pub mod page;
+pub mod shell;
+pub mod style;
+pub mod text;
 
-/// This function draws a button with the supplied bounds, label, and state.
+pub use controls::{Button, NavigationCard};
+pub use header::Header;
+pub use navigation::{NavigationError, Navigator, Transition, Update};
+pub use page::{Navigation, Page, PageEvent, PageInfo, PageSet, Presentation};
+pub use shell::{Shell, ShellLayout};
+pub use style::{Spacing, Style, TextRole};
+pub use text::TextBadge;
+
+#[cfg(test)]
+mod tests;
+
+/// This convenience renderer uses the default grayscale style.
 pub fn button<D: DrawTarget<Color = Gray4>>(
     display: &mut D,
     target: Rectangle,
@@ -18,29 +30,11 @@ pub fn button<D: DrawTarget<Color = Gray4>>(
     selected: bool,
     enabled: bool,
 ) -> Result<(), D::Error> {
-    let fill = if selected && enabled {
-        Gray4::BLACK
-    } else {
-        Gray4::new(14)
-    };
-    let text = if !enabled {
-        Gray4::new(8)
-    } else if selected {
-        Gray4::WHITE
-    } else {
-        Gray4::BLACK
-    };
-    target
-        .into_styled(PrimitiveStyle::with_fill(fill))
-        .draw(display)?;
-    Text::new(
+    Button {
+        bounds: target,
         label,
-        Point::new(
-            target.top_left.x + 16,
-            target.top_left.y + target.size.height as i32 / 2 + 7,
-        ),
-        MonoTextStyle::new(&FONT_10X20, text),
-    )
-    .draw(display)?;
-    Ok(())
+        selected,
+        enabled,
+    }
+    .render(display, &Style::GRAYSCALE)
 }

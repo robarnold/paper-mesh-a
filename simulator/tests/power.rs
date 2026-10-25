@@ -1,7 +1,8 @@
 use embedded_graphics::primitives::Rectangle;
+use paper_mesh_app::diagnostics::{Component, HOME_TARGET};
 use paper_mesh_app::{
     BACK_TARGET, TAP_TARGET,
-    power::{BATTERY_TAB, CHARGER_TAB, POWER_MAX_AGE_MS, POWER_TARGET, ReadingStatus},
+    power::{BATTERY_TAB, CHARGER_TAB, POWER_MAX_AGE_MS, ReadingStatus},
 };
 use paper_mesh_platform::{
     TouchEvent,
@@ -17,9 +18,10 @@ fn press(sim: &mut Simulation, target: Rectangle) {
 #[test]
 fn power_navigation_and_supply_transitions_use_the_shared_application() {
     let mut sim = Simulation::default();
-    sim.advance(REFRESH_MS);
+    press(&mut sim, HOME_TARGET);
+    sim.advance(2 * REFRESH_MS);
     let home = sim.display().pixels().to_vec();
-    press(&mut sim, POWER_TARGET);
+    press(&mut sim, Component::Power.target());
     assert!(sim.power().is_open());
     assert_eq!(sim.power().view().battery.unwrap().current_ma, Some(-180));
     sim.advance(REFRESH_MS);
@@ -44,6 +46,7 @@ fn power_navigation_and_supply_transitions_use_the_shared_application() {
     assert!(!sim.power().charger_tab());
     press(&mut sim, BACK_TARGET);
     assert!(!sim.power().is_open());
+    press(&mut sim, Component::Touch.target());
     press(&mut sim, TAP_TARGET);
     assert_eq!(sim.snapshot().taps, 1);
 }
@@ -51,7 +54,8 @@ fn power_navigation_and_supply_transitions_use_the_shared_application() {
 #[test]
 fn independent_failures_absence_and_startup_hide_only_affected_values() {
     let mut sim = Simulation::default();
-    press(&mut sim, POWER_TARGET);
+    press(&mut sim, HOME_TARGET);
+    press(&mut sim, Component::Power.target());
     sim.set_power_scenario(PowerScenario::GaugeFault);
     assert_eq!(sim.power().view().battery_status, ReadingStatus::Fault);
     assert!(sim.power().view().battery.is_none());
@@ -86,10 +90,12 @@ fn independent_failures_absence_and_startup_hide_only_affected_values() {
 #[test]
 fn expiry_and_frames_do_not_depend_on_time_step_size() {
     let mut large = Simulation::default();
+    press(&mut large, HOME_TARGET);
     let mut small = Simulation::default();
+    press(&mut small, HOME_TARGET);
     for sim in [&mut large, &mut small] {
         sim.set_power_scenario(PowerScenario::Stale);
-        press(sim, POWER_TARGET);
+        press(sim, Component::Power.target());
     }
     large.advance(POWER_MAX_AGE_MS - 1);
     assert_eq!(large.power().view().battery_status, ReadingStatus::Fresh);
@@ -126,8 +132,8 @@ fn hidden_power_changes_do_not_refresh_the_home_screen() {
         sim.advance(2000);
     }
     assert_eq!(sim.snapshot().completed_refreshes, before);
-    sim.touch_portrait(TouchEvent::touch(0, POWER_TARGET.center()));
+    sim.touch_portrait(TouchEvent::touch(0, Component::Power.target().center()));
     sim.touch_portrait(TouchEvent::Cancel);
-    sim.touch_portrait(TouchEvent::release(0, POWER_TARGET.center()));
+    sim.touch_portrait(TouchEvent::release(0, Component::Power.target().center()));
     assert!(!sim.power().is_open());
 }

@@ -15,11 +15,13 @@ Hardware drivers and simulator adapters implement the same contracts.
 Run `devcontainer exec --workspace-folder . just sim`.
 Open [localhost:8080](http://localhost:8080).
 Use Pause and the time controls to inspect application behavior.
+Select **Explore the UI guide** for shared components and an independent example application.
 To stop the server, press Ctrl+C.
 
 | Topic | Contents |
 | --- | --- |
 | [Execution](simulator/execution.md) | Current geometry, virtual time, refresh completion, and frame export |
+| [UI guide](simulator/execution.md#ui-guide) | Working Shell and Page examples, controls, typography, and usage rules |
 | [API](simulator/api.md) | HTTP endpoints, input events, and pointer conversion |
 | [Scenarios](simulator/scenarios.md) | Radio and GNSS controls, test data, and expected results |
 | [Development environment](development.md) | Devcontainer setup and host access |

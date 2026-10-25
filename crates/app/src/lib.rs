@@ -6,68 +6,47 @@
 
 pub mod debugger;
 pub mod diagnostics;
+pub mod display_check;
+mod home;
 pub mod location;
+pub mod pages;
 pub mod power;
 pub mod power_off;
+pub mod screen;
 pub mod suspend;
+pub mod touch;
 pub mod touchpad;
 
-use core::fmt::Write;
-use debugger::{DEBUGGER_TARGET, Debugger};
-use embedded_graphics::{
-    mono_font::{MonoTextStyle, ascii::FONT_10X20},
-    pixelcolor::Gray4,
-    prelude::*,
-    primitives::{PrimitiveStyle, Rectangle},
-    text::{Alignment, Text},
-};
-use heapless::String;
-use location::{LOCATION_TARGET, LocationScreen};
+pub use screen::BACK_TARGET;
+pub use touch::TAP_TARGET;
+
+use debugger::Debugger;
+use diagnostics::Component;
+use embedded_graphics::{pixelcolor::Gray4, prelude::*};
+use location::LocationScreen;
+use pages::{Pages, Route};
 use paper_mesh_platform::discovery::Discovery;
 use paper_mesh_platform::location::Location;
 use paper_mesh_platform::power::Power;
 use paper_mesh_platform::{
-    Clock, Display, TouchEvent, display, input::TapGesture, time::PeriodicTimer, ui::button,
+    Clock, Display, TouchEvent, display,
+    time::PeriodicTimer,
+    ui::{Navigation, Navigator, PageInfo, Presentation, Shell},
 };
-use power::{POWER_TARGET, PowerScreen};
+use power::PowerScreen;
 
 /// Fixed logical viewport for this application. Backends supply a compatible display.
 pub const SCREEN_SIZE: Size = Size::new(540, 960);
 
-pub const BACK_TARGET: Rectangle = Rectangle::new(Point::new(402, 24), Size::new(110, 56));
-
 pub const HEARTBEAT_MS: u64 = 30_000;
-const MARGIN: u32 = 48;
-pub const TAP_TARGET: Rectangle = Rectangle::new(
-    Point::new(MARGIN as i32, SCREEN_SIZE.height as i32 / 2 - 100),
-    Size::new(SCREEN_SIZE.width - 2 * MARGIN, 200),
-);
-
-#[derive(PartialEq)]
-enum HomeAction {
-    Touchpad,
-    Count,
-    Debugger,
-    Location,
-    Power,
-    Diagnostics,
-}
 
 pub struct App {
-    diagnostics: diagnostics::Diagnostics,
+    ui: Navigator<Pages, 8>,
     full_refresh: bool,
     power_off_control: Option<paper_mesh_platform::input::buttons::ButtonId>,
     power_off_deadline: Option<u64>,
-    touchpad_open: bool,
-    touchpad_host: paper_mesh_platform::touchpad::HostState,
     started_at_ms: u64,
     heartbeat: PeriodicTimer,
-    uptime_seconds: u64,
-    taps: u32,
-    home_gesture: TapGesture<HomeAction>,
-    debugger: Debugger,
-    location: LocationScreen,
-    power: PowerScreen,
     dirty: bool,
 }
 
@@ -76,23 +55,15 @@ impl App {
         Self::new_at(clock.now_ms())
     }
 
-    /// This constructor permits static storage with a specified start time in the platform epoch.
-    pub const fn new_at(now: u64) -> Self {
+    /// Launch the application at the specified time in the platform epoch.
+    pub fn new_at(now: u64) -> Self {
         Self {
-            diagnostics: diagnostics::Diagnostics::new(),
+            ui: Navigator::launch(Route::Home, Shell::new(screen::LAYOUT), Pages::new()),
             full_refresh: false,
             power_off_control: None,
             power_off_deadline: None,
-            touchpad_open: false,
-            touchpad_host: paper_mesh_platform::touchpad::HostState::Disconnected,
             started_at_ms: now,
             heartbeat: PeriodicTimer::new(now, HEARTBEAT_MS),
-            uptime_seconds: 0,
-            taps: 0,
-            home_gesture: TapGesture::new(),
-            debugger: Debugger::new(),
-            location: LocationScreen::new(),
-            power: PowerScreen::new(),
             dirty: true,
         }
     }
@@ -107,27 +78,36 @@ impl App {
             .is_some_and(|deadline| now >= deadline)
         {
             self.power_off_deadline = None;
-            self.cancel_touchpad();
-            self.diagnostics.close();
-            self.power.open();
-            self.power.off.request();
-            self.dirty = true;
+            self.navigate(Navigation::Open(Route::PowerOff));
+            if self.current_page() == Route::PowerOff {
+                self.ui.pages_mut().power.off.request();
+                self.dirty = true;
+            }
         }
         if !self.heartbeat.poll(now) {
             return None;
         }
-        self.uptime_seconds = now.saturating_sub(self.started_at_ms) / 1000;
-        self.dirty |= !self.touchpad_open && self.diagnostics.pattern().is_none();
-        Some(self.uptime_seconds)
+        self.ui.pages_mut().home.uptime_seconds = now.saturating_sub(self.started_at_ms) / 1000;
+        self.dirty |=
+            !self.touchpad_open() && self.ui.pages_mut().display_check.pattern().is_none();
+        Some(self.ui.pages_mut().home.uptime_seconds)
     }
 
     pub fn next_deadline_ms(&self) -> u64 {
-        self.debugger
+        self.ui
+            .pages()
+            .debugger
             .next_deadline_ms()
             .unwrap_or(u64::MAX)
             .min(self.next_heartbeat_ms())
-            .min(self.location.next_deadline_ms().unwrap_or(u64::MAX))
-            .min(self.power.next_deadline_ms().unwrap_or(u64::MAX))
+            .min(
+                self.ui
+                    .pages()
+                    .location
+                    .next_deadline_ms()
+                    .unwrap_or(u64::MAX),
+            )
+            .min(self.ui.pages().power.next_deadline_ms().unwrap_or(u64::MAX))
             .min(self.power_off_deadline.unwrap_or(u64::MAX))
     }
 
@@ -136,7 +116,7 @@ impl App {
     }
 
     pub fn taps(&self) -> u32 {
-        self.taps
+        self.ui.pages().touch_screen.taps()
     }
 
     /// Applies application bindings to backend control identities.
@@ -145,7 +125,7 @@ impl App {
         event: paper_mesh_platform::input::buttons::ButtonEvent,
         exit_controls: &[paper_mesh_platform::input::buttons::ButtonId],
     ) {
-        if self.diagnostics.pattern().is_some() {
+        if self.ui.pages_mut().display_check.pattern().is_some() {
             self.power_off_deadline = None;
             let changed = if exit_controls.contains(&event.id)
                 && matches!(
@@ -153,10 +133,10 @@ impl App {
                     paper_mesh_platform::input::buttons::ButtonState::Pressed
                         | paper_mesh_platform::input::buttons::ButtonState::Activated
                 ) {
-                self.diagnostics.close();
+                self.navigate(Navigation::Back);
                 true
             } else {
-                self.diagnostics.advance(event)
+                self.ui.pages_mut().display_check.advance(event)
             };
             self.dirty |= changed;
             self.full_refresh |= changed;
@@ -177,8 +157,27 @@ impl App {
         }
     }
 
-    pub fn diagnostics(&self) -> &diagnostics::Diagnostics {
-        &self.diagnostics
+    pub fn diagnostics(&self) -> &diagnostics::Menu {
+        &self.ui.pages().diagnostics
+    }
+
+    pub fn active_diagnostic(&self) -> Option<Component> {
+        match self.current_page() {
+            Route::Display => Some(Component::Display),
+            Route::Touch => Some(Component::Touch),
+            Route::Radio => Some(Component::Radio),
+            Route::Location => Some(Component::Location),
+            Route::Power | Route::Suspend | Route::PowerOff => Some(Component::Power),
+            _ => None,
+        }
+    }
+
+    pub fn display_check(&self) -> &display_check::DisplayCheck {
+        &self.ui.pages().display_check
+    }
+
+    pub fn touch_screen(&self) -> &touch::TouchScreen {
+        &self.ui.pages().touch_screen
     }
 
     pub fn set_diagnostic_controls(
@@ -186,65 +185,66 @@ impl App {
         advance: paper_mesh_platform::input::buttons::ButtonDescriptor,
         exit_hint: &'static str,
     ) {
-        self.diagnostics.set_controls(advance, exit_hint);
+        self.ui
+            .pages_mut()
+            .display_check
+            .set_controls(advance, exit_hint);
     }
 
     pub fn display_completed(&mut self, at_ms: u64) {
-        self.diagnostics.display_completed(at_ms);
+        self.ui.pages_mut().display_check.display_completed(at_ms);
     }
 
     pub fn display_failed(&mut self) {
-        self.diagnostics.display_failed();
-        self.dirty |= self.diagnostics.is_open();
+        self.ui.pages_mut().display_check.display_failed();
+        self.dirty |= self.ui.pages_mut().display_check.is_open();
     }
 
     pub fn touchpad_open(&self) -> bool {
-        self.touchpad_open
+        self.current_page() == Route::Touchpad
     }
 
     pub fn cancel_touchpad(&mut self) {
-        if self.touchpad_open {
-            self.touchpad_open = false;
-            self.home_gesture.cancel();
-            self.dirty = true;
+        if self.touchpad_open() {
+            self.navigate(Navigation::Home);
         }
     }
 
     pub fn set_touchpad_host(&mut self, state: paper_mesh_platform::touchpad::HostState) {
-        if state != self.touchpad_host {
-            self.touchpad_host = state;
-            self.dirty |= self.touchpad_open;
+        if state != self.ui.pages_mut().touchpad.host {
+            self.ui.pages_mut().touchpad.host = state;
+            self.dirty |= self.touchpad_open();
         }
     }
 
     pub fn debugger(&self) -> &Debugger {
-        &self.debugger
+        &self.ui.pages().debugger
     }
 
     pub fn poll_discovery(&mut self, clock: &impl Clock, discovery: &mut impl Discovery) {
-        self.dirty |= self.debugger.poll(clock.now_ms(), discovery);
+        self.dirty |= self.ui.pages_mut().debugger.poll(clock.now_ms(), discovery);
     }
 
     pub fn location(&self) -> &LocationScreen {
-        &self.location
+        &self.ui.pages().location
     }
 
     pub fn poll_location(&mut self, clock: &impl Clock, location: &mut impl Location) {
-        self.dirty |= self.location.poll(clock.now_ms(), location);
+        self.dirty |= self.ui.pages_mut().location.poll(clock.now_ms(), location);
     }
 
     pub fn power(&self) -> &PowerScreen {
-        &self.power
+        &self.ui.pages().power
     }
 
     pub fn set_suspend_controls(
         &mut self,
         controls: &'static [paper_mesh_platform::input::buttons::ButtonDescriptor],
     ) {
-        self.power.suspend.set_controls(controls);
+        self.ui.pages_mut().power.suspend.set_controls(controls);
     }
     pub fn take_suspend_request(&mut self) -> Option<paper_mesh_platform::suspend::SuspendRequest> {
-        self.power.suspend.take_request()
+        self.ui.pages_mut().power.suspend.take_request()
     }
     pub fn finish_suspend(
         &mut self,
@@ -253,16 +253,16 @@ impl App {
             paper_mesh_platform::suspend::SuspendError,
         >,
     ) {
-        self.power.suspend.finish(result);
+        self.ui.pages_mut().power.suspend.finish(result);
         self.dirty = true;
     }
 
     pub fn poll_power(&mut self, clock: &impl Clock, power: &mut impl Power) {
-        self.dirty |= self.power.poll(clock.now_ms(), power);
+        self.dirty |= self.ui.pages_mut().power.poll(clock.now_ms(), power);
     }
 
     pub fn set_power_off_restart_hint(&mut self, hint: &'static str) {
-        self.power.off.set_restart_hint(hint);
+        self.ui.pages_mut().power.off.set_restart_hint(hint);
     }
 
     pub fn set_power_off_control(&mut self, id: paper_mesh_platform::input::buttons::ButtonId) {
@@ -271,60 +271,59 @@ impl App {
     }
 
     pub fn take_power_off_request(&mut self) -> bool {
-        self.power.off.take_request()
+        self.ui.pages_mut().power.off.take_request()
     }
 
     pub fn finish_power_off(&mut self, error: paper_mesh_platform::power_off::PowerOffError) {
-        self.power.off.finish(error);
+        self.ui.pages_mut().power.off.finish(error);
         self.dirty = true;
     }
 
+    pub fn current_page(&self) -> Route {
+        self.ui.current()
+    }
+
+    fn page_info(&self) -> PageInfo<Route> {
+        self.ui.page_info()
+    }
+
+    pub fn navigation_visible(&self) -> bool {
+        self.page_info().presentation == Presentation::Standard
+    }
+
+    pub fn navigation_controls(&self) -> Option<paper_mesh_platform::ui::Button<'static>> {
+        self.ui.back_control()
+    }
+
+    /// The runtime delivers the platform's reserved Home request here.
+    pub fn go_home(&mut self) {
+        self.power_off_deadline = None;
+        self.navigate(Navigation::Home);
+    }
+
+    fn navigate(&mut self, navigation: Navigation<Route>) {
+        let was_pattern = self.ui.pages().display_check.pattern().is_some();
+        if let Ok(Some(_)) = self.ui.navigate(navigation) {
+            self.power_off_deadline = None;
+            self.full_refresh |= was_pattern;
+            self.dirty = true;
+        }
+    }
+
     pub fn touch(&mut self, event: TouchEvent) {
-        if self.diagnostics.is_open() {
-            let changed = self.diagnostics.touch(event);
-            self.dirty |= changed;
-            self.full_refresh |= changed;
-            if self.diagnostics.pattern().is_some() {
+        let was_pattern = self.ui.pages().display_check.pattern().is_some();
+        if let Ok(update) = self.ui.touch(event) {
+            self.dirty |= update.changed;
+            if update.changed {
+                self.full_refresh |=
+                    was_pattern || self.ui.pages().display_check.pattern().is_some();
+            }
+            if update.transition.is_some() {
                 self.power_off_deadline = None;
             }
-            return;
         }
-        if self.touchpad_open {
-            return;
-        }
-        if self.power.is_open() {
-            self.dirty |= self.power.touch(event);
-            return;
-        }
-        if self.location.is_open() {
-            self.dirty |= self.location.touch(event);
-            return;
-        }
-        if self.debugger.is_open() {
-            self.dirty |= self.debugger.touch(event);
-            return;
-        }
-        if let Some(action) = self.home_gesture.update(event, |point| {
-            [
-                (diagnostics::HOME_TARGET, HomeAction::Diagnostics),
-                (TAP_TARGET, HomeAction::Count),
-                (DEBUGGER_TARGET, HomeAction::Debugger),
-                (LOCATION_TARGET, HomeAction::Location),
-                (POWER_TARGET, HomeAction::Power),
-                (touchpad::TOUCHPAD_TARGET, HomeAction::Touchpad),
-            ]
-            .into_iter()
-            .find_map(|(target, action)| target.contains(point).then_some(action))
-        }) {
-            match action {
-                HomeAction::Count => self.taps = self.taps.saturating_add(1),
-                HomeAction::Debugger => self.debugger.open(),
-                HomeAction::Location => self.location.open(),
-                HomeAction::Power => self.power.open(),
-                HomeAction::Diagnostics => self.diagnostics.open(),
-                HomeAction::Touchpad => self.touchpad_open = true,
-            }
-            self.dirty = true;
+        if self.ui.pages().display_check.pattern().is_some() {
+            self.power_off_deadline = None;
         }
     }
 
@@ -340,101 +339,13 @@ impl App {
         if submitted {
             self.dirty = false;
             self.full_refresh = false;
-            self.diagnostics.submitted();
+            self.ui.pages_mut().display_check.submitted();
         }
         Ok(submitted)
     }
 
     pub fn render<D: DrawTarget<Color = Gray4>>(&self, display: &mut D) -> Result<(), D::Error> {
-        if self.diagnostics.is_open() {
-            return self.diagnostics.render(display);
-        }
-        if self.touchpad_open {
-            return touchpad::render(display, self.touchpad_host);
-        }
-        if self.power.is_open() {
-            return self.power.render(display);
-        }
-        if self.location.is_open() {
-            return self.location.render(display);
-        }
-        if self.debugger.is_open() {
-            return self.debugger.render(display);
-        }
-        display.clear(Gray4::WHITE)?;
-        let black = MonoTextStyle::new(&FONT_10X20, Gray4::BLACK);
-        let muted = MonoTextStyle::new(&FONT_10X20, Gray4::new(6));
-        Text::new("PAPER MESH", Point::new(48, 60), black).draw(display)?;
-        Text::new("Hello from shared Rust", Point::new(48, 110), muted).draw(display)?;
-        button(
-            display,
-            diagnostics::HOME_TARGET,
-            "Diagnostics",
-            false,
-            true,
-        )?;
-        button(display, DEBUGGER_TARGET, "Radio debugger", false, true)?;
-        button(display, LOCATION_TARGET, "GNSS", false, true)?;
-        button(display, POWER_TARGET, "Power", false, true)?;
-        button(
-            display,
-            touchpad::TOUCHPAD_TARGET,
-            "USB touchpad",
-            false,
-            true,
-        )?;
-        Rectangle::new(Point::new(48, 144), Size::new(TAP_TARGET.size.width, 2))
-            .into_styled(PrimitiveStyle::with_fill(Gray4::new(11)))
-            .draw(display)?;
-        TAP_TARGET
-            .into_styled(PrimitiveStyle::with_fill(Gray4::BLACK))
-            .draw(display)?;
-        Text::with_alignment(
-            "TAP TO COUNT",
-            Point::new(SCREEN_SIZE.width as i32 / 2, TAP_TARGET.top_left.y + 75),
-            MonoTextStyle::new(&FONT_10X20, Gray4::WHITE),
-            Alignment::Center,
-        )
-        .draw(display)?;
-        let mut label = String::<64>::new();
-        // Decimal u32/u64 widths limit the formatted lengths.
-        let _ = write!(label, "Touches: {}", self.taps);
-        Text::with_alignment(
-            &label,
-            Point::new(SCREEN_SIZE.width as i32 / 2, TAP_TARGET.top_left.y + 130),
-            MonoTextStyle::new(&FONT_10X20, Gray4::WHITE),
-            Alignment::Center,
-        )
-        .draw(display)?;
-        label.clear();
-        let _ = write!(label, "Uptime: {}s", self.uptime_seconds);
-        Text::new(
-            &label,
-            Point::new(48, SCREEN_SIZE.height as i32 - 168),
-            black,
-        )
-        .draw(display)?;
-        label.clear();
-        let _ = write!(
-            label,
-            "{} x {} / 16 shades",
-            SCREEN_SIZE.width, SCREEN_SIZE.height
-        );
-        Text::new(
-            &label,
-            Point::new(48, SCREEN_SIZE.height as i32 - 128),
-            muted,
-        )
-        .draw(display)?;
-        for shade in 0..16 {
-            Rectangle::new(
-                Point::new(48 + shade * 20, SCREEN_SIZE.height as i32 - 88),
-                Size::new(20, 20),
-            )
-            .into_styled(PrimitiveStyle::with_fill(Gray4::new(shade as u8)))
-            .draw(display)?;
-        }
-        Ok(())
+        self.ui.render(display, &screen::STYLE)
     }
 }
 
@@ -466,6 +377,7 @@ mod tests {
     #[test]
     fn touches_require_a_complete_gesture_inside_the_button() {
         let mut app = App::new(&TestClock(0));
+        app.navigate(Navigation::Open(Route::Touch));
         let inside = TAP_TARGET.center();
         let outside = Point::new(0, 0);
         app.touch(TouchEvent::release(0, inside));

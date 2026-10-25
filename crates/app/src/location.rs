@@ -1,9 +1,10 @@
 //! Shared location screen, observation validity, and display deadlines.
 
-use crate::BACK_TARGET;
+use crate::screen::STYLE;
+use paper_mesh_platform::ui::TextRole;
+
 use core::fmt::Write;
 use embedded_graphics::{
-    mono_font::{MonoTextStyle, ascii::FONT_10X20},
     pixelcolor::Gray4,
     prelude::*,
     primitives::{PrimitiveStyle, Rectangle},
@@ -11,24 +12,18 @@ use embedded_graphics::{
 };
 use heapless::String;
 use paper_mesh_platform::{
-    TouchEvent,
-    input::TapGesture,
     location::{
         Coordinates, Location, LocationAvailability, LocationSnapshot, SatelliteObservation,
         UtcTime,
     },
     time::ObservationWindow,
-    ui::{
-        button,
-        format::{
-            coordinate_degrees as coordinate_label, course_true_degrees as course_label,
-            elapsed_seconds as age_label, elevation_meters as elevation_label, satellite_label,
-            speed_kmh as speed_label, utc_time as utc_label,
-        },
+    ui::format::{
+        coordinate_degrees as coordinate_label, course_true_degrees as course_label,
+        elapsed_seconds as age_label, elevation_meters as elevation_label, satellite_label,
+        speed_kmh as speed_label, utc_time as utc_label,
     },
 };
 
-pub const LOCATION_TARGET: Rectangle = Rectangle::new(Point::new(48, 278), Size::new(444, 64));
 pub const LOCATION_MAX_AGE_MS: u64 = 5_000;
 pub const LOCATION_REFRESH_MS: u64 = 5_000;
 
@@ -183,7 +178,6 @@ impl LocationView {
 
 pub struct LocationScreen {
     open: bool,
-    back_gesture: TapGesture<()>,
     view: LocationView,
     next_update_ms: u64,
     expires_at_ms: Option<u64>,
@@ -199,7 +193,6 @@ impl LocationScreen {
     pub const fn new() -> Self {
         Self {
             open: false,
-            back_gesture: TapGesture::new(),
             view: LocationView {
                 status: FixStatus::Starting,
                 coordinates: None,
@@ -227,9 +220,12 @@ impl LocationScreen {
         self.view
     }
 
+    pub fn close(&mut self) {
+        self.open = false;
+    }
+
     pub fn open(&mut self) {
         self.open = true;
-        self.back_gesture.cancel();
         self.next_update_ms = 0;
     }
 
@@ -272,23 +268,10 @@ impl LocationScreen {
         false
     }
 
-    pub fn touch(&mut self, event: TouchEvent) -> bool {
-        let close = self
-            .back_gesture
-            .update(event, |point| BACK_TARGET.contains(point).then_some(()))
-            .is_some();
-        if close {
-            self.open = false;
-        }
-        close
-    }
-
     pub fn render<D: DrawTarget<Color = Gray4>>(&self, display: &mut D) -> Result<(), D::Error> {
-        display.clear(Gray4::WHITE)?;
-        let black = MonoTextStyle::new(&FONT_10X20, Gray4::BLACK);
-        let muted = MonoTextStyle::new(&FONT_10X20, Gray4::new(6));
-        Text::new("GNSS", Point::new(28, 58), black).draw(display)?;
-        button(display, BACK_TARGET, "Back", false, true)?;
+        display.clear(STYLE.background)?;
+        let black = STYLE.text(TextRole::Body);
+        let muted = STYLE.text(TextRole::Secondary);
         let mut label = String::<64>::new();
         let _ = write!(label, "Receiver: {}", self.view.receiver_status.label());
         Text::new(&label, Point::new(28, 132), black).draw(display)?;
@@ -388,7 +371,7 @@ impl LocationScreen {
                 );
                 Text::new(&label, Point::new(28, y), black).draw(display)?;
                 Rectangle::new(Point::new(190, y - 16), Size::new(210, 18))
-                    .into_styled(PrimitiveStyle::with_stroke(Gray4::new(9), 1))
+                    .into_styled(PrimitiveStyle::with_stroke(STYLE.divider, 1))
                     .draw(display)?;
                 label.clear();
                 if let Some(level) = satellite.cn0_db_hz {
@@ -396,7 +379,7 @@ impl LocationScreen {
                         Point::new(192, y - 14),
                         Size::new(u32::from(level.min(99)) * 206 / 99, 14),
                     )
-                    .into_styled(PrimitiveStyle::with_fill(Gray4::BLACK))
+                    .into_styled(PrimitiveStyle::with_fill(STYLE.foreground))
                     .draw(display)?;
                     let _ = write!(label, "{level}");
                 } else {

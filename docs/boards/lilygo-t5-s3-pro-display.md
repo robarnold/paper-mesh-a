@@ -154,12 +154,13 @@ These results do not establish calibrated shades, electrical timing margins, or 
 
 ### Basic display check
 
-Open Diagnostics from Home, then select Start display check.
+Open Diagnostics from Home, then select Display.
+Select Start display check.
 The [application sequence](../application.md#diagnostics) uses normal full refreshes in the normal firmware build.
 After each refresh finishes, press and release BOOT to advance.
-Press Function or Home to exit.
+Press Function to return to Diagnostics, or press Home to return to the home screen.
 Keep USB connected when inspection or logs are necessary.
-BOOT advances from black to white, then gray, then the Diagnostics screen.
+BOOT advances from black to white, then gray, then the Display page.
 USB logs identify each completed pattern.
 A display failure stops updates and disables inspection.
 Simulator scenarios verify the integrated application flow. Physical validation of that flow remains outstanding.

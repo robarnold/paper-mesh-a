@@ -34,7 +34,7 @@ The `refresh_full()` method requests a complete refresh, including unchanged pix
 Backends with one refresh mode can use its default implementation.
 The orientation adapter forwards the request to the native display.
 The `present_full()` helper applies the same readiness, submission, and error rules as `present()`.
-The [Diagnostics screen](../application.md#diagnostics) uses this contract.
+The [display check](../application.md#display-check) uses this contract.
 The runtime supplies its completion event only after it regains an idle display without an error.
 
 The current interface has no notification for asynchronous failure after acceptance.

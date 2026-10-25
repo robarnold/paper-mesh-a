@@ -1,20 +1,16 @@
 //! Suspend experiment controls and the most recent charge comparison.
 
-use crate::BACK_TARGET;
+use crate::screen::{STYLE, button};
+use paper_mesh_platform::ui::TextRole;
+
 use core::fmt::Write;
-use embedded_graphics::{
-    mono_font::{MonoTextStyle, ascii::FONT_10X20},
-    pixelcolor::Gray4,
-    prelude::*,
-    primitives::Rectangle,
-    text::Text,
-};
+use embedded_graphics::{pixelcolor::Gray4, prelude::*, primitives::Rectangle, text::Text};
 use heapless::String;
 use paper_mesh_platform::{
     TouchEvent,
     input::{TapGesture, buttons::ButtonDescriptor},
     suspend::{SuspendError, SuspendReport, SuspendRequest, WakeReason},
-    ui::{button, format::measurement},
+    ui::format::measurement,
 };
 
 pub const ONE_MINUTE: Rectangle = Rectangle::new(Point::new(28, 160), Size::new(150, 56));
@@ -25,7 +21,6 @@ pub const TOUCH_WAKE: Rectangle = Rectangle::new(Point::new(28, 326), Size::new(
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Action {
-    Back,
     Duration(u64),
     Start,
     TouchWake,
@@ -55,6 +50,20 @@ impl SuspendScreen {
             gesture: TapGesture::new(),
         }
     }
+    pub fn pending(&self) -> bool {
+        self.pending
+    }
+
+    pub fn open(&mut self) {
+        self.open = true;
+        self.gesture.cancel();
+    }
+
+    pub fn close(&mut self) {
+        self.open = false;
+        self.gesture.cancel();
+    }
+
     pub fn set_controls(&mut self, controls: &'static [ButtonDescriptor]) {
         self.wake_controls = controls;
     }
@@ -90,7 +99,6 @@ impl SuspendScreen {
         }
         let action = self.gesture.update(event, |point| {
             [
-                (BACK_TARGET, Action::Back),
                 (ONE_MINUTE, Action::Duration(60_000)),
                 (TEN_MINUTES, Action::Duration(600_000)),
                 (ONE_HOUR, Action::Duration(3_600_000)),
@@ -101,7 +109,6 @@ impl SuspendScreen {
             .find_map(|(target, action)| target.contains(point).then_some(action))
         });
         match action {
-            Some(Action::Back) => self.open = false,
             Some(Action::Duration(value)) => self.duration_ms = value,
             Some(Action::TouchWake) => self.touch_wake = !self.touch_wake,
             Some(Action::Start) => {
@@ -117,9 +124,7 @@ impl SuspendScreen {
         true
     }
     pub fn render<D: DrawTarget<Color = Gray4>>(&self, display: &mut D) -> Result<(), D::Error> {
-        display.clear(Gray4::WHITE)?;
-        line(display, 58, format_args!("SUSPEND"))?;
-        button(display, BACK_TARGET, "Back", false, !self.pending)?;
+        display.clear(STYLE.background)?;
         line(display, 124, format_args!("Automatic wake after:"))?;
         for (target, label, duration) in [
             (ONE_MINUTE, "1 minute", 60_000),
@@ -279,11 +284,6 @@ fn line<D: DrawTarget<Color = Gray4>>(
 ) -> Result<(), D::Error> {
     let mut text = String::<96>::new();
     let _ = text.write_fmt(args);
-    Text::new(
-        &text,
-        Point::new(28, y),
-        MonoTextStyle::new(&FONT_10X20, Gray4::BLACK),
-    )
-    .draw(display)?;
+    Text::new(&text, Point::new(28, y), STYLE.text(TextRole::Body)).draw(display)?;
     Ok(())
 }

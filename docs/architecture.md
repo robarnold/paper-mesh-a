@@ -15,7 +15,7 @@ The toolkit has no dependency on a particular application.
 | [`firmware/src`](../firmware/src/main.rs) adapters | Hardware services, drivers, buffers, and resource control | Platform and chip drivers |
 | [`simulator/src/lib.rs`](../simulator/src/lib.rs) | Native services and deterministic application execution | Application and platform |
 | [`simulator/src/main.rs`](../simulator/src/main.rs) | HTTP transport and wall-clock pacing | Simulator and platform |
-| [`crates/hid-touchpad`](../crates/hid-touchpad/src/lib.rs) | Host HID descriptors and contact encoding | Platform |
+| [`crates/hid-touchpad`](../crates/hid-touchpad/README.md) | Host HID descriptors and contact encoding | Platform |
 | [`crates/ed047tc1`](../crates/ed047tc1/src/lib.rs), [`crates/gt911`](../crates/gt911/src/lib.rs) | Chip protocols and display encoding | None |
 
 Both shared crates use `no_std` without heap allocation.
@@ -45,7 +45,7 @@ Backend adapters import service types directly from `paper-mesh-platform`.
 Runtime code connects the application to backend services.
 The application crate does not export the platform API.
 
-The Diagnostics screen, pattern sequence, and input policy belong to the application crate.
+The Diagnostics menu, component pages, pattern sequence, and input policy belong to the application crate.
 The runtime supplies control identities and display completion events.
 USB inspection reads a held frame without starting a display operation.
 The display backend retains power sequencing and resource ownership.
@@ -66,6 +66,20 @@ Toolkit components accept application choices through parameters and callbacks.
 Modules group related functions by responsibility.
 The current application is one toolkit consumer.
 Future applications can use the same components without a dependency on its screens.
+
+The platform Navigator owns shell launch, the active destination, return history, and lifecycle dispatch.
+The platform Shell owns the shared Back gesture, header, and content clipping.
+The platform Page contract defines metadata, entry, exit, local input, and rendering.
+The application supplies concrete page storage, identities, style, geometry, and operation restrictions.
+The navigator owns the supplied page collection. Its callbacks coordinate application service state.
+The shell supports full-screen presentation without changing the reserved Home-key binding.
+
+The [shared UI standard](ui.md) defines common behavior and visual roles.
+The [application UI rules](application-ui.md) define current application choices.
+
+The [UI guide](simulator/execution.md#ui-guide) runs independent examples from `crates/app/examples/ui_guide/` through the native host.
+These examples use platform components and have no device service connections.
+The simulator supplies their HTTP transport and PNG output. Firmware does not include them.
 
 A board profile maps contracts to fitted hardware, resources, and calibration.
 A scenario profile supplies simulated observations, delays, and faults.

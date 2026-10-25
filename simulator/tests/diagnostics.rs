@@ -1,7 +1,8 @@
 use embedded_graphics::primitives::Rectangle;
 use paper_mesh_app::{
     BACK_TARGET, TAP_TARGET,
-    diagnostics::{HOME_TARGET, START},
+    diagnostics::{Component, HOME_TARGET},
+    display_check::START,
 };
 use paper_mesh_platform::TouchEvent;
 use paper_mesh_simulator::{REFRESH_MS, Simulation};
@@ -13,6 +14,7 @@ fn tap(sim: &mut Simulation, target: Rectangle) {
 
 fn open(sim: &mut Simulation) {
     tap(sim, HOME_TARGET);
+    tap(sim, Component::Display.target());
     sim.advance(2 * REFRESH_MS);
     assert!(sim.snapshot().diagnostics_open);
     assert_eq!(sim.snapshot().diagnostic_pattern, None);
@@ -35,6 +37,7 @@ fn normal_application_runs_full_patterns_and_holds_them_without_redraws() {
         sim.advance(REFRESH_MS);
         let state = sim.snapshot();
         assert_eq!(state.diagnostic_pattern, Some(name));
+        assert!(state.controls.is_empty());
         assert!(state.diagnostic_ready);
         assert_eq!(state.full_refreshes, index);
         assert!(sim.display().pixels().iter().all(|pixel| *pixel == value));
@@ -55,7 +58,8 @@ fn normal_application_runs_full_patterns_and_holds_them_without_redraws() {
     assert_eq!(sim.snapshot().full_refreshes, 4);
     tap(&mut sim, BACK_TARGET);
     sim.advance(REFRESH_MS);
-    assert!(!sim.snapshot().diagnostics_open);
+    assert!(sim.snapshot().diagnostics_open);
+    tap(&mut sim, Component::Touch.target());
     tap(&mut sim, TAP_TARGET);
     assert_eq!(sim.snapshot().taps, 1);
 }
@@ -81,7 +85,7 @@ fn press_during_refresh_and_a_long_hold_cannot_skip_patterns_or_power_off() {
 }
 
 #[test]
-fn exit_during_refresh_finishes_safely_and_restores_home_controls() {
+fn exits_during_refresh_restore_the_menu_or_home_with_a_full_refresh() {
     for id in [1, 2] {
         let mut sim = Simulation::default();
         open(&mut sim);
@@ -89,9 +93,13 @@ fn exit_during_refresh_finishes_safely_and_restores_home_controls() {
         sim.hardware_button(id, true).unwrap();
         sim.hardware_button(id, false).unwrap();
         sim.advance(2 * REFRESH_MS);
-        assert!(!sim.snapshot().diagnostics_open);
+        assert_eq!(sim.snapshot().diagnostics_open, id == 1);
         assert!(!sim.snapshot().diagnostic_ready);
         assert_eq!(sim.snapshot().full_refreshes, 2);
+        if id == 2 {
+            tap(&mut sim, HOME_TARGET);
+        }
+        tap(&mut sim, Component::Touch.target());
         tap(&mut sim, TAP_TARGET);
         assert_eq!(sim.snapshot().taps, 1);
         sim.hardware_button(0, true).unwrap();

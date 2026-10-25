@@ -4,6 +4,7 @@
 
 use embedded_graphics::{pixelcolor::Gray4, prelude::*};
 use paper_mesh_app::App;
+use paper_mesh_app::diagnostics::{Component, HOME_TARGET};
 use paper_mesh_platform::{
     Clock, Display, TouchEvent,
     rotation::{PortraitDisplay, PortraitRotation},
@@ -14,6 +15,7 @@ pub mod discovery;
 pub mod location;
 pub mod power;
 pub mod touchpad;
+pub mod ui_guide;
 use discovery::{ScanScenario, SimDiscovery};
 use location::{LocationScenario, SimLocation};
 use paper_mesh_app::debugger::Debugger;
@@ -232,6 +234,7 @@ pub struct Snapshot {
     pub satellite_signals: Vec<SatelliteSnapshot>,
     pub location_scenario: LocationScenario,
     pub diagnostics_open: bool,
+    pub diagnostic_component: Option<&'static str>,
     pub diagnostic_pattern: Option<&'static str>,
     pub diagnostic_ready: bool,
     pub power_open: bool,
@@ -257,9 +260,10 @@ pub struct SatelliteSnapshot {
 
 #[derive(Serialize)]
 pub struct Control {
-    label: &'static str,
-    x: i32,
-    y: i32,
+    pub label: &'static str,
+    pub x: i32,
+    pub y: i32,
+    pub enabled: bool,
 }
 
 #[derive(Serialize)]
@@ -340,12 +344,24 @@ impl Simulation {
                     self.resume(WakeReason::Control(event.id));
                 } else if event.id == buttons::HOME && pressed && suspended.touch_wake {
                     self.resume(WakeReason::TouchInterrupt);
+                    self.app.touch(TouchEvent::Cancel);
+                    self.app.go_home();
                 }
                 self.poll();
                 return Ok(());
             }
-            self.app
-                .hardware_button(event, &[buttons::FUNCTION, buttons::HOME]);
+            use paper_mesh_platform::input::navigation::ButtonRoute;
+            match buttons::NAVIGATION.route(event) {
+                ButtonRoute::Home => {
+                    self.touchpad_session.suppress_until_release();
+                    self.app.touch(TouchEvent::Cancel);
+                    self.app.go_home();
+                }
+                ButtonRoute::Application(event) => {
+                    self.app.hardware_button(event, &[buttons::FUNCTION])
+                }
+                ButtonRoute::Consumed => {}
+            }
         }
         self.poll();
         Ok(())
@@ -643,10 +659,9 @@ impl Simulation {
 
     pub fn snapshot(&self) -> Snapshot {
         use paper_mesh_app::{
-            BACK_TARGET, TAP_TARGET,
+            TAP_TARGET,
             debugger::{
-                BLUETOOTH_TARGET, DEBUGGER_TARGET, NEXT_TARGET, PREVIOUS_TARGET, SCAN_TARGET,
-                ScanState, WIFI_TARGET,
+                BLUETOOTH_TARGET, NEXT_TARGET, PREVIOUS_TARGET, SCAN_TARGET, ScanState, WIFI_TARGET,
             },
         };
         let debugger = self.app.debugger();
@@ -657,23 +672,16 @@ impl Simulation {
         let targets: &[(&str, embedded_graphics::primitives::Rectangle)] =
             if self.powered_off || self.app.touchpad_open() {
                 &[]
-            } else if self.app.diagnostics().is_open() {
-                if self.app.diagnostics().pattern().is_some() {
+            } else if self.app.display_check().is_open() {
+                if self.app.display_check().pattern().is_some() {
                     &[]
                 } else {
-                    &[
-                        ("Back", BACK_TARGET),
-                        ("Start display check", paper_mesh_app::diagnostics::START),
-                    ]
+                    &[("Start display check", paper_mesh_app::display_check::START)]
                 }
             } else if power.is_open() && power.off.open {
-                &[
-                    ("Back", BACK_TARGET),
-                    ("Power off", paper_mesh_app::power_off::START),
-                ]
+                &[("Power off", paper_mesh_app::power_off::START)]
             } else if power.is_open() && power.suspend.open {
                 &[
-                    ("Back", BACK_TARGET),
                     ("1 minute", paper_mesh_app::suspend::ONE_MINUTE),
                     ("10 minutes", paper_mesh_app::suspend::TEN_MINUTES),
                     ("1 hour", paper_mesh_app::suspend::ONE_HOUR),
@@ -682,30 +690,34 @@ impl Simulation {
                 ]
             } else if power.is_open() {
                 &[
-                    ("Back", BACK_TARGET),
                     ("Battery", paper_mesh_app::power::BATTERY_TAB),
                     ("Charger", paper_mesh_app::power::CHARGER_TAB),
                     ("Suspend", paper_mesh_app::power::SUSPEND_TAB),
                     ("Power off", paper_mesh_app::power::OFF_TAB),
                 ]
             } else if location.is_open() {
-                &[("Back", BACK_TARGET)]
+                &[]
             } else if debugger.is_open() {
                 &[
-                    ("Back", BACK_TARGET),
                     ("Wi-Fi", WIFI_TARGET),
                     ("Bluetooth LE", BLUETOOTH_TARGET),
                     ("Scan again", SCAN_TARGET),
                     ("Previous", PREVIOUS_TARGET),
                     ("Next", NEXT_TARGET),
                 ]
+            } else if self.app.touch_screen().is_open() {
+                &[("Tap to count", TAP_TARGET)]
+            } else if self.app.diagnostics().is_open() {
+                &[
+                    (Component::Display.label(), Component::Display.target()),
+                    (Component::Touch.label(), Component::Touch.target()),
+                    (Component::Radio.label(), Component::Radio.target()),
+                    (Component::Location.label(), Component::Location.target()),
+                    (Component::Power.label(), Component::Power.target()),
+                ]
             } else {
                 &[
-                    ("Diagnostics", paper_mesh_app::diagnostics::HOME_TARGET),
-                    ("Tap counter", TAP_TARGET),
-                    ("Radio debugger", DEBUGGER_TARGET),
-                    ("GNSS", paper_mesh_app::location::LOCATION_TARGET),
-                    ("Power", paper_mesh_app::power::POWER_TARGET),
+                    ("Diagnostics", HOME_TARGET),
                     ("USB touchpad", paper_mesh_app::touchpad::TOUCHPAD_TARGET),
                 ]
             };
@@ -757,12 +769,13 @@ impl Simulation {
                 .collect(),
             hardware_buttons: self.buttons.snapshot(),
             diagnostics_open: self.app.diagnostics().is_open(),
+            diagnostic_component: self.app.active_diagnostic().map(Component::label),
             diagnostic_pattern: self
                 .app
-                .diagnostics()
+                .display_check()
                 .pattern()
                 .map(|pattern| pattern.label()),
-            diagnostic_ready: self.app.diagnostics().held_pattern().is_some(),
+            diagnostic_ready: self.app.display_check().held_pattern().is_some(),
             power_open: power.is_open(),
             power_charger_tab: power.charger_tab(),
             power_scenario: self.power.scenario,
@@ -845,13 +858,42 @@ impl Simulation {
                 })
                 .collect(),
             location_scenario: self.location.scenario,
-            controls: targets
-                .iter()
-                .map(|(label, target)| Control {
+            controls: self
+                .app
+                .navigation_controls()
+                .into_iter()
+                .filter(|_| !self.powered_off && self.app.navigation_visible())
+                .map(|control| Control {
+                    label: control.label,
+                    x: control.bounds.center().x,
+                    y: control.bounds.center().y,
+                    enabled: control.enabled && self.suspended.is_none(),
+                })
+                .chain(targets.iter().map(|(label, target)| Control {
                     label,
                     x: target.center().x,
                     y: target.center().y,
-                })
+                    enabled: self.suspended.is_none()
+                        && if power.is_open() && power.off.open {
+                            power.off.can_start()
+                        } else if power.is_open() && power.suspend.open {
+                            !power.suspend.pending()
+                        } else if self.app.display_check().is_open() {
+                            self.app.display_check().can_start()
+                        } else if debugger.is_open() {
+                            match *label {
+                                "Scan again" => !matches!(
+                                    debugger.state(),
+                                    ScanState::Requested | ScanState::Active
+                                ),
+                                "Previous" => debugger.page() > 0,
+                                "Next" => debugger.has_next_page(),
+                                _ => true,
+                            }
+                        } else {
+                            true
+                        },
+                }))
                 .collect(),
         }
     }
@@ -862,8 +904,7 @@ mod tests {
     use super::*;
     use paper_mesh_app::BACK_TARGET;
     use paper_mesh_app::debugger::{
-        BLUETOOTH_TARGET, DEBUGGER_TARGET, NEXT_TARGET, PREVIOUS_TARGET, SCAN_TARGET,
-        SCAN_TIMEOUT_MS, ScanState,
+        BLUETOOTH_TARGET, NEXT_TARGET, PREVIOUS_TARGET, SCAN_TARGET, SCAN_TIMEOUT_MS, ScanState,
     };
     use paper_mesh_platform::discovery::ScanError;
 
@@ -875,9 +916,10 @@ mod tests {
     #[test]
     fn debugger_scans_both_radios_and_pages_without_changing_the_counter() {
         let mut sim = Simulation::default();
+        press(&mut sim, HOME_TARGET);
         sim.advance(REFRESH_MS);
         let home = sim.display.pixels().to_vec();
-        press(&mut sim, DEBUGGER_TARGET);
+        press(&mut sim, Component::Radio.target());
         assert_eq!(sim.debugger().state(), ScanState::Active);
         assert_eq!(sim.debugger().source(), Some(ScanSource::Simulated));
         sim.advance(discovery::SCAN_MS - 1);
@@ -909,6 +951,7 @@ mod tests {
         assert_eq!(sim.snapshot().taps, 0);
         press(&mut sim, BACK_TARGET);
         assert!(!sim.debugger().is_open());
+        press(&mut sim, Component::Touch.target());
         tap(&mut sim);
         assert_eq!(sim.snapshot().taps, 1);
     }
@@ -916,7 +959,8 @@ mod tests {
     #[test]
     fn scan_scenarios_clear_old_results_and_allow_recovery() {
         let mut sim = Simulation::default();
-        press(&mut sim, DEBUGGER_TARGET);
+        press(&mut sim, HOME_TARGET);
+        press(&mut sim, Component::Radio.target());
         sim.advance(discovery::SCAN_MS);
         for (scenario, expected, duration) in [
             (ScanScenario::Empty, ScanState::Complete, discovery::SCAN_MS),
@@ -952,9 +996,11 @@ mod tests {
     #[test]
     fn scan_deadlines_and_frames_match_across_time_step_sizes() {
         let mut fast = Simulation::default();
+        press(&mut fast, HOME_TARGET);
         let mut slow = Simulation::default();
-        press(&mut fast, DEBUGGER_TARGET);
-        press(&mut slow, DEBUGGER_TARGET);
+        press(&mut slow, HOME_TARGET);
+        press(&mut fast, Component::Radio.target());
+        press(&mut slow, Component::Radio.target());
         fast.advance(30_500);
         for _ in 0..305 {
             slow.advance(100);
@@ -974,7 +1020,8 @@ mod tests {
     #[test]
     fn a_tab_change_or_back_cancels_the_old_scan() {
         let mut sim = Simulation::default();
-        press(&mut sim, DEBUGGER_TARGET);
+        press(&mut sim, HOME_TARGET);
+        press(&mut sim, Component::Radio.target());
         sim.advance(500);
         press(&mut sim, BLUETOOTH_TARGET);
         sim.advance(1_000);
@@ -985,7 +1032,7 @@ mod tests {
         press(&mut sim, SCAN_TARGET);
         press(&mut sim, BACK_TARGET);
         assert_eq!(sim.discovery.next_deadline_ms(), None);
-        press(&mut sim, DEBUGGER_TARGET);
+        press(&mut sim, Component::Radio.target());
         sim.advance(discovery::SCAN_MS);
         assert_eq!(sim.debugger().state(), ScanState::Complete);
     }
@@ -998,7 +1045,9 @@ mod tests {
         };
 
         let mut sim = Simulation::default();
-        sim.advance(REFRESH_MS);
+        press(&mut sim, HOME_TARGET);
+        press(&mut sim, Component::Touch.target());
+        sim.advance(2 * REFRESH_MS);
         let mut staging = vec![0; FRAME_BYTES];
         let mut previous = vec![0; FRAME_BYTES];
         let mut frame = Framebuffer::new(staging.as_mut_slice().try_into().unwrap());
@@ -1008,8 +1057,8 @@ mod tests {
             .unwrap();
         history.commit(&frame);
         let mut visible = sim.display.pixels().to_vec();
-        let counter = Rectangle::new(Point::new(48, 490), Size::new(444, 30));
-        // Include 9 -> 10. The centered label moves when its width changes.
+        let counter = Rectangle::new(Point::new(28, 630), Size::new(484, 30));
+        // Include 9 -> 10 to check a change in the label width.
         for count in 1..=12 {
             tap(&mut sim);
             sim.advance(REFRESH_MS);
@@ -1097,6 +1146,8 @@ mod tests {
     #[test]
     fn input_during_refresh_is_coalesced_into_the_next_frame() {
         let mut sim = Simulation::default();
+        press(&mut sim, HOME_TARGET);
+        press(&mut sim, Component::Touch.target());
         tap(&mut sim);
         tap(&mut sim);
         tap(&mut sim);
@@ -1117,6 +1168,8 @@ mod tests {
     #[test]
     fn rapid_taps_survive_multiple_pending_refreshes() {
         let mut sim = Simulation::default();
+        press(&mut sim, HOME_TARGET);
+        press(&mut sim, Component::Touch.target());
         let point = Point::new(270, 480);
         for count in 1..=40 {
             sim.touch_portrait(TouchEvent::touch(0, point));
@@ -1197,7 +1250,9 @@ mod tests {
         }
 
         let mut sim = Simulation::default();
-        sim.advance(REFRESH_MS);
+        press(&mut sim, HOME_TARGET);
+        press(&mut sim, Component::Touch.target());
+        sim.advance(2 * REFRESH_MS);
         let before = sim.portrait_png().unwrap();
         tap(&mut sim);
         sim.advance(REFRESH_MS - 1);
@@ -1220,6 +1275,8 @@ mod tests {
     #[test]
     fn native_and_browser_touches_share_rotation_and_cancellation() {
         let mut sim = Simulation::default();
+        press(&mut sim, HOME_TARGET);
+        press(&mut sim, Component::Touch.target());
         tap(&mut sim);
         assert_eq!(sim.snapshot().taps, 1);
         sim.touch_portrait(TouchEvent::touch(0, Point::new(270, 480)));

@@ -1,9 +1,6 @@
 use embedded_graphics::primitives::Rectangle;
-use paper_mesh_app::{
-    BACK_TARGET, TAP_TARGET,
-    power::{OFF_TAB, POWER_TARGET},
-    power_off::START,
-};
+use paper_mesh_app::diagnostics::{Component, HOME_TARGET};
+use paper_mesh_app::{BACK_TARGET, TAP_TARGET, power::OFF_TAB, power_off::START};
 use paper_mesh_platform::{TouchEvent, power_off::PowerOffError};
 use paper_mesh_simulator::{REFRESH_MS, Simulation, power::PowerScenario};
 
@@ -13,7 +10,8 @@ fn press(sim: &mut Simulation, target: Rectangle) {
 }
 
 fn open(sim: &mut Simulation) {
-    press(sim, POWER_TARGET);
+    press(sim, HOME_TARGET);
+    press(sim, Component::Power.target());
     press(sim, OFF_TAB);
     sim.advance(2 * REFRESH_MS);
 }

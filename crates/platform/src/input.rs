@@ -6,6 +6,7 @@ use crate::TouchEvent;
 
 pub mod buttons;
 pub mod contacts;
+pub mod navigation;
 
 /// A tap requires one contact that stays on the same control through release.
 /// The caller supplies hit testing and control identities.

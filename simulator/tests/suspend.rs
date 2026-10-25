@@ -1,7 +1,8 @@
 use embedded_graphics::primitives::Rectangle;
+use paper_mesh_app::diagnostics::{Component, HOME_TARGET};
 use paper_mesh_app::{
     BACK_TARGET, TAP_TARGET,
-    power::{POWER_TARGET, SUSPEND_TAB},
+    power::SUSPEND_TAB,
     suspend::{ONE_MINUTE, START, TOUCH_WAKE},
 };
 use paper_mesh_platform::{
@@ -17,7 +18,7 @@ fn press(sim: &mut Simulation, target: Rectangle) {
 }
 
 fn start(sim: &mut Simulation) {
-    press(sim, POWER_TARGET);
+    press(sim, Component::Power.target());
     press(sim, SUSPEND_TAB);
     press(sim, ONE_MINUTE);
     press(sim, START);
@@ -27,7 +28,10 @@ fn start(sim: &mut Simulation) {
 #[test]
 fn timed_suspend_retains_state_and_suppresses_periodic_work() {
     let mut sim = Simulation::default();
+    press(&mut sim, HOME_TARGET);
+    press(&mut sim, Component::Touch.target());
     press(&mut sim, TAP_TARGET);
+    press(&mut sim, BACK_TARGET);
     start(&mut sim);
     assert!(sim.snapshot().suspended);
     let frames = sim.snapshot().completed_refreshes;
@@ -49,13 +53,16 @@ fn timed_suspend_retains_state_and_suppresses_periodic_work() {
     assert_eq!(sim.snapshot().heartbeats, heartbeats + 1);
     press(&mut sim, BACK_TARGET);
     press(&mut sim, BACK_TARGET);
+    press(&mut sim, Component::Touch.target());
     press(&mut sim, TAP_TARGET);
+    press(&mut sim, BACK_TARGET);
     assert_eq!(sim.snapshot().taps, 2);
 }
 
 #[test]
 fn function_wakes_early_and_charge_gain_keeps_its_sign() {
     let mut sim = Simulation::default();
+    press(&mut sim, HOME_TARGET);
     start(&mut sim);
     sim.advance(4_000);
     sim.set_power_scenario(PowerScenario::Full);
@@ -75,6 +82,7 @@ fn function_wakes_early_and_charge_gain_keeps_its_sign() {
 #[test]
 fn gauge_failure_does_not_become_zero_charge_loss() {
     let mut sim = Simulation::default();
+    press(&mut sim, HOME_TARGET);
     start(&mut sim);
     sim.set_power_scenario(PowerScenario::GaugeFault);
     sim.advance(60_000);
@@ -92,6 +100,7 @@ fn stale_samples_and_missing_batteries_do_not_produce_a_charge_comparison() {
         PowerScenario::Unavailable,
     ] {
         let mut sim = Simulation::default();
+        press(&mut sim, HOME_TARGET);
         sim.set_power_scenario(scenario);
         start(&mut sim);
         sim.advance(60_000);
@@ -110,6 +119,7 @@ fn stale_samples_and_missing_batteries_do_not_produce_a_charge_comparison() {
 #[test]
 fn held_wake_control_rejects_sleep_and_allows_retry() {
     let mut sim = Simulation::default();
+    press(&mut sim, HOME_TARGET);
     sim.hardware_button(1, true).unwrap();
     start(&mut sim);
     assert!(!sim.snapshot().suspended);
@@ -126,7 +136,9 @@ fn held_wake_control_rejects_sleep_and_allows_retry() {
 #[test]
 fn time_step_size_does_not_change_suspend_duration_or_result() {
     let mut large = Simulation::default();
+    press(&mut large, HOME_TARGET);
     let mut small = Simulation::default();
+    press(&mut small, HOME_TARGET);
     start(&mut large);
     start(&mut small);
     large.advance(65_000);
@@ -144,6 +156,7 @@ fn time_step_size_does_not_change_suspend_duration_or_result() {
 #[test]
 fn boot_wakes_and_repeated_cycles_keep_distinct_causes() {
     let mut sim = Simulation::default();
+    press(&mut sim, HOME_TARGET);
     start(&mut sim);
     for id in [0, 1, 0] {
         sim.hardware_button(id, true).unwrap();
@@ -164,6 +177,7 @@ fn boot_wakes_and_repeated_cycles_keep_distinct_causes() {
 #[test]
 fn touch_wake_is_optional_and_consumes_the_wake_contact() {
     let mut sim = Simulation::default();
+    press(&mut sim, HOME_TARGET);
     start(&mut sim);
     assert!(!sim.snapshot().suspend_touch_wake);
     press(&mut sim, START);
@@ -188,16 +202,24 @@ fn touch_wake_is_optional_and_consumes_the_wake_contact() {
     assert!(sim.snapshot().suspended);
     sim.hardware_button(2, true).unwrap();
     assert_eq!(sim.snapshot().suspend_wake_reasons, ["Touch/Home IRQ"]);
+    assert!(!sim.snapshot().diagnostics_open);
 }
 
 #[test]
 fn boot_and_enabled_home_or_touch_must_be_released_before_sleep() {
     for id in [0, 2] {
         let mut sim = Simulation::default();
-        press(&mut sim, POWER_TARGET);
+        press(&mut sim, HOME_TARGET);
+        press(&mut sim, Component::Power.target());
         press(&mut sim, SUSPEND_TAB);
         press(&mut sim, TOUCH_WAKE);
         sim.hardware_button(id, true).unwrap();
+        if id == 2 {
+            assert!(!sim.snapshot().diagnostics_open);
+            press(&mut sim, HOME_TARGET);
+            press(&mut sim, Component::Power.target());
+            press(&mut sim, SUSPEND_TAB);
+        }
         press(&mut sim, START);
         sim.advance(2 * REFRESH_MS);
         assert_eq!(
@@ -206,7 +228,8 @@ fn boot_and_enabled_home_or_touch_must_be_released_before_sleep() {
         );
     }
     let mut sim = Simulation::default();
-    press(&mut sim, POWER_TARGET);
+    press(&mut sim, HOME_TARGET);
+    press(&mut sim, Component::Power.target());
     press(&mut sim, SUSPEND_TAB);
     press(&mut sim, TOUCH_WAKE);
     press(&mut sim, START);

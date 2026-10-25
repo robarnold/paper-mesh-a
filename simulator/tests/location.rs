@@ -1,8 +1,8 @@
 use embedded_graphics::{prelude::*, primitives::Rectangle};
+use paper_mesh_app::diagnostics::{Component, HOME_TARGET};
 use paper_mesh_app::{
     BACK_TARGET, TAP_TARGET,
-    debugger::DEBUGGER_TARGET,
-    location::{FixStatus, LOCATION_TARGET, ReceiverStatus},
+    location::{FixStatus, ReceiverStatus},
 };
 use paper_mesh_platform::TouchEvent;
 use paper_mesh_simulator::{
@@ -18,14 +18,15 @@ fn press(sim: &mut Simulation, target: Rectangle) {
 #[test]
 fn location_screen_acquires_a_fix_and_keeps_other_screens_available() {
     let mut sim = Simulation::default();
-    sim.advance(REFRESH_MS);
+    press(&mut sim, HOME_TARGET);
+    sim.advance(2 * REFRESH_MS);
     let home = sim.display().pixels().to_vec();
-    press(&mut sim, LOCATION_TARGET);
+    press(&mut sim, Component::Location.target());
     assert!(sim.location().is_open());
     assert_eq!(sim.location().view().status, FixStatus::Acquiring);
     assert_eq!(sim.location().view().coordinates, None);
     assert_eq!(sim.location().view().elevation_mm, None);
-    sim.advance(ACQUISITION_MS - REFRESH_MS - 1);
+    sim.advance(ACQUISITION_MS - 2 * REFRESH_MS - 1);
     assert_eq!(sim.location().view().status, FixStatus::Acquiring);
     sim.advance(1 + REFRESH_MS);
     assert_eq!(sim.location().view().status, FixStatus::Valid);
@@ -36,17 +37,20 @@ fn location_screen_acquires_a_fix_and_keeps_other_screens_available() {
     assert_ne!(sim.display().pixels(), home);
     press(&mut sim, BACK_TARGET);
     assert!(!sim.location().is_open());
+    press(&mut sim, Component::Touch.target());
     press(&mut sim, TAP_TARGET);
     assert_eq!(sim.snapshot().taps, 1);
-    press(&mut sim, DEBUGGER_TARGET);
+    press(&mut sim, BACK_TARGET);
+    press(&mut sim, Component::Radio.target());
     assert!(sim.debugger().is_open());
 }
 
 #[test]
 fn loss_silence_and_faults_remove_coordinates_and_permit_recovery() {
     let mut sim = Simulation::default();
+    press(&mut sim, HOME_TARGET);
     sim.set_location_scenario(LocationScenario::LostFix);
-    press(&mut sim, LOCATION_TARGET);
+    press(&mut sim, Component::Location.target());
     assert_eq!(sim.location().view().status, FixStatus::Valid);
     sim.advance(ACQUISITION_MS);
     assert_eq!(sim.location().view().status, FixStatus::Acquiring);
@@ -80,14 +84,21 @@ fn loss_silence_and_faults_remove_coordinates_and_permit_recovery() {
 #[test]
 fn zero_coordinates_are_a_valid_fix_and_partial_touches_do_not_navigate() {
     let mut sim = Simulation::default();
+    press(&mut sim, HOME_TARGET);
     sim.set_location_scenario(LocationScenario::ZeroCoordinates);
-    sim.touch_portrait(TouchEvent::release(0, LOCATION_TARGET.center()));
+    sim.touch_portrait(TouchEvent::release(
+        0,
+        Component::Location.target().center(),
+    ));
     assert!(!sim.location().is_open());
-    sim.touch_portrait(TouchEvent::touch(0, LOCATION_TARGET.center()));
+    sim.touch_portrait(TouchEvent::touch(0, Component::Location.target().center()));
     sim.touch_portrait(TouchEvent::Cancel);
-    sim.touch_portrait(TouchEvent::release(0, LOCATION_TARGET.center()));
+    sim.touch_portrait(TouchEvent::release(
+        0,
+        Component::Location.target().center(),
+    ));
     assert!(!sim.location().is_open());
-    press(&mut sim, LOCATION_TARGET);
+    press(&mut sim, Component::Location.target());
     assert_eq!(sim.location().view().status, FixStatus::Valid);
     assert_eq!(sim.snapshot().latitude_microdegrees, Some(0));
     assert_eq!(sim.snapshot().longitude_microdegrees, Some(0));
@@ -101,10 +112,12 @@ fn zero_coordinates_are_a_valid_fix_and_partial_touches_do_not_navigate() {
 #[test]
 fn deadlines_and_completed_frames_match_across_time_step_sizes() {
     let mut large = Simulation::default();
+    press(&mut large, HOME_TARGET);
     let mut small = Simulation::default();
+    press(&mut small, HOME_TARGET);
     for sim in [&mut large, &mut small] {
         sim.set_location_scenario(LocationScenario::Silent);
-        press(sim, LOCATION_TARGET);
+        press(sim, Component::Location.target());
     }
     large.advance(8_750);
     for _ in 0..350 {
@@ -121,7 +134,8 @@ fn deadlines_and_completed_frames_match_across_time_step_sizes() {
 #[test]
 fn new_observations_combine_while_display_refresh_is_pending() {
     let mut sim = Simulation::default();
-    press(&mut sim, LOCATION_TARGET);
+    press(&mut sim, HOME_TARGET);
+    press(&mut sim, Component::Location.target());
     // The startup frame still owns the panel.
     sim.set_location_scenario(LocationScenario::ZeroCoordinates);
     sim.advance(REFRESH_MS);
@@ -136,8 +150,9 @@ fn new_observations_combine_while_display_refresh_is_pending() {
 #[test]
 fn active_receiver_and_signal_levels_do_not_require_a_fix() {
     let mut sim = Simulation::default();
+    press(&mut sim, HOME_TARGET);
     sim.set_location_scenario(LocationScenario::Acquiring);
-    press(&mut sim, LOCATION_TARGET);
+    press(&mut sim, Component::Location.target());
     let initial_messages = sim.snapshot().receiver_messages;
     assert_eq!(
         sim.location().view().receiver_status,
@@ -166,8 +181,9 @@ fn active_receiver_and_signal_levels_do_not_require_a_fix() {
 #[test]
 fn response_fix_and_satellite_expiry_are_independent() {
     let mut sim = Simulation::default();
+    press(&mut sim, HOME_TARGET);
     sim.set_location_scenario(LocationScenario::StaleSatellites);
-    press(&mut sim, LOCATION_TARGET);
+    press(&mut sim, Component::Location.target());
     sim.advance(4_999);
     assert!(sim.location().view().satellites.is_some());
     sim.advance(1);
@@ -201,8 +217,9 @@ fn response_fix_and_satellite_expiry_are_independent() {
 #[test]
 fn diagnostic_reports_do_not_refresh_a_closed_screen() {
     let mut sim = Simulation::default();
+    press(&mut sim, HOME_TARGET);
     sim.set_location_scenario(LocationScenario::Acquiring);
-    sim.advance(REFRESH_MS);
+    sim.advance(2 * REFRESH_MS);
     let refreshes = sim.snapshot().completed_refreshes;
     sim.advance(20_000);
     assert_eq!(sim.snapshot().completed_refreshes, refreshes);
@@ -212,8 +229,9 @@ fn diagnostic_reports_do_not_refresh_a_closed_screen() {
 #[test]
 fn elevation_can_be_negative_or_missing_without_losing_the_position() {
     let mut sim = Simulation::default();
+    press(&mut sim, HOME_TARGET);
     sim.set_location_scenario(LocationScenario::BelowSeaLevel);
-    press(&mut sim, LOCATION_TARGET);
+    press(&mut sim, Component::Location.target());
     sim.advance(2 * REFRESH_MS);
     assert_eq!(sim.snapshot().elevation_mm, Some(-430_500));
     assert_eq!(sim.location().view().status, FixStatus::Valid);
@@ -229,8 +247,9 @@ fn elevation_can_be_negative_or_missing_without_losing_the_position() {
 #[test]
 fn motion_and_utc_support_movement_stops_and_independent_missing_fields() {
     let mut sim = Simulation::default();
+    press(&mut sim, HOME_TARGET);
     sim.set_location_scenario(LocationScenario::ZeroCoordinates);
-    press(&mut sim, LOCATION_TARGET);
+    press(&mut sim, Component::Location.target());
     assert_eq!(sim.snapshot().speed_mm_s, Some(2_780));
     assert_eq!(sim.snapshot().course_millidegrees, Some(315_000));
     assert_eq!(sim.snapshot().utc_time, Some([0, 0, 0]));
@@ -257,8 +276,9 @@ fn motion_and_utc_support_movement_stops_and_independent_missing_fields() {
 fn motion_and_utc_expire_independently_while_position_and_receiver_stay_current() {
     for scenario in [LocationScenario::StaleMotion, LocationScenario::StaleUtc] {
         let mut sim = Simulation::default();
+        press(&mut sim, HOME_TARGET);
         sim.set_location_scenario(scenario);
-        press(&mut sim, LOCATION_TARGET);
+        press(&mut sim, Component::Location.target());
         sim.advance(4_999);
         assert!(sim.snapshot().speed_mm_s.is_some());
         assert!(sim.snapshot().utc_time.is_some());
@@ -286,7 +306,8 @@ fn motion_and_utc_expire_independently_while_position_and_receiver_stay_current(
 #[test]
 fn lost_fix_silence_and_faults_remove_motion_and_utc() {
     let mut sim = Simulation::default();
-    press(&mut sim, LOCATION_TARGET);
+    press(&mut sim, HOME_TARGET);
+    press(&mut sim, Component::Location.target());
     for scenario in [LocationScenario::LostFix, LocationScenario::Silent] {
         sim.set_location_scenario(scenario);
         assert!(sim.snapshot().speed_mm_s.is_some());

@@ -13,6 +13,7 @@
     h1 { font-size: 28px; letter-spacing: -.8px; margin: 4px 0; font-weight: 600; }
     .eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: 2px; color: #667060; }
     .badge { font-size: 12px; border: 1px solid #c6cabe; border-radius: 20px; padding: 7px 12px; white-space: nowrap; }
+    .guide-link { display: inline-block; margin-top: 12px; color: #344c34; font-size: 14px; }
     .workspace { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 32px; align-items: start; }
     .device { width: clamp(250px, calc((100dvh - 180px) * 9 / 16 + 40px), 580px); padding: 20px; background: #292c27; border-radius: 22px; box-shadow: 0 15px 35px #30342620; }
     #screen { display: block; width: 100%; height: auto; aspect-ratio: 9/16; background: white; border-radius: 2px; image-rendering: pixelated; touch-action: none; cursor: pointer; }
@@ -41,7 +42,7 @@
 </head>
 <body>
   <main>
-    <header><div><div class="eyebrow">Simulated device data</div><h1>Paper Mesh</h1></div><div class="badge">T5 S3 Pro · 540 × 960</div></header>
+    <header><div><div class="eyebrow">Simulated device data</div><h1>Paper Mesh</h1><a class="guide-link" href="/ui-guide">Explore the UI guide →</a></div><div class="badge">T5 S3 Pro · 540 × 960</div></header>
     <div class="workspace">
     <div class="device"><img id="screen" src="/frame.png" width="540" height="960" draggable="false" aria-label="Simulated touch display. Equivalent buttons follow the display."></div>
     <aside>
@@ -105,7 +106,7 @@
       <option value="stale_motion">Speed and course reports stop</option>
       <option value="stale_utc">UTC reports stop</option>
     </select>
-    <p class="note">GNSS observations use test data. Select GNSS to see coordinates, satellite signals, and receiver activity.</p>
+    <p class="note">GNSS observations use test data. Select Diagnostics, then GNSS to see coordinates, satellite signals, and receiver activity.</p>
     <h2>Power scenario</h2>
     <label for="power-scenario">Battery and charger observations</label>
     <select id="power-scenario">
@@ -121,7 +122,7 @@
       <option value="unavailable">Power data unavailable</option>
       <option value="stale">Reports stop</option>
     </select>
-    <p class="note">Power observations use test data. Select Power to see battery measurements, charger settings, and faults.</p>
+    <p class="note">Power observations use test data. Select Diagnostics, then Power to see battery measurements, charger settings, and faults.</p>
     <p class="note">Click the screen or use the device controls. Pause to advance virtual time.<br>
       A scan takes 1.5 simulated seconds. A display refresh takes 250 simulated milliseconds.</p>
     <p id="error" role="status"></p>
@@ -238,6 +239,7 @@
           controls.replaceChildren(...state.controls.map(control => {
             const button = document.createElement('button');
             button.textContent = control.label;
+            button.disabled = !control.enabled;
             button.addEventListener('click', () => {
               send({type: 'touch_down', x: control.x, y: control.y});
               send({type: 'touch_up', x: control.x, y: control.y});

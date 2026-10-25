@@ -32,6 +32,7 @@ To stop the server, press Ctrl+C.
 | Code organization | [Software architecture](docs/architecture.md) |
 | Application behavior | [Current application](docs/application.md) |
 | Common components and execution | [Platform](docs/platform.md) |
+| Design guidelines and examples | [Visual UI guide](docs/simulator/execution.md#ui-guide) and [shared UI standard](docs/ui.md) |
 | Portable contracts | [Device services](docs/device-interfaces.md) and [display contract](docs/display-constraints.md) |
 | Simulation | [Native simulator](docs/simulator.md) |
 | Hardware | [Backend profiles](docs/hardware.md) and [vendor references](docs/vendor/lilygo/t5-s3-pro/README.md) |

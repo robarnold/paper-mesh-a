@@ -18,6 +18,8 @@ use tiny_http::{Header, Method, Request, Response, Server};
 type Error = Box<dyn std::error::Error + Send + Sync>;
 type HttpResponse = Response<Cursor<Vec<u8>>>;
 
+mod ui_guide_http;
+
 #[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 enum Command {
@@ -159,7 +161,14 @@ fn response(status: u16, content_type: &str, body: impl Into<Vec<u8>>) -> HttpRe
         .with_header(Header::from_bytes("X-Content-Type-Options", "nosniff").unwrap())
 }
 
-fn handle(request: &mut Request, session: &mut Session) -> HttpResponse {
+fn handle(
+    request: &mut Request,
+    session: &mut Session,
+    guide: &mut paper_mesh_simulator::ui_guide::Guide,
+) -> HttpResponse {
+    if request.url() == "/ui-guide" || request.url().starts_with("/ui-guide/") {
+        return ui_guide_http::handle(request, guide);
+    }
     match (request.method(), request.url()) {
         (&Method::Get, "/") => response(
             200,
@@ -249,6 +258,7 @@ fn main() -> Result<(), Error> {
         generation: 0,
     };
     let mut last_wall = Instant::now();
+    let mut guide = paper_mesh_simulator::ui_guide::Guide::default();
     let mut remainder = Duration::ZERO;
     println!("Paper Mesh simulator: http://localhost:8080");
     println!("The device application, rendering, and virtual hardware run in this Rust process.");
@@ -266,7 +276,7 @@ fn main() -> Result<(), Error> {
         if let Some(mut request) = server.recv_timeout(Duration::from_millis(10))? {
             let was_running = session.running;
             let generation = session.generation;
-            let result = handle(&mut request, &mut session);
+            let result = handle(&mut request, &mut session, &mut guide);
             if let Err(error) = request.respond(result) {
                 eprintln!("Client disconnected: {error}");
             }

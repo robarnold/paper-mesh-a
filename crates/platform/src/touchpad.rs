@@ -58,6 +58,10 @@ impl TouchpadSession {
         self.waiting_release = !self.contacts.is_empty();
         host.set_active(active);
     }
+    /// Require fresh contacts after system navigation changes the input destination.
+    pub fn suppress_until_release(&mut self) {
+        self.waiting_release = !self.contacts.is_empty();
+    }
     pub fn poll(&mut self, host: &impl TouchpadHost) {
         let state = host.state();
         if state != self.host_state || self.generation != host.generation() {

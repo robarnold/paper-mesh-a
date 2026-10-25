@@ -3,6 +3,8 @@
 Follow the [documentation guide](DOCUMENTATION.md) for all project prose.
 This includes documentation, comments, review text, commit descriptions, and agent responses.
 
+Follow the [shared UI standard](docs/ui.md) and [application UI rules](docs/application-ui.md) when you add or change screens.
+
 ## Development environment
 
 Run project tools in the devcontainer, except version control tools.

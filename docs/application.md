@@ -8,6 +8,8 @@ It does not select a board, driver, executor, or CPU core.
 The [architecture](architecture.md) shows code dependencies.
 The [platform](platform.md) controls resources and execution.
 The [device services](device-interfaces.md) specify observation formats and request behavior.
+The [shared UI standard](ui.md) defines common presentation and interaction rules.
+The [application UI rules](application-ui.md) define destinations, restrictions, and layout.
 
 ## Layout and input
 
@@ -17,12 +19,15 @@ The application uses logical coordinates for rendering and touch targets.
 It does not select native panel dimensions or a mounting transform.
 Configurable layout and viewport changes stay planned work.
 
-The home screen contains a tap counter, uptime, a grayscale sample, and four navigation buttons.
+The home screen contains `Diagnostics`, `USB touchpad`, and uptime.
+The [Diagnostics menu](#diagnostics) groups component checks and measurements.
 The platform supplies normalized events.
 
-The application uses the [toolkit gesture](platform/toolkit.md) for tap recognition and cancellation.
-It supplies hit testing and action bindings.
-All screens use the same button renderer.
+The application selects style and geometry in `screen.rs`.
+It uses a platform Shell, Page implementations, controls, and semantic styles.
+The platform navigator resolves navigation and applies page entry and exit.
+The application page collection connects service state through these callbacks.
+The [application UI rules](application-ui.md#destinations-and-operation-restrictions) define destinations, restrictions, and full-screen modes.
 
 ## Deadlines and display submission
 
@@ -44,7 +49,7 @@ The platform controls completion, driver recovery, and retry delays.
 Select `USB touchpad` on the home screen to forward raw contacts to the USB host.
 The screen shows host status and exit instructions.
 Press Function or Home to return to the home screen.
-Runtime bindings supply these control identities to the application.
+The platform reserves Home. Runtime bindings supply the Function identity to the application.
 Reset remains a board restart. Charger QON has no software exit action.
 
 The [host session](services/touchpad.md) suppresses input across mode and connection changes.
@@ -55,6 +60,7 @@ Host status changes and mode changes can refresh it.
 
 ## Radio debugger
 
+Select `Diagnostics`, then `Radio` to open the radio debugger.
 The application controls radio selection, scan requests, pagination, and rendering.
 The debugger does not connect to networks or pair with devices.
 The simulator uses test data and shows `SIMULATED DATA` on the device screen.
@@ -80,7 +86,8 @@ The [simulator guide](simulator/scenarios.md#radio-debugger) specifies scan scen
 ## Location screen
 
 The application controls the GNSS screen, touch targets, observation validity, and display deadlines.
-The home screen has a `GNSS` button. The location screen has a `Back` button.
+Select `Diagnostics`, then `GNSS` to open the location screen.
+Select `Back` to return to the Diagnostics menu.
 `App::poll_location` reads a `LocationSnapshot` from the service.
 The screen does not identify hardware or simulator providers.
 The simulator page labels test data outside the application screen.
@@ -127,9 +134,9 @@ UTC date, clock synchronization, accuracy estimates, and acquisition requests st
 
 ## Power screen
 
-Select `Power` on the home screen to open the battery details.
+Select `Diagnostics`, then `Power` to open the battery details.
 Select `Battery` or `Charger` to change the detail tab.
-Select `Back` to return to the home screen.
+Select `Back` to return to the Diagnostics menu.
 
 The battery tab shows charge percentage, a capacity bar, voltage, instantaneous current, average current, and average power.
 It also shows gauge temperature, capacity estimates, health percentage, cycles, time estimates, readiness, and battery flags.
@@ -192,8 +199,24 @@ See the [power-off contract](services/power.md#explicit-power-off) for completio
 
 ## Diagnostics
 
-Home provides a Diagnostics screen in the normal application.
-Start display check submits solid black, white, and gray images in that order.
+Select `Diagnostics` on Home to open the component menu.
+Each entry has a component name and a short description.
+
+| Component | Contents |
+| --- | --- |
+| Display | Grayscale sample and full refresh checks |
+| Touch | Tap counter and gesture checks |
+| Radio | Wi-Fi and Bluetooth LE scans |
+| GNSS | Position, receiver activity, and satellite signals |
+| Power | Battery, charger, suspend, and power-off controls |
+
+Component pages follow the [shared navigation rules](ui.md#navigation-and-presentation).
+USB touchpad remains a separate mode on Home.
+
+### Display check
+
+Select `Display` to see the grayscale sample and instructions.
+`Start display check` submits solid black, white, and gray images in that order.
 Each image requests a complete refresh through the portable display contract.
 The runtime reports completion after it regains the idle display.
 A fresh press and release of the specified advance control selects the next image.
@@ -201,10 +224,18 @@ Input during a refresh cannot advance the sequence.
 
 Each completed image stays unchanged until the user advances or exits.
 Heartbeat updates and touch events do not redraw these images.
-After gray, the next advance returns to the Diagnostics screen.
+After gray, the next advance returns to the Display page.
 The backend supplies the advance control and exit instructions.
-An exit returns Home with a complete refresh after any active operation finishes.
+Function returns to Diagnostics. The reserved Home key returns to the home screen.
+Either exit requests a complete refresh after any active operation finishes.
 Display failure disables the check and restores the normal power-off fallback.
 
 The [board procedure](boards/lilygo-t5-s3-pro-display.md#basic-display-check) specifies physical controls and inspection limits.
 The simulator exercises this same screen and sequence with virtual time.
+
+### Touch check
+
+Select `Touch` to open the tap counter.
+Press and release inside the target to increase the count.
+Movement outside the target or a canceled contact does not increase the count.
+The count stays available across navigation and suspend. Restart resets the count.

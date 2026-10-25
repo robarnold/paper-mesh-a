@@ -5,7 +5,7 @@
 `input::buttons` supplies hardware control descriptors, timestamped events, and a debounce component.
 Descriptors distinguish edge input, activation input, reset, and power recovery.
 Reset and power recovery descriptors do not imply readable input events.
-Firmware and simulator profiles assign identities. Applications select bindings separately.
+Firmware and simulator profiles assign identities. Applications select bindings for unreserved controls separately.
 Initial samples and recovery synchronize the level without an invented press.
 Backends select debounce intervals from the electrical input requirements.
 
@@ -25,7 +25,8 @@ A backend supplies stable control identities, labels, and supported event kinds.
 An identity is separate from an action binding such as back, select, or sleep.
 Profiles can supply default bindings.
 
-Platform components supply gesture recognition. Applications select action bindings.
+Platform components supply gesture recognition and reserve system navigation.
+Applications select bindings for the remaining controls.
 Display rotation does not change a control's identity.
 The design uses no universal list of enclosure buttons.
 
@@ -51,3 +52,19 @@ It receives `Unknown` when the backend cannot identify the cause.
 
 A simulator trace can record an external stimulus that the application cannot
 observe. Backend conformance tests give information about particular boot sequences.
+
+## System navigation routing
+
+`input::navigation::NavigationBindings` identifies the reserved Home key through a backend control identity.
+The platform router processes this key before application bindings.
+It converts `Pressed` and `Activated` into a Home request.
+It consumes all other events from that key, including release, synchronization, and cancellation.
+Startup holds and recovery do not create a Home request.
+Unreserved events continue to the application unchanged.
+
+The runtime sends a Home request to the application's home destination.
+It suppresses existing contacts until release to prevent input on the new destination.
+Full-screen modes can hide navigation controls, but they cannot change the Home-key binding.
+The application retains its restrictions during pending lifecycle requests.
+A confirmed Home-key wake returns Home after suspend completes.
+A shared touch interrupt alone does not establish a Home-key press.

@@ -7,12 +7,12 @@ Their delays do not represent measured hardware performance.
 
 ## Radio debugger
 
-1. Select `Radio debugger` on the device screen or in the browser controls.
+1. Select `Diagnostics`, then `Radio` on the device screen or in the browser controls.
 2. Select `Wi-Fi` or `Bluetooth LE`.
 3. If virtual time is paused, advance it by two seconds.
 4. Use `Next` and `Previous` to see more results.
 5. To repeat the scan, select `Scan again`.
-6. To return to the counter, select `Back`.
+6. To return to the Diagnostics menu, select `Back`.
 
 The [application](../application.md#radio-debugger) specifies scan controls and display behavior.
 The [discovery contract](../services/connectivity.md#current-discovery-interface) specifies identities and result order.
@@ -20,15 +20,15 @@ The [discovery contract](../services/connectivity.md#current-discovery-interface
 The `Radio scenario` selector changes the next scan.
 The nearby scenario has seven entries for each radio, including an empty name and unknown RSSI.
 Other scenarios produce empty results, a failure, an unavailable adapter, or a timeout.
-Reset restores the nearby scenario and the counter screen.
+Reset restores the nearby scenario and the home screen.
 The simulator does not access host radios or physical device radios.
 
 ## GNSS screen
 
-1. Select `GNSS` on the device screen or in the browser controls.
+1. Select `Diagnostics`, then `GNSS` on the device screen or in the browser controls.
 2. Select a GNSS scenario in the browser.
 3. If virtual time is paused, advance it with the time controls.
-4. To return to the home screen, select `Back`.
+4. To return to the Diagnostics menu, select `Back`.
 
 The [location screen](../application.md#location-screen) specifies readouts, units, and expiry.
 The simulator page labels test data outside the application screen.
@@ -82,7 +82,7 @@ The browser does not expose RTC fault controls or model oscillator drift.
 
 ## Power screen
 
-Select `Power` on the device screen or in the browser controls.
+Select `Diagnostics`, then `Power` on the device screen or in the browser controls.
 Select a power scenario in the browser.
 The selection takes effect immediately. Reset restores battery discharge and the home screen.
 Observations arrive at two-second virtual intervals. Values are test data, not an electrical model.
@@ -124,17 +124,24 @@ Separate native tests execute the firmware register adapter with simulated I2C r
 
 ## Diagnostics
 
-1. Select Diagnostics on Home.
-2. Select Start display check.
-3. Wait for black, then press and release BOOT.
-4. Repeat for white and gray.
-5. Press Function or Home to exit a pattern early.
+1. Select `Diagnostics` on Home.
+2. Select `Display`.
+3. Select `Start display check`.
+4. Wait for black, then press and release BOOT.
+5. Repeat for white and gray.
+6. Press Function to return to Diagnostics, or press Home to return to the home screen.
 
 The simulator uses the same application state and rendering as firmware.
 Each pattern requests a complete refresh and remains unchanged across heartbeat intervals.
 Input during a refresh cannot advance the sequence or start power off.
 The simulator records requested full refreshes but uses its existing synthetic delay.
 These scenarios do not establish physical panel quality or USB register responses.
+
+Select `Touch` in the Diagnostics menu to use the tap counter.
+Each component returns to the menu through `Back`.
+Press the hardware Home control to return directly to Home, including from full-screen modes.
+Back appears in the upper right on ordinary pages except Home.
+Native tests cover component navigation, incomplete taps, retained counts, pending requests, and returns from power subpages.
 
 ## USB touchpad
 
