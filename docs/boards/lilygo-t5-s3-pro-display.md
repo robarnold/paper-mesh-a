@@ -126,6 +126,7 @@ USB reports the retained state when a terminal connects.
 Confirmed shutdown releases the watchdog even when scanning failed, but the display fault remains latched.
 Unconfirmed shutdown retains watchdog protection and permits recovery through a processor reset.
 This reset cannot independently remove display power when the I2C bus or expander fails.
+The runtime provides [system power-off](lilygo-t5-s3-pro-power.md#system-power-off) for a complete restart without another display update.
 Loss of RTC retention permits a fresh startup, while ordinary processor resets preserve a valid fault.
 The current runtime does not expose a software command to clear the display fault.
 

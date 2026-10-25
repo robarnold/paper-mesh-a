@@ -172,3 +172,20 @@ The report stays available until reset or the next experiment.
 Preparation errors appear on the same page and permit a retry.
 `Back` returns to the battery and charger tabs.
 The [suspend contract](services/power.md#manual-suspend-experiment) defines the measurement interval and retention.
+
+### Power off
+
+Select `Power off` from the Power screen.
+Disconnect USB and other external power, then select `Power off` on the instruction page.
+The page shows the restart instruction from the backend.
+The image remains on the e-paper after power removal.
+The message `Power off requested` does not confirm that power has disappeared.
+
+The application also supports a backend-selected control held for three seconds.
+The current board uses BOOT. A short BOOT press does not request power off.
+This control remains available when display recovery has stopped screen updates.
+The runtime waits for an active display operation before it stops device services.
+An external supply, busy service, or preparation error rejects the request.
+The error permits a new request after the condition changes.
+
+See the [power-off contract](services/power.md#explicit-power-off) for completion and failure semantics.

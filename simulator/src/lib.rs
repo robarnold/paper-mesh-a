@@ -177,6 +177,7 @@ fn encode_png(size: Size, pixels: &[u8]) -> Result<Vec<u8>, png::EncodingError> 
 
 #[derive(Serialize)]
 pub struct Snapshot {
+    pub powered_off: bool,
     pub suspended: bool,
     pub suspend_elapsed_ms: Option<u64>,
     pub suspend_charge_loss_mah: Option<i32>,
@@ -257,6 +258,8 @@ pub struct ContactSnapshot {
 }
 
 pub struct Simulation {
+    power_off_request: bool,
+    powered_off: bool,
     suspend_request: Option<SuspendRequest>,
     suspended: Option<Suspended>,
     contacts: paper_mesh_platform::input::contacts::ContactState,
@@ -278,6 +281,8 @@ impl Default for Simulation {
     fn default() -> Self {
         let clock = VirtualClock::default();
         let mut simulation = Self {
+            power_off_request: false,
+            powered_off: false,
             suspend_request: None,
             suspended: None,
             contacts: paper_mesh_platform::input::contacts::ContactState::new(),
@@ -295,6 +300,10 @@ impl Default for Simulation {
             last_heartbeat_seconds: None,
         };
         simulation.app.set_suspend_controls(&buttons::WAKE_CONTROLS);
+        simulation
+            .app
+            .set_power_off_restart_hint("Restart the simulator.");
+        simulation.app.set_power_off_control(buttons::BOOT);
         simulation.poll();
         simulation
     }
@@ -302,6 +311,9 @@ impl Default for Simulation {
 
 impl Simulation {
     pub fn hardware_button(&mut self, id: u8, pressed: bool) -> Result<(), &'static str> {
+        if self.powered_off {
+            return Ok(());
+        }
         let event = self.buttons.sample(
             paper_mesh_platform::input::buttons::ButtonId(id),
             pressed,
@@ -324,7 +336,50 @@ impl Simulation {
         Ok(())
     }
     fn poll(&mut self) {
+        if self.powered_off {
+            return;
+        }
         self.display.advance_to(self.clock.now_ms());
+        self.power_off_request |= self.app.take_power_off_request();
+        if self.power_off_request {
+            if self.display.is_busy()
+                || self
+                    .app
+                    .present(&mut PortraitDisplay::new(&mut self.display))
+                    .expect("idle display")
+            {
+                return;
+            }
+            self.power_off_request = false;
+            use paper_mesh_platform::{power::PowerSource, power_off::PowerOffError};
+            let snapshot = self.power.snapshot(self.clock.now_ms());
+            let error = if self.discovery.is_active() {
+                Some(PowerOffError::Busy)
+            } else {
+                snapshot
+                    .charger
+                    .observation
+                    .filter(|value| {
+                        snapshot.charger.availability
+                            == paper_mesh_platform::power::PowerAvailability::Ready
+                            && ObservationWindow::new(self.clock.now_ms(), 10_000)
+                                .contains(value.observed_at_ms)
+                    })
+                    .map_or(Some(PowerOffError::Preparation), |value| {
+                        (value.value.power_good || value.value.source != PowerSource::None)
+                            .then_some(PowerOffError::ExternalPower)
+                    })
+            };
+            if let Some(error) = error {
+                self.app.finish_power_off(error);
+            } else {
+                self.touchpad_session.set_active(false, &mut self.touchpad);
+                self.touchpad.cancel();
+                self.touchpad.state = HostState::Disconnected;
+                self.powered_off = true;
+                return;
+            }
+        }
         if let Some(suspended) = &self.suspended {
             if self.clock.now_ms() < suspended.deadline_ms {
                 return;
@@ -403,12 +458,16 @@ impl Simulation {
     pub fn advance(&mut self, duration_ms: u64) {
         let end = self.clock.now_ms.saturating_add(duration_ms);
         while self.clock.now_ms < end {
+            if self.powered_off {
+                self.clock.now_ms = end;
+                return;
+            }
             if let Some(suspended) = &self.suspended {
                 self.clock.now_ms = end.min(suspended.deadline_ms);
                 self.poll();
                 continue;
             }
-            if self.suspend_request.is_some() {
+            if self.suspend_request.is_some() || self.power_off_request {
                 self.clock.now_ms = end.min(self.display.ready_at_ms.max(self.clock.now_ms + 1));
                 self.poll();
                 continue;
@@ -441,6 +500,9 @@ impl Simulation {
     }
 
     pub fn touch_frame_native(&mut self, frame: paper_mesh_platform::input::contacts::TouchFrame) {
+        if self.powered_off {
+            return;
+        }
         self.contacts.apply(&frame);
         if let Some(suspended) = &self.suspended {
             if suspended.touch_wake
@@ -572,8 +634,13 @@ impl Simulation {
         let power = self.app.power();
         let power_view = power.view();
         let targets: &[(&str, embedded_graphics::primitives::Rectangle)] =
-            if self.app.touchpad_open() {
+            if self.powered_off || self.app.touchpad_open() {
                 &[]
+            } else if power.is_open() && power.off.open {
+                &[
+                    ("Back", BACK_TARGET),
+                    ("Power off", paper_mesh_app::power_off::START),
+                ]
             } else if power.is_open() && power.suspend.open {
                 &[
                     ("Back", BACK_TARGET),
@@ -589,6 +656,7 @@ impl Simulation {
                     ("Battery", paper_mesh_app::power::BATTERY_TAB),
                     ("Charger", paper_mesh_app::power::CHARGER_TAB),
                     ("Suspend", paper_mesh_app::power::SUSPEND_TAB),
+                    ("Power off", paper_mesh_app::power::OFF_TAB),
                 ]
             } else if location.is_open() {
                 &[("Back", BACK_TARGET)]
@@ -611,6 +679,7 @@ impl Simulation {
                 ]
             };
         Snapshot {
+            powered_off: self.powered_off,
             suspended: self.suspended.is_some(),
             suspend_touch_wake: power.suspend.touch_wake(),
             suspend_wake_reasons: power

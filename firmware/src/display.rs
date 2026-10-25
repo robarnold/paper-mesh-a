@@ -75,6 +75,13 @@ pub struct Pins {
     pub start_vertical: peripherals::GPIO45<'static>,
 }
 
+/// Clear retained controls before heap, PSRAM, or scan driver setup.
+pub fn establish_controls_off(bus: &crate::bus::Bus) -> Result<(), Error> {
+    power_sequence::State::new()
+        .establish_off(&mut PowerAccess::new(bus))
+        .map_err(power_error)
+}
+
 pub fn establish_safe_state(bus: &crate::bus::Bus, pins: &mut Pins) -> Result<(), Error> {
     let mut power = power_sequence::State::new();
     let blank = power.blank_retained_outputs(&mut PowerAccess::new(bus));

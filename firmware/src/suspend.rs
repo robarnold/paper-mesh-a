@@ -193,6 +193,79 @@ async fn prepare(bus: &Bus, touch_wake: bool) -> Result<(PowerSnapshot, [u8; 2])
 }
 
 impl Controller {
+    pub async fn power_off(
+        &mut self,
+        bus: &Bus,
+    ) -> Result<(), paper_mesh_platform::power_off::PowerOffError> {
+        use crate::recovery::{self, Owner};
+        use paper_mesh_platform::power_off::PowerOffError;
+        if requested()
+            || PAUSED.load(Ordering::Acquire) != 0
+            || crate::discovery::is_active()
+            || crate::display_worker::is_refreshing()
+            || !recovery::arm(Owner::PowerOff, 15_000)
+        {
+            return Err(PowerOffError::Busy);
+        }
+        FAILED.store(false, Ordering::Release);
+        notify(true);
+        let mut controls_attempted = false;
+        let mut controls_confirmed = false;
+        let prepared = with_timeout(Duration::from_secs(6), async {
+            while PAUSED.load(Ordering::Acquire) != REGISTERED.load(Ordering::Acquire) {
+                Timer::after_millis(1).await;
+            }
+            if FAILED.load(Ordering::Acquire) {
+                return Err(PowerOffError::Preparation);
+            }
+            // Also clear retained controls when display startup or recovery failed.
+            controls_attempted = true;
+            crate::display::establish_controls_off(bus).map_err(|_| PowerOffError::Preparation)?;
+            controls_confirmed = true;
+            crate::power::check_power_off(bus).await
+        })
+        .await;
+        if controls_attempted && !controls_confirmed {
+            crate::display_recovery::latch_fault(crate::display_recovery::Stage::ShuttingDown);
+            // The watchdog repeats early boot shutdown. Do not resume with unconfirmed controls.
+            loop {
+                Timer::after_secs(1).await;
+            }
+        }
+        let result = match prepared {
+            Ok(Ok(())) => {
+                let cut = {
+                    let mut bus = bus.lock().await;
+                    crate::power::ship::cut(&mut *bus)
+                };
+                if matches!(cut, Err(crate::power::ship::Error::ExternalPower)) {
+                    Err(PowerOffError::ExternalPower)
+                } else {
+                    // An ACK can disappear with system power. Do not retry the cut.
+                    Timer::after_millis(1_000).await;
+                    let canceled = with_timeout(Duration::from_secs(1), async {
+                        crate::power::ship::cancel(&mut *bus.lock().await)
+                    })
+                    .await;
+                    if !matches!(canceled, Ok(Ok(()))) {
+                        // Keep services stopped. The independent watchdog restarts recovery.
+                        loop {
+                            Timer::after_secs(1).await;
+                        }
+                    }
+                    Err(cut
+                        .err()
+                        .map_or(PowerOffError::StillPowered, crate::power::ship_error))
+                }
+            }
+            Ok(Err(error)) => Err(error),
+            Err(_) => Err(PowerOffError::Preparation),
+        };
+        notify(false);
+        recovery::disable(Owner::PowerOff);
+        result
+    }
+
     pub async fn run(
         &mut self,
         bus: &Bus,

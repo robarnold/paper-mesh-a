@@ -147,7 +147,7 @@ fn initialize(
         .map_err(|error| error!("display: initialization failed: {}", error))
         .ok()
     } else {
-        error!("display: updates blocked; retained recovery fault");
+        error!("display: updates blocked; disconnect USB and hold BOOT for 3 seconds to power off");
         None
     };
     touch::start(
@@ -179,6 +179,8 @@ async fn run_app(
     // The application and its scan results use static RAM instead of the task stack.
     let app = APP.take();
     app.set_suspend_controls(&buttons::CONTROLS[..2]);
+    app.set_power_off_restart_hint("Hold Power for 2 seconds or connect USB.");
+    app.set_power_off_control(buttons::BOOT);
     let mut discovery = discovery::FirmwareDiscovery;
     let mut location = gnss::FirmwareLocation;
     let mut power = power::FirmwarePower;
@@ -200,7 +202,12 @@ async fn run_app(
             app.hardware_button(event, &[buttons::FUNCTION, buttons::HOME]);
         }
         touchpad_session.set_active(app.touchpad_open(), &mut touchpad);
-
+        if app.take_power_off_request() {
+            app.cancel_touchpad();
+            touchpad_session.set_active(false, &mut touchpad);
+            power_off_app(app, panel.as_mut(), bus, &mut suspend).await;
+            continue;
+        }
         if let Some(request) = app.take_suspend_request() {
             app.cancel_touchpad();
             touchpad_session.set_active(false, &mut touchpad);
@@ -286,6 +293,61 @@ fn process_touch(app: &mut App, session: &mut TouchpadSession, host: &mut usb::F
             );
         }
     }
+}
+
+fn power_off_app<'a>(
+    app: &'a mut App,
+    panel: Option<&'a mut display_worker::Client>,
+    bus: Option<&'a bus::Bus>,
+    controller: &'a mut suspend::Controller,
+) -> core::pin::Pin<alloc::boxed::Box<dyn core::future::Future<Output = ()> + 'a>> {
+    alloc::boxed::Box::pin(power_off_app_inner(app, panel, bus, controller))
+}
+
+async fn power_off_app_inner(
+    app: &mut App,
+    panel: Option<&mut display_worker::Client>,
+    bus: Option<&bus::Bus>,
+    controller: &mut suspend::Controller,
+) {
+    use paper_mesh_platform::power_off::PowerOffError;
+    let result = async {
+        let bus = bus.ok_or(PowerOffError::Unsupported)?;
+        // Reject external power before a final display update or service pause.
+        with_timeout(Duration::from_secs(1), power::check_power_off(bus))
+            .await
+            .map_err(|_| PowerOffError::Preparation)??;
+        if let Some(display) = panel {
+            with_timeout(Duration::from_secs(30), async {
+                loop {
+                    if let Err(error) = display.complete() {
+                        error!("power off: final display unavailable: {}", error);
+                        // The coordinator must confirm controls off before any battery cut.
+                        break Ok::<(), PowerOffError>(());
+                    }
+                    if !display.is_busy() {
+                        match app.present(&mut PortraitDisplay::new(&mut *display)) {
+                            Ok(false) => break Ok(()),
+                            Ok(true) => {}
+                            Err(error) => {
+                                error!("power off: final display unavailable: {}", error);
+                                break Ok(());
+                            }
+                        }
+                    }
+                    display_worker::changed().await;
+                }
+            })
+            .await
+            .map_err(|_| PowerOffError::Busy)??;
+        }
+        controller.power_off(bus).await
+    }
+    .await;
+    // Successful battery isolation cannot return a firmware result.
+    let error = result.err().unwrap_or(PowerOffError::StillPowered);
+    error!("power off: {}", error.label());
+    app.finish_power_off(error);
 }
 
 async fn suspend_app(

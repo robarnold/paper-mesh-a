@@ -5,6 +5,7 @@ pub enum Owner {
     Boot,
     Display,
     Suspend,
+    PowerOff,
 }
 
 // The maximum suspend interval is one hour, with a 15-second recovery margin.
@@ -81,8 +82,8 @@ mod tests {
 
     #[test]
     fn other_owners_cannot_modify_an_active_deadline() {
-        for active in [Owner::Boot, Owner::Display, Owner::Suspend] {
-            for other in [Owner::Boot, Owner::Display, Owner::Suspend] {
+        for active in [Owner::Boot, Owner::Display, Owner::Suspend, Owner::PowerOff] {
+            for other in [Owner::Boot, Owner::Display, Owner::Suspend, Owner::PowerOff] {
                 if other == active {
                     continue;
                 }
@@ -138,7 +139,7 @@ mod tests {
         assert!(manager.arm(Owner::Display, 10_000));
         assert!(manager.disable(Owner::Display));
         assert!(!manager.disable(Owner::Display));
-        assert!(manager.arm(Owner::Suspend, 15_000));
+        assert!(manager.arm(Owner::PowerOff, 15_000));
         assert_eq!(
             manager.watchdog.0,
             [
@@ -154,7 +155,7 @@ mod tests {
         let mut manager = Manager::new(FakeWatchdog::default());
         assert!(manager.arm(Owner::Boot, 15_000));
         assert!(!manager.arm(Owner::Display, 10_000));
-        assert!(!manager.disable(Owner::Suspend));
+        assert!(!manager.disable(Owner::PowerOff));
         assert!(manager.disable(Owner::Boot));
         assert!(manager.arm(Owner::Display, 10_000));
     }
@@ -164,6 +165,6 @@ mod tests {
         let mut previous = Manager::new(FakeWatchdog::default());
         assert!(previous.arm(Owner::Display, 10_000));
         let mut next_boot = Manager::new(FakeWatchdog::default());
-        assert!(next_boot.arm(Owner::Suspend, 15_000));
+        assert!(next_boot.arm(Owner::PowerOff, 15_000));
     }
 }

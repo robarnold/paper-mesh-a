@@ -13,6 +13,7 @@ pub mod display;
 pub mod input;
 pub mod location;
 pub mod power;
+pub mod power_off;
 pub mod rotation;
 pub mod suspend;
 pub mod time;

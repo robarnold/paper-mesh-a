@@ -1,4 +1,4 @@
-# LILYGO power observations
+# LILYGO power control and observations
 
 [Backend profile](lilygo-t5-s3-pro.md) · [Power contract](../services/power.md)
 
@@ -57,11 +57,49 @@ The thermistor field always reports its current state, including in the first re
 A read clears latched fault history. The application does not provide a persistent fault log.
 The watchdog flag can indicate default mode after reset or watchdog expiry.
 
-All writes contain only a register pointer for a read transaction.
-The adapter does not change charge limits, watchdog settings, ADC mode, or BATFET controls.
+The observation adapter writes only register pointers for read transactions.
+It does not change charge limits, watchdog settings, ADC mode, or BATFET controls.
 Charger ADC measurements remain unavailable because this adapter does not start or verify a conversion.
 Battery voltage and current come from the gauge.
-Charge control and power removal remain planned work.
+The separate power-off path controls BATFET, as described below.
+Charge control remains planned work.
+
+## System power-off
+
+The explicit power-off request uses the BQ25896 shipping mode to disconnect the battery from SYS.
+This removes system power only when external input is absent.
+USB power and wireless power can keep SYS supplied after battery isolation.
+A USB data disconnect does not establish input-power removal.
+The charger and gauge remain connected to the battery, so this mode does not eliminate all battery consumption.
+
+The runtime checks live `VBUS_GD`, input class, input power-good, and OTG configuration before preparation.
+Any input indication, enabled boost output, or failed read rejects the request.
+It completes the final display update when available, then pauses the participating services.
+It also requests display shutdown and verifies the control state before battery isolation.
+An unconfirmed display shutdown keeps services stopped until the independent watchdog resets the processor.
+
+The charger adapter repeats its input checks immediately before the cut request.
+It writes `REG09` as `(previous & 0x54) | 0x20`.
+This sets `BATFET_DIS`, selects immediate isolation, and preserves the JEITA voltage, safety timer, and BATFET reset settings.
+It clears command bits instead of repeating a prior command through a register read-modify-write.
+No charge limit, ADC, watchdog, or fuel-gauge configuration changes occur.
+
+Successful system power removal prevents a firmware completion report.
+If execution continues for one second, the runtime clears the cut request and verifies `REG09` bits `0x28` are clear.
+It resumes services only after this cancellation succeeds.
+If cancellation fails, services remain stopped until watchdog recovery.
+External input can change between the last check and the write, so a successful write does not prove system power removal.
+
+Hold Power for approximately two seconds to restart from shipping mode.
+Connecting external input also restarts the system.
+QON requires a low interval of 0.9–1.3 seconds under the datasheet's specified temperature conditions.
+BOOT, Function, touch, and the RTC cannot restart a system without power.
+The separate long Power hold performs a charger-controlled system reset and is not this shutdown operation.
+See the [BQ25896 datasheet][charger], sections 8.6, 9.2.10, 9.3, and 9.4.10.
+
+Native tests check register masks, input rejection, I2C failures, and cancellation readback.
+Physical tests must confirm SYS removal, restart, current consumption, and external-input races.
+These tests must also verify the display remains off during failure recovery.
 
 ## Manual light sleep
 
@@ -79,7 +117,7 @@ It retains a separate idle UART1 transmitter with no attached pins during the pa
 This transmitter keeps UART1 clocks available without the receive wake lock.
 HAL sleep preparation polls UART transmitters and can stop indefinitely if UART1 clocks are disabled.
 The task drops the idle transmitter before it restores normal GNSS input.
-The display has already issued its rail shutdown sequence before this step.
+The display has already completed its [checked shutdown sequence](lilygo-t5-s3-pro-display.md#power-sequence-and-recovery) before this step.
 It also drops its temporary LCD and RMT drivers before it reports completion.
 Both drivers retain clock wake locks for their lifetime. Rail shutdown alone does not release those locks.
 The touch controller remains supplied. This experiment does not minimize every peripheral load.
@@ -173,7 +211,8 @@ It must also cover USB insertion, USB removal, charge completion, battery absenc
 Cell profile verification and calibration require separate hardware evidence.
 Physical operation and measurement accuracy remain unverified.
 
-The source review date is 2026-10-18.
+The observation source review date is 2026-10-18.
+The power-off source review date is 2026-10-23.
 The gauge reference is SLUUBD4A, revised November 2022.
 The charger reference is SLUSC76C, revised May 2018.
 

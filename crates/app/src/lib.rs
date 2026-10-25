@@ -5,8 +5,10 @@
 //! Each platform delivers input and schedules application polls.
 
 pub mod debugger;
+
 pub mod location;
 pub mod power;
+pub mod power_off;
 pub mod suspend;
 pub mod touchpad;
 
@@ -51,6 +53,8 @@ enum HomeAction {
 }
 
 pub struct App {
+    power_off_control: Option<paper_mesh_platform::input::buttons::ButtonId>,
+    power_off_deadline: Option<u64>,
     touchpad_open: bool,
     touchpad_host: paper_mesh_platform::touchpad::HostState,
     started_at_ms: u64,
@@ -72,6 +76,8 @@ impl App {
     /// This constructor permits static storage with a specified start time in the platform epoch.
     pub const fn new_at(now: u64) -> Self {
         Self {
+            power_off_control: None,
+            power_off_deadline: None,
             touchpad_open: false,
             touchpad_host: paper_mesh_platform::touchpad::HostState::Disconnected,
             started_at_ms: now,
@@ -91,6 +97,16 @@ impl App {
     /// The platform supplies time through the clock argument.
     pub fn tick(&mut self, clock: &impl Clock) -> Option<u64> {
         let now = clock.now_ms();
+        if self
+            .power_off_deadline
+            .is_some_and(|deadline| now >= deadline)
+        {
+            self.power_off_deadline = None;
+            self.cancel_touchpad();
+            self.power.open();
+            self.power.off.request();
+            self.dirty = true;
+        }
         if !self.heartbeat.poll(now) {
             return None;
         }
@@ -106,6 +122,7 @@ impl App {
             .min(self.next_heartbeat_ms())
             .min(self.location.next_deadline_ms().unwrap_or(u64::MAX))
             .min(self.power.next_deadline_ms().unwrap_or(u64::MAX))
+            .min(self.power_off_deadline.unwrap_or(u64::MAX))
     }
 
     pub fn next_heartbeat_ms(&self) -> u64 {
@@ -122,6 +139,14 @@ impl App {
         event: paper_mesh_platform::input::buttons::ButtonEvent,
         exit_controls: &[paper_mesh_platform::input::buttons::ButtonId],
     ) {
+        if Some(event.id) == self.power_off_control {
+            self.power_off_deadline = match event.state {
+                paper_mesh_platform::input::buttons::ButtonState::Pressed => {
+                    Some(event.at_ms.saturating_add(3_000))
+                }
+                _ => None,
+            };
+        }
         if exit_controls.contains(&event.id)
             && event.state == paper_mesh_platform::input::buttons::ButtonState::Pressed
         {
@@ -190,6 +215,24 @@ impl App {
 
     pub fn poll_power(&mut self, clock: &impl Clock, power: &mut impl Power) {
         self.dirty |= self.power.poll(clock.now_ms(), power);
+    }
+
+    pub fn set_power_off_restart_hint(&mut self, hint: &'static str) {
+        self.power.off.set_restart_hint(hint);
+    }
+
+    pub fn set_power_off_control(&mut self, id: paper_mesh_platform::input::buttons::ButtonId) {
+        self.power_off_control = Some(id);
+        self.power_off_deadline = None;
+    }
+
+    pub fn take_power_off_request(&mut self) -> bool {
+        self.power.off.take_request()
+    }
+
+    pub fn finish_power_off(&mut self, error: paper_mesh_platform::power_off::PowerOffError) {
+        self.power.off.finish(error);
+        self.dirty = true;
     }
 
     pub fn touch(&mut self, event: TouchEvent) {

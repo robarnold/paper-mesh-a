@@ -112,6 +112,13 @@ The firmware decoder tests also cover simultaneous events and unattributed expan
 | `stale` | One observation, then no reports. Application age limits control expiry. |
 
 Native tests cover independent failures, recovery, expiry, navigation, and display updates.
+
+The Power off page models an explicit system shutdown.
+It requires a valid observation with no external power, then completes the final display frame and stops application work.
+The frame remains visible. Restart the simulator to start a new application epoch.
+The virtual BOOT control also requests power off after a three-second hold.
+External-power refusal keeps the application available for a retry after a scenario change.
+These scenarios do not model charger leakage or prove physical supply removal.
 Large and small time advances produce the same state and completed frame.
 Separate native tests execute the firmware register adapter with simulated I2C responses.
 

@@ -2,7 +2,7 @@
 
 [Device services](../device-interfaces.md)
 
-Power observations and a manual suspend experiment are implemented.
+Power observations, a manual suspend experiment, and explicit power-off are implemented.
 Charge control and general lifecycle planning stay planned work.
 
 ## Current observations
@@ -68,6 +68,25 @@ They exclude most display preparation and restoration costs.
 Elapsed time describes the interval with sleep permitted, not verified hardware sleep residency.
 
 The [hardware adapter](../boards/lilygo-t5-s3-pro-power.md#manual-light-sleep) defines preparation and verification limits.
+
+## Explicit power off
+
+The application requests power removal through `App::take_power_off_request`.
+The runtime supplies a restart instruction and an optional logical control for the application hold gesture.
+The application does not select charger registers or infer external power from USB connection state.
+
+The runtime waits for an active display operation before it stops services.
+The final image is optional after a display failure. Confirmed display shutdown remains required before power removal.
+The backend checks external power before preparation and again before the final power-control write.
+`PowerOffError` distinguishes unsupported, busy, external-power, preparation, and still-powered results.
+A successful physical power removal cannot return to the application.
+If execution continues, the backend cancels the cut request before normal services resume.
+An unconfirmed cancellation keeps services stopped until reset.
+
+The simulator retains the final image and stops application work after a successful modeled transition.
+It tests explicit requests, the hold gesture, external-power refusal, missing observations, and retry.
+Simulator completion does not prove physical supply removal or battery leakage current.
+The [board adapter](../boards/lilygo-t5-s3-pro-power.md) defines the electrical mechanism and its limits.
 
 ## Planned control and lifecycle services
 
