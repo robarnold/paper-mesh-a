@@ -5,6 +5,7 @@ extern crate alloc;
 
 mod bus;
 mod buttons;
+mod device_control;
 
 mod diagnostics;
 mod discovery;
@@ -22,9 +23,10 @@ mod scan_demo;
 mod suspend;
 mod touch;
 mod usb;
+mod usb_protocol;
 
 use embassy_executor::Spawner;
-use embassy_futures::select::{select, select4};
+use embassy_futures::select::{Either, select, select4};
 use embassy_time::{Duration, Instant, Timer, with_timeout};
 use esp_backtrace as _;
 use esp_hal::{clock::CpuClock, system::Stack, timer::timg::TimerGroup};
@@ -47,7 +49,13 @@ esp_bootloader_esp_idf::esp_app_desc!();
 #[esp_rtos::main]
 async fn main(spawner: Spawner) -> ! {
     let (panel, bus, suspend) = initialize(spawner);
-    run_app(panel, bus, suspend).await
+    let mut application = alloc::boxed::Box::pin(run_app(panel, bus, suspend));
+    loop {
+        match select(application.as_mut(), device_control::request()).await {
+            Either::First(never) => match never {},
+            Either::Second(request) => device_control::execute(request, bus).await,
+        }
+    }
 }
 
 fn initialize(

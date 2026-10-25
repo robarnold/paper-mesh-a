@@ -341,6 +341,7 @@ dependencies = [
  "embassy-sync",
  "embedded-graphics",
  "embedded-hal",
+ "heapless",
  "paper-mesh-app",
  "paper-mesh-ed047tc1",
  "paper-mesh-platform",

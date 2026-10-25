@@ -36,13 +36,14 @@ pub enum Service {
     Usb,
     Hid,
     Logs,
+    Commands,
 }
 
 static REQUESTED: AtomicBool = AtomicBool::new(false);
 static REGISTERED: AtomicU32 = AtomicU32::new(0);
 static PAUSED: AtomicU32 = AtomicU32::new(0);
 static FAILED: AtomicBool = AtomicBool::new(false);
-static SIGNALS: [Signal<CriticalSectionRawMutex, ()>; 8] = [const { Signal::new() }; 8];
+static SIGNALS: [Signal<CriticalSectionRawMutex, ()>; 9] = [const { Signal::new() }; 9];
 static WAKE_BITS: AtomicU32 = AtomicU32::new(0);
 static PIN: Mutex<CriticalSectionRawMutex, RefCell<Option<Flex<'static>>>> =
     Mutex::new(RefCell::new(None));

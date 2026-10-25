@@ -82,6 +82,46 @@ pub fn establish_controls_off(bus: &crate::bus::Bus) -> Result<(), Error> {
         .map_err(power_error)
 }
 
+/// Verify the existing off state without changing display controls or supplies.
+pub fn verify_controls_off(bus: &crate::bus::Bus) -> Result<(), Error> {
+    let mut access = ReadOnlyPowerAccess {
+        bus: lock_bus(bus)?,
+    };
+    power_sequence::State::new()
+        .verify_off(&mut access)
+        .map_err(power_error)
+}
+
+struct ReadOnlyPowerAccess<'a> {
+    bus: crate::bus::BusGuard<'a>,
+}
+
+impl power_sequence::Access for ReadOnlyPowerAccess<'_> {
+    type Error = Error;
+
+    fn read(&mut self, device: u8, register: u8) -> Result<u8, Error> {
+        let mut value = [0];
+        self.bus
+            .write_read(device, &[register], &mut value)
+            .map_err(Error::I2c)?;
+        Ok(value[0])
+    }
+
+    fn write(&mut self, _device: u8, _register: u8, _value: u8) -> Result<(), Error> {
+        Err(Error::Configuration)
+    }
+
+    fn wait_ms(&mut self, milliseconds: u32) {
+        Delay::new().delay_millis(milliseconds);
+    }
+
+    fn now_ms(&self) -> u64 {
+        Instant::now().duration_since_epoch().as_millis()
+    }
+
+    fn mark(&mut self, _stage: power_sequence::Stage) {}
+}
+
 pub fn establish_safe_state(bus: &crate::bus::Bus, pins: &mut Pins) -> Result<(), Error> {
     let mut power = power_sequence::State::new();
     let blank = power.blank_retained_outputs(&mut PowerAccess::new(bus));

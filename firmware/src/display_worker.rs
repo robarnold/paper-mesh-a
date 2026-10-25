@@ -4,7 +4,7 @@ use crate::display::NATIVE_SCREEN_SIZE;
 use core::sync::atomic::{AtomicBool, Ordering};
 use embassy_futures::select::{Either, select};
 use embassy_sync::{
-    blocking_mutex::raw::CriticalSectionRawMutex,
+    blocking_mutex::{Mutex, raw::CriticalSectionRawMutex},
     channel::{Channel, TrySendError},
     signal::Signal,
 };
@@ -19,9 +19,15 @@ static REQUEST: Channel<CriticalSectionRawMutex, Panel, 1> = Channel::new();
 static COMPLETE: Channel<CriticalSectionRawMutex, (Panel, Result<(), Error>), 1> = Channel::new();
 static CHANGED: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 static REFRESHING: AtomicBool = AtomicBool::new(false);
+static IN_FLIGHT: AtomicBool = AtomicBool::new(false);
+static COMPLETION_HANDOFF: Mutex<CriticalSectionRawMutex, ()> = Mutex::new(());
 
 pub fn is_refreshing() -> bool {
     REFRESHING.load(Ordering::Relaxed)
+}
+
+pub fn in_flight() -> bool {
+    IN_FLIGHT.load(Ordering::Acquire)
 }
 
 pub async fn changed() {
@@ -45,8 +51,11 @@ pub async fn worker() {
         REFRESHING.store(true, Ordering::Relaxed);
         let result = panel.refresh();
         REFRESHING.store(false, Ordering::Relaxed);
-        // The runtime cannot submit again before it receives this panel.
-        assert!(COMPLETE.try_send((panel, result)).is_ok());
+        // Keep core 0 from receiving the panel before this request's flag clears.
+        COMPLETION_HANDOFF.lock(|_| {
+            assert!(COMPLETE.try_send((panel, result)).is_ok());
+            IN_FLIGHT.store(false, Ordering::Release);
+        });
         CHANGED.signal(());
     }
 }
@@ -109,8 +118,10 @@ impl Display for Client {
 
     fn refresh(&mut self) -> Result<(), Error> {
         let panel = self.panel.take().ok_or(Error::Busy)?;
+        IN_FLIGHT.store(true, Ordering::Release);
         if let Err(TrySendError::Full(panel)) = REQUEST.try_send(panel) {
             self.panel = Some(panel);
+            IN_FLIGHT.store(false, Ordering::Release);
             return Err(Error::Busy);
         }
         Ok(())

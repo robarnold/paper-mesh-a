@@ -40,6 +40,7 @@ The default build waits for application requests.
 Application controls request scans through the portable discovery interface.
 
 The [USB backend profile](boards/lilygo-t5-s3-pro-usb.md#diagnostics-and-recovery) specifies CDC logs, ROM recovery, and flashing after OTG startup.
+The [download command](boards/lilygo-t5-s3-pro-usb.md#enter-rom-download-mode) permits software entry when the application and display are idle.
 
 ## Linker configuration
 

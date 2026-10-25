@@ -22,6 +22,7 @@ toolchain-check:
 
 native-check:
     bash scripts/require-container.sh
+    python3 -B -m unittest discover -s scripts/tests
     cargo clippy --locked --workspace --all-targets -- -D warnings
     cargo test --locked --workspace
 
@@ -51,6 +52,7 @@ firmware-build:
 # Produce an ELF and merged boot image without hardware access.
 image: firmware-build
     bash scripts/build-image.sh
+
 
 fmt:
     bash scripts/require-container.sh

@@ -2,3 +2,5 @@
 **/target/
 .devcontainer/local/
 /backups/
+__pycache__/
+*.py[cod]

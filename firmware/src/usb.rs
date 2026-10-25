@@ -1,13 +1,18 @@
 //! Composite USB transport. HID input and diagnostic CDC share the internal PHY.
 
+mod control;
+
 use core::{
+    cell::RefCell,
     fmt::Write,
     sync::atomic::{AtomicBool, AtomicU32, Ordering},
 };
 use embassy_executor::Spawner;
 use embassy_futures::select::{Either, select};
 use embassy_sync::{
-    blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel, signal::Signal,
+    blocking_mutex::{Mutex, raw::CriticalSectionRawMutex},
+    channel::Channel,
+    signal::Signal,
 };
 use embassy_time::{Duration, Instant, Timer, with_timeout};
 use embassy_usb::{
@@ -47,6 +52,16 @@ static CHANGED: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 static RESTART: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 static FRAMES: Channel<CriticalSectionRawMutex, (u32, HostFrame), 16> = Channel::new();
 static LOGS: Channel<CriticalSectionRawMutex, heapless::String<192>, 32> = Channel::new();
+struct Reply {
+    generation: u32,
+    owner: Option<u32>,
+    line: alloc::string::String,
+    acknowledgement: Option<control::Ticket>,
+}
+static REPLIES: Channel<CriticalSectionRawMutex, Reply, 2> = Channel::new();
+static REPLY_SENT: Signal<CriticalSectionRawMutex, (control::Ticket, bool)> = Signal::new();
+static CONTROL: Mutex<CriticalSectionRawMutex, RefCell<control::State>> =
+    Mutex::new(RefCell::new(control::State::new()));
 static LOGGER: Logger = Logger;
 
 pub struct FirmwareTouchpad;
@@ -88,7 +103,9 @@ pub async fn changed() {
 }
 fn change(status: u32) {
     STATUS.store(status, Ordering::Release);
-    GENERATION.fetch_add(1, Ordering::AcqRel);
+    let previous = GENERATION.fetch_add(1, Ordering::AcqRel);
+    REPLIES.clear();
+    CONTROL.lock(|state| state.borrow_mut().observe(previous.wrapping_add(1), false));
     FRAMES.clear();
     CHANGED.signal(());
 }
@@ -176,7 +193,8 @@ pub fn start(
             hid_boot_protocol: hid::HidBootProtocol::None,
         },
     );
-    let (sender, _) = cdc.split();
+    let (sender, receiver, control) = cdc.split_with_control();
+    spawner.spawn(command_worker(receiver, control).unwrap());
     spawner.spawn(bus_worker(builder.build()).unwrap());
     spawner.spawn(hid_worker(hid).unwrap());
     spawner.spawn(log_worker(sender).unwrap());
@@ -306,44 +324,286 @@ async fn write_logs(sender: &mut cdc_acm::Sender<'static, Driver<'static>>) {
         }
         sender.wait_connection().await;
         if connection != Some(generation) {
-            if send_log_line(
-                sender,
-                &crate::suspend::trace::connection_line(),
-                generation,
-            )
-            .await
-                && send_log_line(sender, &crate::suspend::trace::wake_line(), generation).await
-                && send_log_line(
-                    sender,
-                    &crate::display_recovery::connection_line(),
-                    generation,
-                )
-                .await
-            {
+            // End any partial line that the previous connection received.
+            if !send_log_line(sender, "\n", generation).await {
+                continue;
+            }
+            if send_connection_info(sender, generation).await {
                 connection = Some(generation);
             }
             continue;
         }
-        let line = match select(LOGS.receive(), Timer::after_millis(250)).await {
-            Either::First(line) => line,
-            Either::Second(()) => continue,
+        let (line, owner, acknowledgement) = match select(
+            REPLIES.receive(),
+            select(LOGS.receive(), Timer::after_millis(250)),
+        )
+        .await
+        {
+            Either::First(reply) => {
+                if reply.generation != generation
+                    || !reply_session_live(generation, reply.owner)
+                    || reply
+                        .acknowledgement
+                        .is_some_and(|ticket| !control_reply_live(ticket))
+                {
+                    if let Some(ticket) = reply.acknowledgement {
+                        REPLY_SENT.signal((ticket, false));
+                    }
+                    continue;
+                }
+                (reply.line, reply.owner, reply.acknowledgement)
+            }
+            Either::Second(Either::First(line)) => {
+                (alloc::string::String::from(line.as_str()), None, None)
+            }
+            _ => continue,
         };
-        if !send_log_line(sender, &line, generation).await {
+        let sent = send_line(sender, &line, generation, owner, acknowledgement).await;
+        if let Some(ticket) = acknowledgement {
+            REPLY_SENT.signal((ticket, sent && control_reply_live(ticket)));
+        }
+        if !sent {
             connection = None;
         }
     }
 }
 
-fn log_connection(sender: &cdc_acm::Sender<'static, Driver<'static>>, generation: u32) -> bool {
+fn send_connection_info<'a>(
+    sender: &'a mut cdc_acm::Sender<'static, Driver<'static>>,
+    generation: u32,
+) -> core::pin::Pin<alloc::boxed::Box<dyn core::future::Future<Output = bool> + 'a>> {
+    alloc::boxed::Box::pin(async move {
+        for line in [
+            crate::suspend::trace::connection_line(),
+            crate::suspend::trace::wake_line(),
+            crate::display_recovery::connection_line(),
+        ] {
+            if !send_log_line(sender, &line, generation).await {
+                return false;
+            }
+        }
+        true
+    })
+}
+
+#[embassy_executor::task]
+async fn command_worker(
+    mut receiver: cdc_acm::Receiver<'static, Driver<'static>>,
+    control: cdc_acm::ControlChanged<'static>,
+) {
+    use crate::usb_protocol as protocol;
+    crate::suspend::register(crate::suspend::Service::Commands);
+    let mut frame = protocol::Framer::default();
+    let mut owner = None;
+    let mut control_owner = None;
+    let mut packet = [0; 64];
+    loop {
+        crate::suspend::checkpoint(crate::suspend::Service::Commands).await;
+        let generation = GENERATION.load(Ordering::Acquire);
+        let connected = STATUS.load(Ordering::Acquire) == 1 && receiver.dtr();
+        CONTROL.lock(|state| state.borrow_mut().observe(generation, connected));
+        let observed_owner = CONTROL.lock(|state| state.borrow().owner(generation));
+        if control_owner != observed_owner {
+            frame.clear();
+            control_owner = observed_owner;
+        }
+        if owner != Some(generation) || !connected {
+            if let Some(previous) = owner.take() {
+                command_disconnected(previous);
+                REPLIES.clear();
+            }
+            frame.clear();
+            if !connected {
+                Timer::after_millis(50).await;
+                continue;
+            }
+            owner = Some(generation);
+        }
+        let length = match with_timeout(
+            Duration::from_millis(100),
+            select(control.control_changed(), receiver.read_packet(&mut packet)),
+        )
+        .await
+        {
+            Ok(Either::First(())) => {
+                // Notifications can combine a close and reopen. Invalidate the old owner
+                // even when DTR is already high when the worker receives the event.
+                CONTROL.lock(|state| state.borrow_mut().disconnect(generation));
+                if !control.dtr() {
+                    command_disconnected(generation);
+                }
+                frame.clear();
+                continue;
+            }
+            Ok(Either::Second(Ok(length))) => length,
+            Ok(Either::Second(Err(_))) => {
+                command_disconnected(generation);
+                frame.clear();
+                Timer::after_millis(50).await;
+                continue;
+            }
+            Err(_) => continue,
+        };
+        if GENERATION.load(Ordering::Acquire) != generation
+            || !receiver.dtr()
+            || crate::suspend::requested()
+        {
+            if !receiver.dtr() {
+                command_disconnected(generation);
+            }
+            frame.clear();
+            continue;
+        }
+        let Some(packet_owner) = control_owner else {
+            frame.clear();
+            continue;
+        };
+        for byte in &packet[..length] {
+            if !control_connected(packet_owner) || crate::suspend::requested() {
+                frame.clear();
+                break;
+            }
+            let Some(message) = frame.push(*byte) else {
+                continue;
+            };
+            let reply = match message {
+                Ok(bytes) => handle_command(&bytes, packet_owner),
+                Err(()) => Some(protocol::error(
+                    serde_json::Value::Null,
+                    -32600,
+                    "Request exceeds 512 bytes",
+                )),
+            };
+            if let Some(reply) = reply
+                && with_timeout(
+                    Duration::from_millis(250),
+                    REPLIES.send(Reply {
+                        generation,
+                        // Errors belong to the same CDC session as their requests.
+                        owner: Some(packet_owner),
+                        line: reply,
+                        acknowledgement: None,
+                    }),
+                )
+                .await
+                .is_err()
+            {
+                command_disconnected(generation);
+                frame.clear();
+                break;
+            }
+        }
+    }
+}
+
+fn command_disconnected(generation: u32) {
+    CONTROL.lock(|state| state.borrow_mut().disconnect(generation));
+}
+
+fn handle_command(bytes: &[u8], owner: u32) -> Option<alloc::string::String> {
+    use crate::usb_protocol::{self, Route};
+    match usb_protocol::route(bytes) {
+        Ok(Route::Ignore) => None,
+        Ok(Route::Bootloader(id)) => {
+            if control_connected(owner) {
+                crate::device_control::queue(id, owner)
+            } else {
+                Some(usb_protocol::error(id, -32000, "USB connection changed"))
+            }
+        }
+        Ok(Route::Diagnostic(id)) => Some(usb_protocol::error(id, -32601, "Method not found")),
+        Err(reply) => Some(reply),
+    }
+}
+
+pub fn control_connected(owner: u32) -> bool {
+    let generation = GENERATION.load(Ordering::Acquire);
     STATUS.load(Ordering::Acquire) == 1
+        && CONTROL.lock(|state| state.borrow().connected(owner, generation))
+}
+
+fn control_reply_live(ticket: control::Ticket) -> bool {
+    control_connected(ticket.owner)
+        && GENERATION.load(Ordering::Acquire) == ticket.generation
+        && CONTROL.lock(|state| state.borrow().reply_live(ticket))
+}
+
+fn reply_session_live(generation: u32, owner: Option<u32>) -> bool {
+    GENERATION.load(Ordering::Acquire) == generation
+        && CONTROL.lock(|state| state.borrow().reply_session_live(generation, owner))
+}
+
+struct ReplyLease(control::Ticket);
+
+impl Drop for ReplyLease {
+    fn drop(&mut self) {
+        CONTROL.lock(|state| state.borrow_mut().cancel_reply(self.0));
+    }
+}
+
+/// Return success only after the CDC writer has sent the complete response.
+pub async fn send_control_reply(owner: u32, line: alloc::string::String) -> bool {
+    if !control_connected(owner) {
+        return false;
+    }
+    let generation = GENERATION.load(Ordering::Acquire);
+    let Some(ticket) = CONTROL.lock(|state| state.borrow_mut().begin_reply(owner, generation))
+    else {
+        return false;
+    };
+    // Cancellation also invalidates replies that are queued or between USB packets.
+    let _lease = ReplyLease(ticket);
+    matches!(
+        with_timeout(Duration::from_secs(2), async {
+            if !control_reply_live(ticket) {
+                return false;
+            }
+            REPLIES
+                .send(Reply {
+                    generation,
+                    owner: Some(owner),
+                    line,
+                    acknowledgement: Some(ticket),
+                })
+                .await;
+            loop {
+                let (completed, sent) = REPLY_SENT.wait().await;
+                if completed == ticket {
+                    return control_reply_live(ticket)
+                        && CONTROL
+                            .lock(|state| state.borrow().accepts_ack(ticket, completed, sent));
+                }
+            }
+        })
+        .await,
+        Ok(true)
+    )
+}
+
+fn log_connection(sender: &cdc_acm::Sender<'static, Driver<'static>>, generation: u32) -> bool {
+    let connected = STATUS.load(Ordering::Acquire) == 1
         && GENERATION.load(Ordering::Acquire) == generation
-        && sender.dtr()
+        && sender.dtr();
+    if !connected {
+        CONTROL.lock(|state| state.borrow_mut().disconnect(generation));
+    }
+    connected
 }
 
 async fn send_log_line(
     sender: &mut cdc_acm::Sender<'static, Driver<'static>>,
     line: &str,
     generation: u32,
+) -> bool {
+    send_line(sender, line, generation, None, None).await
+}
+
+async fn send_line(
+    sender: &mut cdc_acm::Sender<'static, Driver<'static>>,
+    line: &str,
+    generation: u32,
+    owner: Option<u32>,
+    acknowledgement: Option<control::Ticket>,
 ) -> bool {
     if line.is_empty() {
         return true;
@@ -354,6 +614,8 @@ async fn send_log_line(
         .chain(line.len().is_multiple_of(64).then_some(&[][..]));
     for packet in packets {
         if !log_connection(sender, generation)
+            || !reply_session_live(generation, owner)
+            || acknowledgement.is_some_and(|ticket| !control_reply_live(ticket))
             || !matches!(
                 with_timeout(Duration::from_millis(250), sender.write_packet(packet)).await,
                 Ok(Ok(()))
@@ -362,5 +624,7 @@ async fn send_log_line(
             return false;
         }
     }
-    true
+    log_connection(sender, generation)
+        && reply_session_live(generation, owner)
+        && acknowledgement.is_none_or(control_reply_live)
 }
