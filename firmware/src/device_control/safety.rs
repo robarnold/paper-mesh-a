@@ -1,4 +1,11 @@
 //! Conditions required before a USB request can reset the processor.
+//!
+//! # Design choices
+//!
+//! - Reject ROM entry if the runtime cannot establish that display and power controls
+//!   are idle.
+//!
+//! See [Enter ROM download mode](../../../docs/boards/lilygo-t5-s3-pro-usb.md#enter-rom-download-mode).
 
 pub struct Check {
     pub connected: bool,

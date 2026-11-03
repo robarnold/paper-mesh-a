@@ -1,4 +1,11 @@
 //! Bind reset requests and replies to one observed CDC connection.
+//!
+//! # Design choices
+//!
+//! - Invalidate a pending reset reply on disconnect so a different host session
+//!   cannot acknowledge it.
+//!
+//! See [Enter ROM download mode](../../../docs/boards/lilygo-t5-s3-pro-usb.md#enter-rom-download-mode).
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Ticket {

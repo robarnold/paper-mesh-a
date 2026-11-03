@@ -1,4 +1,11 @@
 //! Retain a panic backtrace while USB OTG prevents Serial/JTAG panic output.
+//!
+//! # Design choices
+//!
+//! - Keep panic evidence in RTC memory so the next CDC session can report a fault
+//!   after the diagnostic transport returns.
+//!
+//! See [Diagnostics and recovery](../../docs/boards/lilygo-t5-s3-pro-usb.md#diagnostics-and-recovery).
 
 use core::sync::atomic::{AtomicU32, Ordering};
 

@@ -1,4 +1,11 @@
 //! Enter the ESP32-S3 ROM downloader after the board reaches a safe state.
+//!
+//! # Design choices
+//!
+//! - Disconnect the application USB interface before ROM entry so the host can
+//!   distinguish the two sessions.
+//!
+//! See [Enter ROM download mode](../../../docs/boards/lilygo-t5-s3-pro-usb.md#enter-rom-download-mode).
 
 use esp_hal::{
     delay::Delay,

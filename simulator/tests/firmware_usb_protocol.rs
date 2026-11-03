@@ -1,3 +1,12 @@
+//! CDC request framing tests.
+//!
+//! # Design choices
+//!
+//! - Split and interrupt CDC frames so the parser must preserve request boundaries
+//!   across fragments and disconnects.
+//!
+//! See [LILYGO USB touchpad and diagnostics](../../docs/boards/lilygo-t5-s3-pro-usb.md).
+
 extern crate alloc;
 
 #[allow(dead_code)]

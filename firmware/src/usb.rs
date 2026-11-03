@@ -1,4 +1,11 @@
 //! Composite USB transport. HID input and diagnostic CDC share the internal PHY.
+//!
+//! # Design choices
+//!
+//! - Expose touchpad reports and diagnostic logs through one composite device because
+//!   both functions share the internal USB PHY.
+//!
+//! See [LILYGO USB touchpad and diagnostics](../../docs/boards/lilygo-t5-s3-pro-usb.md).
 
 mod control;
 

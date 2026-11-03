@@ -1,4 +1,11 @@
 //! Enter the ROM downloader only while the retained application future is paused.
+//!
+//! # Design choices
+//!
+//! - Resume the same application after a refused ROM request so preparation cannot
+//!   discard pending state.
+//!
+//! See [Enter ROM download mode](../../docs/boards/lilygo-t5-s3-pro-usb.md#enter-rom-download-mode).
 
 mod rom;
 mod safety;

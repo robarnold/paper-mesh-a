@@ -1,4 +1,11 @@
 //! Verify reset-command ownership and cancellation without a USB device.
+//!
+//! # Design choices
+//!
+//! - Change connections during a reset request to detect replies that might otherwise
+//!   escape their original session.
+//!
+//! See [Enter ROM download mode](../../docs/boards/lilygo-t5-s3-pro-usb.md#enter-rom-download-mode).
 
 #[path = "../../firmware/src/usb/control.rs"]
 mod control;

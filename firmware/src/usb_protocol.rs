@@ -1,4 +1,11 @@
 //! Bounded CDC frames and routing for acknowledged device commands.
+//!
+//! # Design choices
+//!
+//! - Discard incomplete CDC requests across disconnects so bytes from two sessions
+//!   cannot form a maintenance command.
+//!
+//! See [LILYGO USB touchpad and diagnostics](../../docs/boards/lilygo-t5-s3-pro-usb.md).
 
 use alloc::string::{String, ToString};
 use serde_json::{Value, json};

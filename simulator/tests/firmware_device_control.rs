@@ -1,3 +1,12 @@
+//! USB download request guards tests.
+//!
+//! # Design choices
+//!
+//! - Exercise ROM-entry guards with malformed requests and busy hardware states
+//!   before either can trigger reset.
+//!
+//! See [Enter ROM download mode](../../docs/boards/lilygo-t5-s3-pro-usb.md#enter-rom-download-mode).
+
 extern crate alloc;
 
 #[path = "../../firmware/src/usb_protocol.rs"]
