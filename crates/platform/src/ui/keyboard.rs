@@ -1,6 +1,6 @@
 //! Standard keyboard pages and their visible key bounds.
 
-use super::{Style, TextRole};
+use super::{Style, TextInput, TextRole};
 use crate::{TouchEvent, input::TapGesture};
 use embedded_graphics::{
     image::Image,
@@ -29,6 +29,12 @@ enum Key {
     ShowAdditionalSymbols,
 }
 
+#[derive(Default)]
+pub struct KeyboardUpdate {
+    pub input: Option<TextInput>,
+    pub layout_changed: bool,
+}
+
 pub struct SoftKeyboard {
     bounds: Rectangle,
     gesture: TapGesture<Key>,
@@ -36,7 +42,7 @@ pub struct SoftKeyboard {
 }
 
 impl SoftKeyboard {
-    pub fn new(bounds: Rectangle) -> Self {
+    pub const fn new(bounds: Rectangle) -> Self {
         Self {
             bounds,
             page: KeyboardPage::Letters,
@@ -44,8 +50,8 @@ impl SoftKeyboard {
         }
     }
 
-    /// Apply a page change on release of a layout key.
-    pub fn handle_touch(&mut self, event: TouchEvent) -> bool {
+    /// Report text input and label changes from a recognized tap.
+    pub fn handle_touch(&mut self, event: TouchEvent) -> KeyboardUpdate {
         let hit = match event {
             TouchEvent::Touch(contact) | TouchEvent::Release(contact) => self
                 .keys()
@@ -54,19 +60,28 @@ impl SoftKeyboard {
             TouchEvent::Cancel => None,
         };
         let Some(key) = self.gesture.update(event, |_| hit) else {
-            return false;
+            return KeyboardUpdate::default();
         };
 
         use KeyboardPage::{AdditionalSymbols, CommonSymbols, Letters, ShiftedLetters};
         let previous = self.page;
+        let input = match key {
+            Key::Character(c) => Some(TextInput::Character(c)),
+            Key::Backspace => Some(TextInput::Backspace),
+            _ => None,
+        };
         self.page = match (previous, key) {
+            (ShiftedLetters, Key::Character(c)) if c.is_ascii_alphabetic() => Letters,
             (Letters, Key::Shift) => ShiftedLetters,
             (ShiftedLetters, Key::Shift) | (_, Key::ShowLetters) => Letters,
             (_, Key::ShowCommonSymbols) => CommonSymbols,
             (CommonSymbols, Key::ShowAdditionalSymbols) => AdditionalSymbols,
             _ => self.page,
         };
-        previous != self.page
+        KeyboardUpdate {
+            input,
+            layout_changed: previous != self.page,
+        }
     }
 
     /// Each item supplies the key identity and its visible touch target.

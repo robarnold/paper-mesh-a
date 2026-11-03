@@ -143,7 +143,7 @@ impl Default for KeyboardExample {
 
 impl Demo for KeyboardExample {
     fn touch(&mut self, event: TouchEvent) {
-        if self.keyboard.handle_touch(event) {
+        if self.keyboard.handle_touch(event).layout_changed {
             self.revision += 1;
         }
     }

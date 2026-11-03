@@ -669,6 +669,7 @@ impl Simulation {
         let view = location.view();
         let power = self.app.power();
         let power_view = power.view();
+        let keyboard_open = self.app.active_diagnostic() == Some(Component::Keyboard);
         let targets: &[(&str, embedded_graphics::primitives::Rectangle)] =
             if self.powered_off || self.app.touchpad_open() {
                 &[]
@@ -695,7 +696,7 @@ impl Simulation {
                     ("Suspend", paper_mesh_app::power::SUSPEND_TAB),
                     ("Power off", paper_mesh_app::power::OFF_TAB),
                 ]
-            } else if location.is_open() {
+            } else if location.is_open() || keyboard_open {
                 &[]
             } else if debugger.is_open() {
                 &[
@@ -714,6 +715,7 @@ impl Simulation {
                     (Component::Radio.label(), Component::Radio.target()),
                     (Component::Location.label(), Component::Location.target()),
                     (Component::Power.label(), Component::Power.target()),
+                    (Component::Keyboard.label(), Component::Keyboard.target()),
                 ]
             } else {
                 &[

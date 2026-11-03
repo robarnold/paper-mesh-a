@@ -2,14 +2,17 @@
 
 The platform toolkit provides renderers for both text entry controls.
 The [visual guide](../simulator/execution.md#ui-guide) shows the empty field, a populated field, and four keyboard states.
-The following input behavior is planned.
+The Keyboard diagnostic connects the controls through the following input contract.
 The soft keyboard produces input events. The text field applies those events and displays the result.
 The application supplies their bounds and the field capacity.
 It passes each keyboard event to the field in input order.
 
 ## Keyboard output
 
-The keyboard emits one of two events per text key activation:
+The soft keyboard accepts touch events. A future hardware keyboard adapter can deliver text input directly to the field.
+Each touch update reports an optional text event and whether the labels changed.
+A shifted letter produces both results. A layout key changes only the labels.
+The soft keyboard emits one of two events per text key activation:
 
 | Event | Field behavior |
 | --- | --- |
@@ -25,8 +28,8 @@ The initial keyboard supplies printable ASCII characters. Comma and Space each e
 
 The keyboard starts on lowercase QWERTY. Shift toggles uppercase for the next letter.
 Show the active Shift state and the case of the letters.
-An accepted letter clears Shift. A rejected insertion, Space, comma, or Backspace preserves it.
-The caller reports insertion success to the keyboard when it delivers a letter.
+Emitting a letter clears Shift, even when the field is full.
+Space, comma, Backspace, and canceled taps preserve Shift.
 
 The keyboard owns its letter page and two symbol pages.
 **Show common symbols** opens the common symbol page from letters or additional symbols.

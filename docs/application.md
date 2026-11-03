@@ -205,6 +205,7 @@ Each entry has a component name and a short description.
 | Component | Contents |
 | --- | --- |
 | Display | Grayscale sample and full refresh checks |
+| Keyboard | Text entry and erasure |
 | Touch | Tap counter and gesture checks |
 | Radio | Wi-Fi and Bluetooth LE scans |
 | GNSS | Position, receiver activity, and satellite signals |
@@ -239,3 +240,10 @@ Select `Touch` to open the tap counter.
 Press and release inside the target to increase the count.
 Movement outside the target or a canceled contact does not increase the count.
 The count stays available across navigation and suspend. Restart resets the count.
+
+### Keyboard check
+
+Select **Diagnostics**, then **Keyboard**, to open an empty 64-byte field.
+Tap letters, switch to symbols, or use Backspace to remove the last character.
+The field accepts edits during text refreshes. After a layout change, wait for the new labels before tapping.
+Each visit starts a new example.

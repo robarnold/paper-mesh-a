@@ -15,19 +15,22 @@ pub enum Component {
     Radio,
     Location,
     Power,
+    Keyboard,
 }
 
 impl Component {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::Display,
         Self::Touch,
         Self::Radio,
         Self::Location,
         Self::Power,
+        Self::Keyboard,
     ];
 
     pub const fn label(self) -> &'static str {
         match self {
+            Self::Keyboard => "Keyboard",
             Self::Display => "Display",
             Self::Touch => "Touch",
             Self::Radio => "Radio",
@@ -37,11 +40,12 @@ impl Component {
     }
 
     pub const fn target(self) -> Rectangle {
-        Rectangle::new(Point::new(28, 170 + self as i32 * 140), Size::new(484, 112))
+        Rectangle::new(Point::new(28, 170 + self as i32 * 128), Size::new(484, 112))
     }
 
     pub(crate) fn description(self) -> &'static str {
         match self {
+            Self::Keyboard => "Type and erase text",
             Self::Display => "Grayscale and full refresh checks",
             Self::Touch => "Tap response and gesture checks",
             Self::Radio => "Wi-Fi and Bluetooth LE scans",

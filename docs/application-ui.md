@@ -26,6 +26,7 @@ The runtime connects reserved hardware Home requests to the navigator through `A
 | Diagnostics | Home | Standard |
 | Display | Diagnostics | Standard, or full-screen during a solid pattern |
 | Touch | Diagnostics | Standard |
+| Keyboard | Diagnostics | Standard |
 | Radio | Diagnostics | Standard |
 | GNSS | Diagnostics | Standard |
 | Power | Diagnostics | Standard |

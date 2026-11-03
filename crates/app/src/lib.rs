@@ -8,6 +8,7 @@ pub mod debugger;
 pub mod diagnostics;
 pub mod display_check;
 mod home;
+mod keyboard;
 pub mod location;
 pub mod pages;
 pub mod power;
@@ -163,6 +164,7 @@ impl App {
 
     pub fn active_diagnostic(&self) -> Option<Component> {
         match self.current_page() {
+            Route::Keyboard => Some(Component::Keyboard),
             Route::Display => Some(Component::Display),
             Route::Touch => Some(Component::Touch),
             Route::Radio => Some(Component::Radio),
@@ -193,9 +195,14 @@ impl App {
 
     pub fn display_completed(&mut self, at_ms: u64) {
         self.ui.pages_mut().display_check.display_completed(at_ms);
+        self.ui.pages_mut().keyboard.completed();
     }
 
     pub fn display_failed(&mut self) {
+        if self.current_page() == Route::Keyboard {
+            self.ui.pages_mut().keyboard.invalidate();
+            self.dirty = true;
+        }
         self.ui.pages_mut().display_check.display_failed();
         self.dirty |= self.ui.pages_mut().display_check.is_open();
     }
@@ -340,6 +347,9 @@ impl App {
             self.dirty = false;
             self.full_refresh = false;
             self.ui.pages_mut().display_check.submitted();
+            if self.current_page() == Route::Keyboard {
+                self.ui.pages_mut().keyboard.submitted();
+            }
         }
         Ok(submitted)
     }

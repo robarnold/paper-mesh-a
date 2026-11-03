@@ -42,4 +42,4 @@ pub fn button<D: DrawTarget<Color = Gray4>>(
 pub mod keyboard;
 pub mod text_field;
 pub use keyboard::SoftKeyboard;
-pub use text_field::TextField;
+pub use text_field::{TextField, TextInput};

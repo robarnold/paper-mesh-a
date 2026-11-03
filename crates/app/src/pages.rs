@@ -29,6 +29,7 @@ pub enum Route {
     Suspend,
     PowerOff,
     Touchpad,
+    Keyboard,
 }
 
 impl Route {
@@ -38,6 +39,7 @@ impl Route {
             Self::Diagnostics => ("Diagnostics", "PAPER MESH"),
             Self::Touchpad => ("USB touchpad", "PAPER MESH"),
             Self::Display => ("Display", "DIAGNOSTICS"),
+            Self::Keyboard => ("Keyboard", "DIAGNOSTICS"),
             Self::Touch => ("Touch", "DIAGNOSTICS"),
             Self::Radio => ("Radio", "DIAGNOSTICS"),
             Self::Location => ("GNSS", "DIAGNOSTICS"),
@@ -62,6 +64,7 @@ impl Route {
 impl From<Component> for Route {
     fn from(component: Component) -> Self {
         match component {
+            Component::Keyboard => Self::Keyboard,
             Component::Display => Self::Display,
             Component::Touch => Self::Touch,
             Component::Radio => Self::Radio,
@@ -78,6 +81,7 @@ macro_rules! dispatch_page {
             Route::Home => $app.home.$method($($arg),*),
             Route::Diagnostics => $app.diagnostics.$method($($arg),*),
             Route::Display => $app.display_check.$method($($arg),*),
+            Route::Keyboard => $app.keyboard.$method($($arg),*),
             Route::Touch => $app.touch_screen.$method($($arg),*),
             Route::Radio => $app.debugger.$method($($arg),*),
             Route::Location => $app.location.$method($($arg),*),
@@ -91,6 +95,7 @@ macro_rules! dispatch_page {
 
 pub(crate) struct Pages {
     pub diagnostics: Menu,
+    pub keyboard: crate::keyboard::KeyboardScreen,
     pub display_check: DisplayCheck,
     pub touch_screen: TouchScreen,
     pub touchpad: crate::touchpad::TouchpadPage,
@@ -104,6 +109,7 @@ impl Pages {
     pub const fn new() -> Self {
         Self {
             diagnostics: Menu::new(),
+            keyboard: crate::keyboard::KeyboardScreen::new(),
             display_check: DisplayCheck::new(),
             touch_screen: TouchScreen::new(),
             touchpad: crate::touchpad::TouchpadPage::new(),

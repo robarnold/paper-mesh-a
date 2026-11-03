@@ -46,7 +46,7 @@ Each entry in `controls` includes `enabled`, which the browser uses to disable u
 Header controls use the same bounds and enabled state as the application.
 
 `diagnostics_open` is true in the Diagnostics menu and its component pages.
-`diagnostic_component` identifies `Display`, `Touch`, `Radio`, `GNSS`, or `Power`. It is `null` outside a component page.
+`diagnostic_component` identifies `Display`, `Touch`, `Radio`, `GNSS`, `Power`, or `Keyboard`. It is `null` outside a component page.
 Display checks also supply `diagnostic_pattern` and `diagnostic_ready`.
 The pattern is `black`, `white`, `gray`, or `null` outside a pattern.
 Readiness confirms completion of the simulated refresh.
