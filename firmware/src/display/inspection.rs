@@ -1,4 +1,11 @@
 //! Retain refresh measurements and encode bounded framebuffer chunks.
+//!
+//! # Design choices
+//!
+//! - Read chunks from the held frame so software image data can be inspected without
+//!   another panel scan.
+//!
+//! See [Inspect the held framebuffer](../../../docs/boards/lilygo-t5-s3-pro-usb.md#inspect-the-held-framebuffer).
 
 use super::power_sequence::Measurement;
 use alloc::string::String;

@@ -1,4 +1,11 @@
 //! Exclusive panel ownership passes between the runtime and core 1.
+//!
+//! # Design choices
+//!
+//! - Move exclusive panel ownership to the worker so touch processing can continue
+//!   during a scan.
+//!
+//! See [Concurrent display and touch](../../docs/boards/lilygo-t5-s3-pro-touch.md#concurrent-display-and-touch).
 
 use crate::display::NATIVE_SCREEN_SIZE;
 use core::sync::atomic::{AtomicBool, Ordering};

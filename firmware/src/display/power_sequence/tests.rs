@@ -1,3 +1,12 @@
+//! Tests for panel power sequencing and recovery.
+//!
+//! # Design choices
+//!
+//! - Check supply sequencing across failures as well as successful shutdown because
+//!   partially enabled rails still need cleanup.
+//!
+//! See [Power sequence and recovery](../../../../docs/boards/lilygo-t5-s3-pro-display.md#power-sequence-and-recovery).
+
 use super::{
     Access, DISCHARGE_MS, DISPLAY_OUTPUTS, EXPANDER, Error, MODE, OE, PWRUP, SLEEP_MS, SUPPLY,
     Stage, State, UNKNOWN_DISCHARGE_MS, VCOM, WAKE, inspect_controls,

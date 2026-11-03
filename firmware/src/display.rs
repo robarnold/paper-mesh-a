@@ -2,6 +2,13 @@
 // The bus sequence derives from lilygo-t5s3paperpro-rs at c9cf0be45a33c4b2574aa3dde6dc128bb7ed7233.
 // Copyright Andrew Whaley and Frido Koch. See ../../crates/ed047tc1/README.md.
 //! H752-01 display adapter with synchronous full and partial refresh.
+//!
+//! # Design choices
+//!
+//! - Use partial scans only with known panel history. Interrupted output requires a
+//!   full refresh to reestablish that history.
+//!
+//! See [LILYGO display backend evidence](../../docs/boards/lilygo-t5-s3-pro-display.md).
 
 use alloc::boxed::Box;
 use embedded_graphics::{pixelcolor::Gray4, prelude::*};

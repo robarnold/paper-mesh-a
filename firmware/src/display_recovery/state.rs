@@ -1,4 +1,11 @@
 //! Encode display recovery records for aligned RTC word access.
+//!
+//! # Design choices
+//!
+//! - Use retained display checkpoints to identify interrupted work even when the
+//!   reset reason alone is ambiguous.
+//!
+//! See [Power sequence and recovery](../../../docs/boards/lilygo-t5-s3-pro-display.md#power-sequence-and-recovery).
 
 const MAGIC: u32 = 0xd15a_7e00;
 

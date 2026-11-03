@@ -1,4 +1,11 @@
 //! Read an idle diagnostic frame without changing display controls or image content.
+//!
+//! # Design choices
+//!
+//! - Tie inspection to the completed pattern so a queued request cannot read pixels
+//!   from the next image.
+//!
+//! See [Inspect the held framebuffer](../../docs/boards/lilygo-t5-s3-pro-usb.md#inspect-the-held-framebuffer).
 
 pub mod protocol;
 

@@ -1,4 +1,11 @@
 //! Ordered power control for the H752-01 panel and TPS65185 supplies.
+//!
+//! # Design choices
+//!
+//! - Order panel power transitions so direct inputs reach safe levels before the
+//!   logic supply disappears.
+//!
+//! See [Power sequence and recovery](../../../docs/boards/lilygo-t5-s3-pro-display.md#power-sequence-and-recovery).
 
 pub const EXPANDER: u8 = 0x20;
 pub const SUPPLY: u8 = 0x68;

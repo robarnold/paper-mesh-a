@@ -1,4 +1,11 @@
 //! Bound a display operation and retain its last checkpoint across CPU resets.
+//!
+//! # Design choices
+//!
+//! - Preserve recovery evidence across reset so startup can detect an interrupted
+//!   refresh before driving the panel again.
+//!
+//! See [Power sequence and recovery](../../docs/boards/lilygo-t5-s3-pro-display.md#power-sequence-and-recovery).
 
 mod state;
 pub use state::Stage;

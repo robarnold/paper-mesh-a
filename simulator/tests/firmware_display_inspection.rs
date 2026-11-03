@@ -1,3 +1,12 @@
+//! Display inspection request parsing tests.
+//!
+//! # Design choices
+//!
+//! - Check inspection requests at the protocol boundary so invalid ranges and
+//!   notifications cannot start an unintended read.
+//!
+//! See [Inspect the held framebuffer](../../docs/boards/lilygo-t5-s3-pro-usb.md#inspect-the-held-framebuffer).
+
 extern crate alloc;
 
 #[path = "../../firmware/src/display_inspection/protocol.rs"]

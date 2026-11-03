@@ -1,4 +1,11 @@
 //! Parse acknowledged requests for display state and bounded reads of captured data.
+//!
+//! # Design choices
+//!
+//! - Require a correlated inspection request so a notification cannot initiate a
+//!   framebuffer transfer.
+//!
+//! See [Inspect the held framebuffer](../../../docs/boards/lilygo-t5-s3-pro-usb.md#inspect-the-held-framebuffer).
 
 use crate::usb_protocol::error;
 use alloc::string::String;

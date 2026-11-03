@@ -1,4 +1,11 @@
 //! Peripheral ownership and temporary drivers for one panel refresh.
+//!
+//! # Design choices
+//!
+//! - Scope peripheral drivers to the scan so their clock wake locks can be released
+//!   after panel shutdown.
+//!
+//! See [LILYGO display backend evidence](../../../docs/boards/lilygo-t5-s3-pro-display.md).
 
 use esp_hal::{
     Blocking,
