@@ -1,4 +1,11 @@
 //! Auxiliary supply control through PCA9535 port 0.
+//!
+//! # Design choices
+//!
+//! - Change only the auxiliary rail bit because the expander also controls unrelated
+//!   board signals.
+//!
+//! See [Shared buses, power domains, and wake routing](../../../docs/boards/lilygo-t5-s3-pro.md#shared-buses-power-domains-and-wake-routing).
 
 pub fn enable<I: embedded_hal::i2c::I2c>(bus: &mut I) -> Result<(), I::Error> {
     let mut value = [0];

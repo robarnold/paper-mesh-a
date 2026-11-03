@@ -1,4 +1,11 @@
 //! Optional diagnostic scans before the application loop starts.
+//!
+//! # Design choices
+//!
+//! - Run diagnostic scans at boot so radio behavior can be inspected independently of
+//!   touch navigation.
+//!
+//! See [Diagnostic build](../../docs/boards/lilygo-t5-s3-pro-radio.md#diagnostic-build).
 
 use embassy_time::{Instant, Timer};
 use paper_mesh_platform::discovery::{

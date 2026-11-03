@@ -1,3 +1,12 @@
+//! Passive discovery of nearby Wi-Fi networks.
+//!
+//! # Design choices
+//!
+//! - Collect passive Wi-Fi observations and request an extra record so the caller can
+//!   distinguish truncation from an exact fit.
+//!
+//! See [LILYGO radio discovery](../../../docs/boards/lilygo-t5-s3-pro-radio.md).
+
 use esp_hal::{peripherals::WIFI, time::Duration};
 use esp_radio::wifi::{
     WifiController,

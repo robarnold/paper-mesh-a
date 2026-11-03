@@ -1,4 +1,11 @@
 //! RTC observations and corrections from complete GNSS reports.
+//!
+//! # Design choices
+//!
+//! - Consume a fresh GPS correction once so polling the same report again cannot set
+//!   the clock backward.
+//!
+//! See [GPS synchronization](../../../docs/boards/lilygo-t5-s3-pro-rtc.md#gps-synchronization).
 
 use embedded_hal::i2c::I2c;
 use paper_mesh_platform::{

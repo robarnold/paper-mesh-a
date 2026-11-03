@@ -1,4 +1,11 @@
 //! Conversion of legacy Bluetooth LE advertisements into shared observations.
+//!
+//! # Design choices
+//!
+//! - Keep usable address and signal data when an advertisement lacks a usable name so
+//!   an unnamed device can still appear in results.
+//!
+//! See [LILYGO radio discovery](../../../docs/boards/lilygo-t5-s3-pro-radio.md).
 
 use bt_hci::{
     FromHciBytes,

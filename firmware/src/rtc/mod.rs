@@ -1,4 +1,11 @@
 //! Hardware clock with UTC retention and GNSS synchronization.
+//!
+//! # Design choices
+//!
+//! - Connect the shared bus clock to GPS synchronization so valid retained time
+//!   remains available between receiver reports.
+//!
+//! See [T5 S3 Pro real-time clock](../../../docs/boards/lilygo-t5-s3-pro-rtc.md).
 
 mod device;
 mod service;

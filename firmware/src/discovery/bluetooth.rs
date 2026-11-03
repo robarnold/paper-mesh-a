@@ -1,3 +1,12 @@
+//! Passive discovery of nearby Bluetooth LE devices.
+//!
+//! # Design choices
+//!
+//! - Receive HCI events while waiting for command acknowledgements so advertisements
+//!   and scan control can share the transport.
+//!
+//! See [LILYGO radio discovery](../../../docs/boards/lilygo-t5-s3-pro-radio.md).
+
 use alloc::boxed::Box;
 use bt_hci::{
     ControllerToHostPacket,

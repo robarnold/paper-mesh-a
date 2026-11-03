@@ -1,4 +1,11 @@
 //! Native tests exercise the decoder and baud selection from the firmware.
+//!
+//! # Design choices
+//!
+//! - Use receiver sentences to check decoding and acquisition independently of
+//!   satellite reception.
+//!
+//! See [LILYGO GNSS adapter](../../docs/boards/lilygo-t5-s3-pro-gnss.md).
 
 #[path = "../../firmware/src/gnss/gsv.rs"]
 mod gsv;

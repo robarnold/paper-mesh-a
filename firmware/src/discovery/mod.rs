@@ -1,4 +1,11 @@
 //! Passive radio scans through esp-radio and the shared discovery contract.
+//!
+//! # Design choices
+//!
+//! - Release the previous controller before publishing scan results so a new request
+//!   can safely select another radio.
+//!
+//! See [LILYGO radio discovery](../../../docs/boards/lilygo-t5-s3-pro-radio.md).
 
 mod advertisement;
 mod bluetooth;

@@ -1,4 +1,11 @@
 //! Request identity and bounded storage for the radio worker.
+//!
+//! # Design choices
+//!
+//! - Associate each completion with its scan request so cancellation can invalidate
+//!   stale results before hardware cleanup finishes.
+//!
+//! See [Discovery and communications](../../../docs/services/connectivity.md).
 
 use paper_mesh_platform::discovery::{
     Network, ScanCompletion, ScanError, ScanRequest, ScanResults, ScanSource,

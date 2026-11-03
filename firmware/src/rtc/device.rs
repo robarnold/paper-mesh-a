@@ -1,4 +1,11 @@
 //! PCF8563 calendar access through the shared I2C bus.
+//!
+//! # Design choices
+//!
+//! - Read the complete calendar together and reject voltage-loss indications so a
+//!   partial or invalid date cannot become UTC.
+//!
+//! See [Hardware adapter](../../../docs/boards/lilygo-t5-s3-pro-rtc.md#hardware-adapter).
 
 use embedded_hal::i2c::I2c;
 use paper_mesh_platform::time::{Date, Time, UtcDateTime};

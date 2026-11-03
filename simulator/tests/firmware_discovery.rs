@@ -1,4 +1,11 @@
 //! Native tests use the same state and packet conversion code as the firmware.
+//!
+//! # Design choices
+//!
+//! - Check scan conversion and request ownership without involving physical radio
+//!   traffic.
+//!
+//! See [LILYGO radio discovery](../../docs/boards/lilygo-t5-s3-pro-radio.md).
 
 #[path = "../../firmware/src/discovery/advertisement.rs"]
 mod advertisement;

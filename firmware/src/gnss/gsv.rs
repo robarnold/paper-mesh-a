@@ -1,4 +1,11 @@
 //! Complete GSV groups with bounded storage and independent expiry.
+//!
+//! # Design choices
+//!
+//! - Publish complete satellite groups so a partial update cannot replace a valid
+//!   constellation summary.
+//!
+//! See [Satellite reports and receiver activity](../../../docs/boards/lilygo-t5-s3-pro-gnss.md#satellite-reports-and-receiver-activity).
 
 use paper_mesh_platform::location::{
     MAX_SATELLITES, SatelliteObservation, SatelliteSignal, SatelliteSystem,

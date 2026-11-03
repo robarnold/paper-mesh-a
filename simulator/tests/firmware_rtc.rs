@@ -1,4 +1,11 @@
 //! Native tests execute the firmware RTC driver and synchronization service.
+//!
+//! # Design choices
+//!
+//! - Check calendar validity and correction failures without mistaking a successful
+//!   register write for verified retention.
+//!
+//! See [T5 S3 Pro real-time clock](../../docs/boards/lilygo-t5-s3-pro-rtc.md).
 
 #[path = "../../firmware/src/rtc/device.rs"]
 mod device;

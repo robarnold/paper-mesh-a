@@ -1,4 +1,11 @@
 //! GNSS UART input and continuous auxiliary power for H752-01.
+//!
+//! # Design choices
+//!
+//! - Restart receiver acquisition after auxiliary power returns so pre-sleep data
+//!   cannot masquerade as a new fix.
+//!
+//! See [Transport and power](../../../docs/boards/lilygo-t5-s3-pro-gnss.md#transport-and-power).
 
 mod gsv;
 mod power;

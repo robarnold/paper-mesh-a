@@ -1,4 +1,11 @@
 //! Bounded NMEA decoder and UART baud selection for the GNSS adapter.
+//!
+//! # Design choices
+//!
+//! - Require a valid sentence before selecting a baud rate so noise cannot establish
+//!   receiver activity.
+//!
+//! See [LILYGO GNSS adapter](../../../docs/boards/lilygo-t5-s3-pro-gnss.md).
 
 use super::gsv::Gsv;
 use paper_mesh_platform::location::{
