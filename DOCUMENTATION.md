@@ -5,11 +5,26 @@ They cover documentation, comments, review text, commit descriptions, and agent 
 
 ## Documentation principles
 
+State why the design exists. Explain the constraints and tradeoffs that shaped the decision.
+Describe operational consequences that a reader cannot infer from the implementation.
+
+Link to upstream documentation for general explanations of deployed components.
+Describe a component's behavior only when a subtle detail affects how the design achieves its purpose.
+Explain that connection with only the detail needed to understand the decision.
+
+Treat code and configuration as the source of truth for current behavior.
+Link to the files that define values, versions, resource inventories, and settings.
+Include a configuration detail only to explain a decision or to complete a non-obvious procedure.
+
+Do not document rollout processes.
+Include deployment steps only to bootstrap the cluster after a disaster.
+State that recovery purpose at the start of the procedure.
+
 Organize documentation by responsibility and concept.
 Keep overview documents general enough for future applications and platform services.
 Do not organize an overview around the current module list or implemented feature list.
 Use overviews to explain purpose, boundaries, ownership, and relationships.
-Put detailed mechanisms, algorithms, state transitions, and API behavior in separate topic documents.
+Put details needed to explain a design decision or contract in its topic document.
 For example, orientation state and coordinate spaces belong in a separate platform document.
 
 Separate application choices from common platform behavior in the documentation.
@@ -19,13 +34,10 @@ Record known limitations with the behavior that they affect.
 Keep each detailed rule in one primary document.
 Link to that rule from other documents.
 
-An overview can summarize a boundary.
-Detailed values and procedures belong in the primary topic document.
-
 ## Document map
 
 Choose a document by the behavior or responsibility that it describes.
-Keep each topic complete enough to explain its mechanism and limits.
+Keep each topic complete enough to explain its purpose and limits.
 Create a separate topic when its details need independent explanation.
 Do not create a document for each source file or small feature.
 
@@ -95,7 +107,8 @@ Check the upstream license for the selected version against the intended use and
 Check bundled artwork separately, including artwork that appears in generated images.
 If the terms are unclear, resolve the question before adoption.
 
-Record the source, version, and license in the relevant documentation.
+Record the source and license in the relevant documentation. Link to the file that pins the reviewed version.
+If no file identifies that version, record it with the license decision.
 Include required attribution and license notices with the distributed material.
 
 ## External references and evidence
