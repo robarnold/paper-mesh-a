@@ -4,27 +4,15 @@
 
 ## Hardware and execution
 
-The adapter reads the BQ27220 gauge at I2C `0x55` and the BQ25896 charger at `0x6B`.
-Both devices use the shared bus on SDA39 and SCL40.
-The [schematic][schematic], sheet 1, shows both devices and the 10 mΩ sense resistor.
-The [pin map][pinmap] identifies bus pins and addresses.
-The schematic shows no confirmed MCU route for charger `INT` or gauge `GPOUT`.
-
-The worker runs on core 0. It waits two seconds after each pair of reads.
-Each device read holds the bus mutex. The worker releases the mutex between devices.
-The shared driver limits each I2C transaction to 20 ms.
-Other clients can therefore delay observations. The interval is not a latency guarantee.
-Each timestamp records the start of its device read.
-The worker publishes completed observations and notifies the application loop.
-A device failure removes only that device's data. The next poll attempts both devices again.
+The [schematic][schematic], sheet 1, shows the 10 mΩ gauge sense resistor but no confirmed MCU route for charger `INT` or gauge `GPOUT`.
+The adapter therefore polls each source independently. Other users of the shared bus can delay either reading.
+Each timestamp records the start of that device read. If one fails, the other source can still supply a current observation.
+See the [power adapter](../../firmware/src/power/mod.rs) for scheduling and the [vendor pin map][pinmap] for connections.
 
 ## Fuel gauge
 
-The adapter uses little-endian standard commands from the [BQ27220 reference manual][gauge], table 2-1 and sections 2.6–2.28.
-Current and average power use signed 16-bit values. Negative values indicate discharge.
-The adapter converts internal temperature from 0.1 K to hundredths of a degree Celsius.
-It reads `InternalTemperature()` at `0x28`, not the configurable `Temperature()` source at `0x06`.
-It rejects percentage values above 100 and time estimates equal to `65535`.
+The adapter reports the gauge's internal temperature. Interpreting it as cell temperature could give a misleading thermal reading.
+Negative current indicates discharge. See the [register adapter](../../firmware/src/power/device.rs) and the [BQ27220 reference manual][gauge], table 2-1 and sections 2.6–2.28.
 
 `BATTPRES` supplies reported battery presence.
 The fitted cell and gauge configuration determine the accuracy of this indication.
@@ -39,11 +27,8 @@ Gauge readiness alone cannot verify those conditions.
 
 ## Charger
 
-The adapter uses the [BQ25896 datasheet][charger], sections 9.3.1 and 9.4.
-`REG0B` supplies the input class, charge phase, power-good state, and minimum system voltage regulation.
-`REG00`, `REG03`–`REG06`, and `REG0D` supply existing settings.
-`REG0E` and `REG13` supply thermal and input regulation flags.
-Input current can have a lower electrical limit than the register setting.
+The charger's configured input limit can exceed the available electrical current.
+Use the [BQ25896 datasheet][charger], sections 9.3.1 and 9.4, to interpret settings and regulation status.
 
 `VBUS_STAT` classifies input through `PSEL`, as section 9.2.3.3.1 specifies.
 The [schematic][schematic], sheet 1, connects `PSEL` to ground, which selects the adapter class.

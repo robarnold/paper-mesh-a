@@ -20,17 +20,7 @@ waveform limits, driver limits, and necessary performance measurements.
 
 ## Build profile
 
-| Item | Configuration |
-| --- | --- |
-| SoC | ESP32-S3, dual Xtensa LX7 |
-| Rust target | `xtensa-esp32s3-none-elf` |
-| Flash | 16 MB. The boot image selects DIO at 80 MHz. |
-| PSRAM | 8 MB OPI at 40 MHz. Two framebuffers use a reserved region of 518,400 bytes. |
-| Application CPU clock | 240 MHz |
-| Executor | Application and touch on core 0. Display refresh on core 1. Embassy through esp-rtos. |
-| Application logging | USB OTG CDC serial. See the USB profile for recovery and panic limits. |
-| Display | ED047TC1, 960 × 540, 4.7-inch grayscale e-paper |
-| Radio | SX1262. Driver and protocol selection stay undecided. |
+The [firmware target configuration](../../firmware/.cargo/config.toml) and [image script](../../scripts/build-image.sh) define the build settings.
 
 The vendor's [board definition](https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/boards/T5-ePaper-S3.json)
 specifies flash and PSRAM.
@@ -61,30 +51,10 @@ The second-stage bootloader can select another flash mode after ROM startup.
 
 ## Device inventory
 
-The [device interface design](../device-interfaces.md) defines proposed shared
-services and simulator scenarios.
-Current firmware connects the clock, display, contact frames, hardware buttons, passive radio scans, GNSS observations, and power observations.
-The [simulator guide](../simulator.md) describes the native backend.
-Other services in this inventory stay design work.
-
-| Hardware | Connection / expected variant | Shared representation |
-| --- | --- | --- |
-| E-paper panel and supply | ED047TC1 and TPS651851, I2C `0x68`, parallel pixel bus | Display completion, presentation validity, faults. The backend controls waveform history. |
-| Touch controller | GT911 baseline, I2C `0x5D`. Vendor examples also use GT6972P. | Pointer input, separate touch-key reports, optional pen capabilities |
-| Physical controls | S1–S4 and the touch-panel Home key where fitted | Software buttons and board lifecycle controls. The control table gives details. |
-| Frontlight | PT4103B23F boost driver, enable/PWM on GPIO11 | Brightness request and applied state, independent of e-paper refresh |
-| GNSS receiver | MIA-M10Q or L76K on UART, switched supply shared with LoRa | Location, fix status, independently valid UTC observations |
-| LoRa radio | SX1262 module, shared SPI, dedicated CS/IRQ/reset/busy | Packet radio below the future mesh protocol |
-| microSD socket | SPI, dedicated CS GPIO12, main 3.3 V supply | Removable files, media identity, mount state, errors, durability |
-| External RTC | PCF8563TS, I2C `0x51`, IRQ GPIO2, J12 backup source | Wall-clock validity and wake alarms, separate from monotonic timers |
-| Battery charger / system power path | BQ25896, I2C `0x6B`, QON control S4 | External power, charge state, bounded charge policy, battery disconnect request |
-| Fuel gauge | BQ27220, I2C `0x55`, battery sense resistor | Battery measurements with timestamps, validity, and calibration status |
-| I/O expander | PCA9535, I2C `0x20`, IRQ GPIO38 | Internal resource owner for buttons, auxiliary power, and display control |
-| USB-C | VBUS power, ESP32-S3 D−/D+ on GPIO19/20 | Independent power connection and USB data or diagnostic session |
-| Wi-Fi / Bluetooth LE | Built into ESP32-S3 | Passive discovery on request. No connection or pairing service. |
-| Internal flash | 16 MB, also stores executable firmware | Durable settings and internal data. The backend controls partitions and updates. |
-| PSRAM | 8 MB OPI, display storage enabled | Volatile memory, not persistent storage |
-| Expansion connections | P3 exposes I2C/power. P5 exposes radio IRQ/reset/power nets. | Board profile extensions, not independent application devices |
+Use the [schematic][schematic] to identify fitted and optional hardware and the [firmware initialization](../../firmware/src/main.rs) to identify active adapters.
+The vendor lists both GT911 and GT6972P touch configurations and both L76K and MIA-M10Q receivers.
+The unimplemented SX1262 radio and microSD socket share SPI. The frontlight supply can operate while panel scan power is off.
+P3 exposes the existing I2C bus and power. P5 exposes radio nets. These connectors do not establish independent services.
 
 Sources include [schematic][schematic] sheets 1–4, the
 [vendor product table][product], and the [GT6972P example][pen-example].
@@ -109,17 +79,9 @@ The [portable service catalog](../device-interfaces.md#service-catalog) defines
 observable behavior. This backend controls the implementation choices below.
 Other backends can meet the same contracts with different parts or limits.
 
-| Board fact | Backend responsibility | Portable consequence |
-| --- | --- | --- |
-| Native panel is 960 × 540. The demonstration uses a quarter-turn. | Supply geometry and mounting. Implement native display storage. | Layout receives a logical viewport. Dimensions do not define the architecture. |
-| BOOT, function, and touch-controller Home reports | Supply local control identities, labels, event capabilities, and default bindings. | Shared policy uses declared controls without a universal `Boot`/`Home` enum. |
-| Reset and charger QON operate outside the application | Model reset, power effects, and observable boot information. | No invented key callback or guaranteed graceful shutdown |
-| LoRa and GNSS share the switched auxiliary rail | Keep the rail enabled while either adapter uses it. | Location shutdown must not interrupt accepted radio work. |
-| SD and LoRa share SPI | Bound transactions. Control access with the applicable device settings. | File and radio requests report deadlines, progress, and backpressure without bus details. |
-| PCA9535 controls display power, auxiliary power, and function input | Use one output-state owner and interrupt dispatcher. Report failures to affected services. | Shared resource failures appear through affected services. |
-| Wake routing depends on pins and peripheral power | Check logical wake combinations against the wiring. | Accept a supported plan or reject it explicitly. |
-| No established orientation or ambient-light sensor | Report automatic sources as unavailable. | Manual rotation and brightness operate without a sensor. Other profiles can supply automatic sources. |
-| No wired SD card-detect or dedicated SD power switch | Detect media through probing and I/O errors. Separate unmount from power removal. | Presence detection can be delayed. Unmount does not guarantee power savings. |
+The backend translates electrical inputs into logical controls and owns the resources shared by adapters.
+For example, the expander controls display power and the auxiliary rail while also sampling Function.
+Updating one output must preserve the others. The [shared bus implementation](../../firmware/src/bus.rs) and the wiring below define that boundary.
 
 The installed GNSS receiver still requires a physical identification check.
 The [vendor example][gnss] tries L76K at 9600 baud and MIA-M10Q at 38400 baud.
@@ -230,23 +192,8 @@ The comparison of [H752-01 pin definitions][pin-definitions-live] with the pinne
 file occurred on 2026-10-12.
 The branch head matched the reviewed commit.
 The files were byte-identical.
-Each defined signal family has an owner:
-
-| Pin-definition group | Inventory / service owner |
-| --- | --- |
-| GPS RX/TX and UART aliases | GNSS receiver / DEV-LOCATION |
-| Main I2C and touch/RTC aliases | Shared bus / backend resource coordinator. Aliases do not add buses. |
-| Main SPI and SD/LoRa aliases | Shared bus / backend resource coordinator for DEV-FILES and DEV-RADIO |
-| Touch reset and interrupt | Touch controller / DEV-INPUT |
-| RTC interrupt | External RTC / DEV-TIME and DEV-POWER wake planning |
-| LoRa CS, IRQ, reset, busy | SX1262 / DEV-RADIO |
-| SD CS | Removable storage / DEV-FILES |
-| Frontlight enable | DEV-LIGHT |
-| BOOT and expander interrupt | Physical input / DEV-INPUT, with shared interrupt dispatch in the backend resource coordinator |
-| E-paper data, clock, latch, and start signals | Native display backend / DEV-DISPLAY |
-| Expander port 1 output-enable/mode and TPS control/status | Display backend through the resource coordinator, including VCOM, power-good, and faults |
-| Expander port 1 button | S3 Function / DEV-INPUT |
-| Unnamed expander port 0 definitions | Bit 0: shared LoRa/GNSS rail. Bits 1–7: unconnected in the reviewed schematic. |
+I2C and SPI aliases name shared buses. On expander port 0, bit 0 controls the shared GNSS and LoRa rail.
+Bits 1–7 have no connection in the reviewed schematic.
 
 The macro list omits reset, QON, the Home key, charger, gauge, USB wiring, and
 backup-power details. The schematic and examples supply those inventory details.
@@ -255,26 +202,8 @@ connections.
 
 ## Peripheral pins
 
-The following ESP32 GPIO numbers come from the
-[factory pin definitions](https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/examples/factory/main/utilities.h).
-
-| Interface | Pins |
-| --- | --- |
-| I2C | SDA 39, SCL 40 |
-| E-paper data D0–D7 | 5, 6, 7, 15, 16, 17, 18, 8 |
-| E-paper clocks and controls | CKH 4, CKV 48, STH 41, STV 45, LEH 42 |
-| Shared SPI | SCK 14, MOSI 13, MISO 21 |
-| SX1262 | CS 46, IRQ 10, reset 1, busy 47 |
-| microSD | CS 12 |
-| Touch | interrupt 3, reset 9 |
-| GPS UART | MCU RX 44, MCU TX 43 |
-| Frontlight enable | 11 |
-| RTC interrupt | 2 |
-| PCA9535 interrupt | 38 |
-| Boot button | 0 |
-| Function button | PCA9535 `IO1_2` / index 10, shared expander IRQ38 |
-| Reset button | ESP32 `EN`, not a GPIO |
-| QON button | BQ25896 `QON`, not a GPIO |
+Use the [factory pin definitions](https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/examples/factory/main/utilities.h) for signal assignments.
+Check the [schematic][schematic] for the electrical path before treating a defined pin as an available input.
 
 GPIO 43/44 are also the usual UART0 pins.
 `esp-println` disables automatic transport selection.

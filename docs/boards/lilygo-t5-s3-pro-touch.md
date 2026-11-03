@@ -11,20 +11,11 @@ The driver probes both documented addresses and checks the product identity.
 If neither probe succeeds, it applies the documented reset sequence and selects address `0x5D`.
 It records the existing configuration through USB without configuration writes.
 
-Reports must have the ready flag before the driver reads coordinates.
-The driver acknowledges each report after the required reads succeed.
-It emits each ready contact position with its ID, then a release with the final position.
-The driver does not recognize taps or remove movement reports.
-The driver tracks up to five contact IDs, independent of their order in a report.
-Invalid coordinates, duplicate IDs, excess contacts, palm reports, I2C failures, and queue overflow cancel all contacts.
-Recovery waits for all contacts to lift.
-Ready reports also supply Home-key state through `HaveKey` in register `0x814E`.
-The adapter exposes that state as a hardware button, independent of coordinates.
+The driver acknowledges a report only after it reads all required fields. It tracks contacts by identity across changes in report order.
+If a report or queue loses contact continuity, cancel the gesture and wait for all contacts to lift.
+Otherwise a later release could activate a control after an incomplete press.
+Home comes from the controller key report independently of coordinates. The first observation establishes its level so a held key at startup cannot create a press.
 Pen input stays unimplemented.
-
-Firmware samples electrical buttons every 10 ms with a 20 ms debounce interval.
-GT911 ready reports supply the controller's Home-key level without another debounce interval.
-The first key observation synchronizes state. A key held at startup does not create a press event.
 
 [Goodix Programming Guide Rev.10][gt911-guide], sections 3.3, 4.2, and 5, defines identity, reset timing, and report handling.
 The adapter converts the fitted portrait coordinates through the shared native-to-portrait transform.

@@ -9,18 +9,9 @@ It destroys that controller before it delivers results or starts another scan.
 Cancellation invalidates observations immediately and wakes the worker for resource release.
 The request deadline includes initialization, the scan, and resource release.
 
-The firmware reserves 128 KiB of internal RAM for radio drivers and RTOS tasks.
-Radio futures also use this heap to limit temporary stack storage.
-Application results and worker results use separate static buffers, each with 24 entries.
-The application does not allocate heap memory.
-
-The CPU operates at 240 MHz for display scans.
-Display storage uses PSRAM. Core 1 executes display refreshes.
-
-| Radio | Scan configuration | Result conversion |
-| --- | --- | --- |
-| Wi-Fi | Passive scan, 120 ms per channel, hidden SSIDs included, default driver country configuration | BSSID, SSID, signed RSSI. The adapter requests up to 25 records and retains 24. An extra record sets the result-limit indication. |
-| Bluetooth LE | Passive legacy scan, 1M PHY, 100 ms interval and window, four-second observation period, duplicate filtering disabled | Public or random address, advertised local name, signed RSSI. RSSI 127 means unavailable. Addresses use display byte order. |
+The adapter bounds result storage to keep radio traffic from consuming application memory.
+Wi-Fi requests one extra record to distinguish a full list from a truncated list.
+See the [Wi-Fi adapter](../../firmware/src/discovery/wifi.rs) and [Bluetooth adapter](../../firmware/src/discovery/bluetooth.rs) for scan settings and record conversion.
 
 The Wi-Fi driver supplies its records in signal order.
 The shared result buffer applies the final order and address tie-break.
@@ -42,9 +33,8 @@ Wi-Fi discovery covers the ESP32-S3's 2.4 GHz radio.
 These scans do not establish a connection, pair a device, or transmit application data.
 LoRa stays uninitialized.
 
-The implementation pins `esp-radio` to `1.0.0-beta.1` and uses `bt-hci` 0.9.
-The lockfile fixes the resolved dependencies.
-These upstream sources define the adapter assumptions:
+The [firmware lockfile](../../firmware/Cargo.lock) identifies the resolved driver versions.
+The following upstream sources document the assumptions used by the adapter.
 
 | Source | Applicable sections |
 | --- | --- |
@@ -65,20 +55,8 @@ The compile checks and native tests do not establish physical operation or heap 
 
 ## Diagnostic build
 
-The default firmware waits for application requests.
-The display and touch adapters connect the radio debugger to the physical screen.
-The optional `radio-scan-demo` feature performs one Wi-Fi scan and one Bluetooth LE scan at boot.
-It prints the result order, addresses, names, RSSI, errors, and result-limit indication through USB Serial/JTAG.
-
-To build this diagnostic firmware without device access, run:
-
-```sh
-devcontainer exec --workspace-folder . bash -lc 'cd firmware && cargo build --locked --release --features radio-scan-demo'
-```
-
-This command writes the ELF under `firmware/target/xtensa-esp32s3-none-elf/release/`.
-`just ci` checks this feature, then produces the default firmware image.
-Neither command flashes a device.
+The default firmware scans on application request. The [diagnostic build](../../firmware/src/scan_demo.rs) scans both radios at boot so discovery can be checked independently of touch input.
+The [firmware recipes](../../justfile) build this feature separately from the normal image.
 
 [radio-wifi]: https://github.com/esp-rs/esp-hal/blob/f769fcd27056b0837febe4209f3bae78ed764561/esp-radio/src/wifi/mod.rs
 [radio-scan]: https://github.com/esp-rs/esp-hal/blob/f769fcd27056b0837febe4209f3bae78ed764561/esp-radio/src/wifi/scan.rs

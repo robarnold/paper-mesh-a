@@ -19,12 +19,9 @@ The simulator's 250 ms refresh is an artificial test delay.
 [`crates/ed047tc1`](../../crates/ed047tc1/README.md) supplies pixel storage and scan encoding.
 The application uses the same renderer and portrait transform as the simulator.
 
-Native storage contains two Gray4 pixels per byte.
-One reserved PSRAM region supplies two framebuffers without a heap, with 518,400 bytes total.
-One holds the new image. The other holds the last completed image.
+Two framebuffers keep the requested image separate from the last completed image.
+Partial updates depend on knowing the previous pixel state.
 
-LCD DMA sends source data at 20 MHz through a 248-byte internal buffer.
-RMT supplies the gate clock with 0.1 µs timing units.
 The adapter retains the peripheral tokens, pins, and framebuffers between updates.
 Each refresh creates temporary LCD and RMT drivers from borrowed peripheral tokens.
 Their clock guards hold wake locks until the drivers drop after high-voltage shutdown, including error paths.
@@ -32,10 +29,7 @@ Panel logic remains supplied until driver release and explicit low levels on eve
 An idle panel retains no LCD or RMT driver wake lock.
 
 Startup and changes to gray pixels require a full refresh.
-A full refresh applies 32 clearing scans and 15 black-on-white grayscale scans.
-Black-to-white and white-to-black changes use five partial scans, with 100 µs drive time per scan.
-Unchanged pixels receive neutral commands, including unchanged gray pixels.
-The driver traverses all gate rows during each scan.
+A change between black and white can use a partial waveform. Even then, the driver traverses every gate row.
 
 The driver skips unchanged images and saves each completed image after supply shutdown.
 An interrupted update invalidates the previous image and requires a full refresh before further partial updates.
@@ -191,26 +185,8 @@ Native storage is therefore 960 × 540.
 The mechanical specification gives information about the same panel as 540 × 960 in portrait
 (page 4). These are coordinate conventions for the same pixels.
 
-The interface has eight source-data signals, source and gate clocks, and control
-signals (pages 6–7).
-The specification lists a maximum refresh rate of **85 Hz** (page 11).
-It specifies AC timing limits (pages 12–13) and an operating range of **0–50 °C**
-(page 10).
-Grayscale capability depends on the waveform and controller (page 4).
-Electrical and optical guarantees depend on the manufacturer's controller and
-waveforms (page 11).
-
-A **scan** is one traversal that applies drive commands.
-A **transition** is a sequence of scans that moves pixels toward their target
-shades. A new application image can take multiple scans.
-Thus, 85 Hz does not guarantee 85 completed grayscale images per second.
-
-The host driver schedules waveforms through the panel's source and gate drivers.
-Two-bit drive commands do not represent two-bit image colors.
-Grayscale comes from a sequence of drives.
-The Modos controller documentation gives information about last pixel state, waveform
-phase, and temperature as inputs to command generation.
-[Source: Glider/Caster design][caster]
+The panel specifies a maximum scan rate, but a grayscale transition takes multiple scans.
+The waveform determines how long a pixel needs to reach its target shade. Use the [panel specification][panel-spec], pages 4 and 11–13, for controller assumptions and electrical limits.
 
 ## What determines update cost?
 
@@ -282,35 +258,10 @@ The display service can report the cost of the resulting update pattern.
 
 ### Throughput and memory examples
 
-For 960 × 540, a full scan contains 518,400 pixel positions.
-A hypothetical rate of 60 scans/second gives **31.104 million positions/second**.
-The two-bit drive payload is **7.776 MB/s**, before blanking and protocol costs.
-Rasterization, frame comparisons, waveform lookup, state writes, and buffer
-copies use more CPU time and memory bandwidth.
-
-A packed 4-bpp target image uses 259,200 bytes.
-Old and new images together use 518,400 bytes before driver state or DMA
-buffers. The simulator uses one byte per pixel, or 518,400 bytes per image.
-That format does not define hardware storage.
-Available PSRAM capacity alone cannot establish whether scan deadlines are
-possible.
-
-Modos Caster supports independent pixel timing and early transition redirection.
-Its documented state uses 16 bits for each pixel.
-Each scan reads and writes that state.
-
-With the target image, the documented example uses 4.5 bytes of memory traffic
-per position.
-This approach removes a global update barrier at substantial memory cost.
-It does not make pigment motion instantaneous.
-[Source: Caster design][caster]
-
-Wenting Zhang's PaperBoy report demonstrates this technique on ESP32-S3.
-It processes 480 × 144 positions independently at 60 Hz.
-It uses SRAM buffers and LCD/DMA output.
-The report gives approximately 50% CPU time for that processing.
-It does not establish full-resolution performance on this board.
-[Source: author's report][paperboy]
+Before choosing a waveform engine, account for memory traffic on each scan as well as framebuffer capacity.
+The [Caster design][caster] tracks each pixel through its transition so a later frame can redirect it early.
+That flexibility requires additional state reads and writes on every scan.
+The [PaperBoy experiment][paperboy] demonstrates the technique at a smaller resolution. Full-panel throughput on this board still requires measurement.
 
 ## Mapping evidence to the display contract
 

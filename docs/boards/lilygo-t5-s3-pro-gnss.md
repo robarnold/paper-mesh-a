@@ -17,26 +17,17 @@ It retains an idle transmitter during the pause to keep UART1 clocks available f
 This transmitter has no attached pins or receive wake lock.
 Resume enables the supply and restarts baud selection. Previous GNSS observations cannot supply a retained fix.
 
-The adapter uses UART1 on RX44/TX43 with 8 data bits, no parity, and one stop bit.
-UART1 uses the GPIO matrix. Application logs continue through USB Serial/JTAG.
+The [receiver worker](../../firmware/src/gnss/mod.rs) listens during rendering and tries the rates used by the supported receiver variants.
+Only a complete sentence with a valid checksum selects a rate. This identifies a working transport but cannot identify the fitted receiver.
+After a prolonged silence the adapter retries baud selection without sending a receiver command.
 
-The worker uses a priority-1 interrupt executor on core 0 to receive bytes during application rendering.
-The receive threshold is 32 bytes. The software sentence buffer holds 128 bytes.
-The adapter sends no receiver commands.
-
-Baud selection tries 9600 and 38400 baud for four seconds each.
-A complete NMEA sentence with a valid envelope and checksum selects the baud rate.
-Baud selection does not establish the receiver model.
-After ten seconds without a valid NMEA sentence, the adapter tries both rates again.
 The [application](../application.md#location-screen) selects observation age limits.
 Incorrect checksums and malformed sentences do not change the previous observation time.
 
 ## Position and elevation
 
-The decoder accepts standard GNSS talker IDs and converts GGA coordinates to signed millionths of a degree.
-It converts the GGA altitude field to elevation above mean sea level in signed millimeters.
-The field must specify meters with `M`. Missing, malformed, and overflowing values supply no elevation.
-The decoder discards fractional precision below one millimeter. It does not add geoid separation to the reported elevation.
+Use the reported altitude above mean sea level only when the sentence specifies meters.
+Adding geoid separation again would change the reference of the displayed elevation. See section 2.2.2 of the [Quectel protocol][gnss-protocol].
 
 Elevation requires a valid position fix. An unavailable elevation does not discard valid horizontal coordinates.
 It accepts satellite fix qualities 1, 2, 4, and 5.
@@ -51,8 +42,7 @@ An optional mode field must specify satellite mode `A`, `D`, `F`, or `R`.
 Invalid status and other modes clear these readouts. The decoder accepts legacy RMC sentences without the mode field.
 The optional navigation status does not replace the data status. The vendor example uses navigation status `V` with valid data.
 
-The decoder converts knots to millimeters per second and course to thousandths of a degree.
-It discards fractional precision below one thousandth before conversion. Speed conversion rounds to the nearest millimeter per second.
+See the [GNSS decoder](../../firmware/src/gnss/receiver.rs) for field conversion and rounding.
 
 RMC UTC supplies hours, minutes, seconds, and the date from the same sentence.
 The decoder discards fractional seconds and interprets the two-digit year as 2000 through 2099.
@@ -73,8 +63,9 @@ It requires complete, ordered groups before publication. Duplicate satellite IDs
 It preserves the previous complete group until replacement or expiry after five seconds.
 Partial groups also expire after five seconds.
 
-It supports 12 report streams, 36 satellites per stream, and 96 distinct satellites in the summary.
-These buffers use static RAM instead of the interrupt stack.
+The decoder bounds the number of streams and satellites to keep their storage off the interrupt stack.
+See the [GSV implementation](../../firmware/src/gnss/gsv.rs) for capacities.
+
 Storage overflow marks summary counts as lower bounds.
 Multiple signals for one satellite contribute one count and the greatest reported C/N0.
 An empty C/N0 field stays unknown. A reported zero stays zero.

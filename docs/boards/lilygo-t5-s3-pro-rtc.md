@@ -4,10 +4,8 @@
 
 ## Hardware adapter
 
-The firmware uses the PCF8563 at I2C address `0x51` through the shared bus mutex.
-A core 0 task polls the device at one-second intervals.
-The task copies calendar state for `Clock::now_utc()`.
-This method extrapolates whole seconds between polls and rejects samples after ten seconds without a successful read.
+The [calendar service](../../firmware/src/rtc/service.rs) advances UTC between shared-bus reads.
+It limits extrapolation so an old sample cannot keep the clock apparently valid after communication stops.
 
 The driver reads control state and the complete calendar in one transaction.
 STOP, test mode, voltage loss, malformed BCD, or invalid calendar fields invalidate UTC.
@@ -22,12 +20,9 @@ Physical retention requires a suitable backup source on `VRTC`.
 
 ## GPS synchronization
 
-The first complete, valid RMC report sets the RTC.
-The report must be less than two seconds old and contain both UTC time and date.
-Later reports correct an invalid RTC or a difference of at least two seconds.
-A successful correction consumes the report once.
-Repeated or older reports cannot reset the counter.
-Each correction includes whole seconds elapsed since receipt.
+A fresh RMC sentence must supply both date and time before it can correct the RTC.
+The adapter accounts for elapsed time since receipt and consumes each successful correction once.
+The correction threshold avoids repeated writes for small differences.
 
 The driver sets STOP, writes the complete calendar, clears STOP, and reads the result.
 It leaves alarm, timer, and clock-output registers unchanged.
