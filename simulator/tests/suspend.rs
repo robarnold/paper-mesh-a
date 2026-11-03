@@ -25,6 +25,7 @@ fn start(sim: &mut Simulation) {
     sim.advance(2 * REFRESH_MS);
 }
 
+// A timer wake restores application state after an interval with no heartbeats or refreshes.
 #[test]
 fn timed_suspend_retains_state_and_suppresses_periodic_work() {
     let mut sim = Simulation::default();
@@ -59,6 +60,7 @@ fn timed_suspend_retains_state_and_suppresses_periodic_work() {
     assert_eq!(sim.snapshot().taps, 2);
 }
 
+// Function can end sleep early. Charge gained during sleep appears as negative charge loss.
 #[test]
 fn function_wakes_early_and_charge_gain_keeps_its_sign() {
     let mut sim = Simulation::default();
@@ -79,6 +81,7 @@ fn function_wakes_early_and_charge_gain_keeps_its_sign() {
     assert_eq!(report.external_power_at_endpoints(), Some(true));
 }
 
+// A failed gauge leaves charge loss unknown.
 #[test]
 fn gauge_failure_does_not_become_zero_charge_loss() {
     let mut sim = Simulation::default();
@@ -91,6 +94,7 @@ fn gauge_failure_does_not_become_zero_charge_loss() {
     assert_eq!(report.external_power_at_endpoints(), Some(false));
 }
 
+// A charge comparison requires fresh readings from a present battery.
 #[test]
 fn stale_samples_and_missing_batteries_do_not_produce_a_charge_comparison() {
     for scenario in [
@@ -116,6 +120,7 @@ fn stale_samples_and_missing_batteries_do_not_produce_a_charge_comparison() {
     }
 }
 
+// A held wake control blocks sleep until release permits another attempt.
 #[test]
 fn held_wake_control_rejects_sleep_and_allows_retry() {
     let mut sim = Simulation::default();
@@ -133,6 +138,7 @@ fn held_wake_control_rejects_sleep_and_allows_retry() {
     assert!(sim.snapshot().suspended);
 }
 
+// The same virtual interval produces the same wake report regardless of step size.
 #[test]
 fn time_step_size_does_not_change_suspend_duration_or_result() {
     let mut large = Simulation::default();
@@ -153,6 +159,7 @@ fn time_step_size_does_not_change_suspend_duration_or_result() {
     assert_eq!(large.snapshot().heartbeats, small.snapshot().heartbeats);
 }
 
+// Each sleep cycle reports its own wake cause, including BOOT.
 #[test]
 fn boot_wakes_and_repeated_cycles_keep_distinct_causes() {
     let mut sim = Simulation::default();
@@ -174,6 +181,7 @@ fn boot_wakes_and_repeated_cycles_keep_distinct_causes() {
     assert_eq!(sim.snapshot().suspend_wake_reasons, ["Timer"]);
 }
 
+// Touch wakes only when enabled, and the wake gesture cannot activate the underlying control.
 #[test]
 fn touch_wake_is_optional_and_consumes_the_wake_contact() {
     let mut sim = Simulation::default();
@@ -205,6 +213,7 @@ fn touch_wake_is_optional_and_consumes_the_wake_contact() {
     assert!(!sim.snapshot().diagnostics_open);
 }
 
+// An enabled wake input must clear before the device can enter sleep.
 #[test]
 fn boot_and_enabled_home_or_touch_must_be_released_before_sleep() {
     for id in [0, 2] {
@@ -244,6 +253,7 @@ fn boot_and_enabled_home_or_touch_must_be_released_before_sleep() {
 #[path = "../../firmware/src/suspend/wake.rs"]
 mod wake;
 
+// The decoded wake report preserves simultaneous causes and an unattributed expander interrupt.
 #[test]
 fn firmware_preserves_simultaneous_events_and_unknown_expander_inputs() {
     assert_eq!(

@@ -4,6 +4,7 @@ use paper_mesh_platform::{
 };
 use paper_mesh_simulator::{Simulation, location::LocationScenario};
 
+// A GPS report establishes calendar time, which continues to advance after receiver loss.
 #[test]
 fn gps_sets_calendar_time_and_receiver_loss_does_not_stop_it() {
     let mut sim = Simulation::default();
@@ -24,6 +25,7 @@ fn gps_sets_calendar_time_and_receiver_loss_does_not_stop_it() {
     assert_eq!(sim.clock().now_utc(), None);
 }
 
+// Changing the calendar leaves elapsed time and display completion on their original schedule.
 #[test]
 fn calendar_corrections_do_not_change_deadlines_or_display_completion() {
     let mut changed = Simulation::default();

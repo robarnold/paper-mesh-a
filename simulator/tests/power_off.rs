@@ -16,6 +16,7 @@ fn open(sim: &mut Simulation) {
     sim.advance(2 * REFRESH_MS);
 }
 
+// Shutdown starts on request and stops application work only after the final frame completes.
 #[test]
 fn power_off_requires_explicit_start_and_stops_work_after_final_frame() {
     let mut sim = Simulation::default();
@@ -38,6 +39,7 @@ fn power_off_requires_explicit_start_and_stops_work_after_final_frame() {
     assert_eq!(sim.portrait_png().unwrap(), image);
 }
 
+// External power blocks shutdown. The user can retry after disconnecting it.
 #[test]
 fn external_power_refusal_keeps_controls_usable_and_allows_retry() {
     let mut sim = Simulation::default();
@@ -53,6 +55,7 @@ fn external_power_refusal_keeps_controls_usable_and_allows_retry() {
     assert!(sim.snapshot().powered_off);
 }
 
+// Shutdown requires a current charger observation to rule out external power.
 #[test]
 fn missing_or_expired_charger_observation_cannot_approve_power_off() {
     for scenario in [
@@ -71,6 +74,7 @@ fn missing_or_expired_charger_observation_cannot_approve_power_off() {
     }
 }
 
+// BOOT must remain pressed through the hold threshold to request shutdown.
 #[test]
 fn boot_hold_requests_power_off_but_short_press_does_not() {
     let mut sim = Simulation::default();

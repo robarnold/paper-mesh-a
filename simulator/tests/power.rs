@@ -15,6 +15,7 @@ fn press(sim: &mut Simulation, target: Rectangle) {
     sim.touch_portrait(TouchEvent::release(0, target.center()));
 }
 
+// The Power screen reflects supply changes while the user navigates its views.
 #[test]
 fn power_navigation_and_supply_transitions_use_the_shared_application() {
     let mut sim = Simulation::default();
@@ -51,6 +52,7 @@ fn power_navigation_and_supply_transitions_use_the_shared_application() {
     assert_eq!(sim.snapshot().taps, 1);
 }
 
+// A missing battery or a failed source hides its readings while other valid readings remain available.
 #[test]
 fn independent_failures_absence_and_startup_hide_only_affected_values() {
     let mut sim = Simulation::default();
@@ -87,6 +89,7 @@ fn independent_failures_absence_and_startup_hide_only_affected_values() {
     assert_eq!(sim.snapshot().battery_percent, Some(68));
 }
 
+// A stale sample expires at the same virtual time and produces the same frame across step sizes.
 #[test]
 fn expiry_and_frames_do_not_depend_on_time_step_size() {
     let mut large = Simulation::default();
@@ -117,6 +120,7 @@ fn expiry_and_frames_do_not_depend_on_time_step_size() {
     assert_eq!(large.power().view().battery_status, ReadingStatus::Fresh);
 }
 
+// A power change in the background requires no Home screen refresh.
 #[test]
 fn hidden_power_changes_do_not_refresh_the_home_screen() {
     let mut sim = Simulation::default();

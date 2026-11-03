@@ -2,6 +2,7 @@ use embedded_graphics::prelude::Point;
 use paper_mesh_platform::TouchEvent;
 use paper_mesh_simulator::Simulation;
 
+// Moving or releasing one finger preserves the identity of the other active contacts.
 #[test]
 fn movement_and_partial_releases_preserve_simulated_contact_ids() {
     let mut sim = Simulation::default();

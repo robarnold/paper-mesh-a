@@ -15,6 +15,7 @@ fn press(sim: &mut Simulation, target: Rectangle) {
     sim.touch_portrait(TouchEvent::release(0, target.center()));
 }
 
+// A fix becomes visible after acquisition, and navigation still works while the receiver runs.
 #[test]
 fn location_screen_acquires_a_fix_and_keeps_other_screens_available() {
     let mut sim = Simulation::default();
@@ -45,6 +46,7 @@ fn location_screen_acquires_a_fix_and_keeps_other_screens_available() {
     assert!(sim.debugger().is_open());
 }
 
+// Position disappears after fix loss, expiry, or a receiver fault and returns with a fresh fix.
 #[test]
 fn loss_silence_and_faults_remove_coordinates_and_permit_recovery() {
     let mut sim = Simulation::default();
@@ -81,6 +83,7 @@ fn loss_silence_and_faults_remove_coordinates_and_permit_recovery() {
     assert_eq!(sim.location().view().status, FixStatus::Valid);
 }
 
+// A fix at the equator and prime meridian remains valid. An incomplete tap leaves the screen open.
 #[test]
 fn zero_coordinates_are_a_valid_fix_and_partial_touches_do_not_navigate() {
     let mut sim = Simulation::default();
@@ -109,6 +112,7 @@ fn zero_coordinates_are_a_valid_fix_and_partial_touches_do_not_navigate() {
     assert_eq!(sim.snapshot().taps, 0);
 }
 
+// Advancing to the same deadline produces the same observations and visible pixels regardless of step size.
 #[test]
 fn deadlines_and_completed_frames_match_across_time_step_sizes() {
     let mut large = Simulation::default();
@@ -131,6 +135,7 @@ fn deadlines_and_completed_frames_match_across_time_step_sizes() {
     );
 }
 
+// Observations received during a refresh appear together in a later frame.
 #[test]
 fn new_observations_combine_while_display_refresh_is_pending() {
     let mut sim = Simulation::default();
@@ -147,6 +152,7 @@ fn new_observations_combine_while_display_refresh_is_pending() {
     assert_eq!(sim.snapshot().completed_refreshes, 3);
 }
 
+// Receiver activity and satellite signal levels can remain visible before a position fix.
 #[test]
 fn active_receiver_and_signal_levels_do_not_require_a_fix() {
     let mut sim = Simulation::default();
@@ -178,6 +184,7 @@ fn active_receiver_and_signal_levels_do_not_require_a_fix() {
     );
 }
 
+// Fresh receiver messages do not extend the lifetime of an older fix or satellite report.
 #[test]
 fn response_fix_and_satellite_expiry_are_independent() {
     let mut sim = Simulation::default();
@@ -214,6 +221,7 @@ fn response_fix_and_satellite_expiry_are_independent() {
     );
 }
 
+// Receiver updates while Diagnostics is closed leave the visible frame alone.
 #[test]
 fn diagnostic_reports_do_not_refresh_a_closed_screen() {
     let mut sim = Simulation::default();
@@ -226,6 +234,7 @@ fn diagnostic_reports_do_not_refresh_a_closed_screen() {
     assert!(sim.snapshot().receiver_messages > 10);
 }
 
+// A negative elevation is valid. Missing elevation hides only the vertical measurement.
 #[test]
 fn elevation_can_be_negative_or_missing_without_losing_the_position() {
     let mut sim = Simulation::default();
@@ -244,6 +253,7 @@ fn elevation_can_be_negative_or_missing_without_losing_the_position() {
     assert_ne!(sim.display().pixels(), with_elevation);
 }
 
+// A stopped receiver can report zero speed, and missing motion or UTC leaves other valid fields available.
 #[test]
 fn motion_and_utc_support_movement_stops_and_independent_missing_fields() {
     let mut sim = Simulation::default();
@@ -272,6 +282,7 @@ fn motion_and_utc_support_movement_stops_and_independent_missing_fields() {
     assert!(sim.snapshot().latitude_microdegrees.is_some());
 }
 
+// When only motion or UTC stops updating, only that observation expires.
 #[test]
 fn motion_and_utc_expire_independently_while_position_and_receiver_stay_current() {
     for scenario in [LocationScenario::StaleMotion, LocationScenario::StaleUtc] {
@@ -303,6 +314,7 @@ fn motion_and_utc_expire_independently_while_position_and_receiver_stay_current(
     }
 }
 
+// Motion and UTC disappear when the fix is lost, the receiver falls silent, or it reports a fault.
 #[test]
 fn lost_fix_silence_and_faults_remove_motion_and_utc() {
     let mut sim = Simulation::default();
@@ -331,6 +343,7 @@ fn lost_fix_silence_and_faults_remove_motion_and_utc() {
     }
 }
 
+// Changing gray digits requires a full refresh even when the affected text occupies little space.
 #[test]
 fn changed_gray_message_digits_require_a_full_panel_refresh() {
     use embedded_graphics::pixelcolor::{Gray4, GrayColor};

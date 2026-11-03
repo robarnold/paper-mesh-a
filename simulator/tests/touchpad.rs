@@ -12,6 +12,7 @@ fn open(sim: &mut Simulation) {
     assert_eq!(sim.snapshot().touchpad_reports, 0);
 }
 
+// Contact changes reach the simulated host without adding display refreshes.
 #[test]
 fn mode_forwards_raw_contacts_without_refreshing_the_display() {
     let mut sim = Simulation::default();
@@ -31,6 +32,7 @@ fn mode_forwards_raw_contacts_without_refreshing_the_display() {
     assert_eq!(sim.snapshot().contacts[0].id, 7);
 }
 
+// Exiting the mode detaches the host and suppresses a contact still held on screen.
 #[test]
 fn function_and_home_exit_and_suppress_a_held_contact() {
     for button in [1, 2] {
@@ -62,6 +64,7 @@ fn function_and_home_exit_and_suppress_a_held_contact() {
     }
 }
 
+// Reconnection requires fresh input, and cancellation clears retained contacts.
 #[test]
 fn reconnect_and_cancel_clear_host_state() {
     let mut sim = Simulation::default();

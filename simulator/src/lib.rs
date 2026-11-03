@@ -915,6 +915,7 @@ mod tests {
         sim.touch_portrait(TouchEvent::release(0, target.center()));
     }
 
+    // Paging through either radio's results preserves the application tap count.
     #[test]
     fn debugger_scans_both_radios_and_pages_without_changing_the_counter() {
         let mut sim = Simulation::default();
@@ -958,6 +959,7 @@ mod tests {
         assert_eq!(sim.snapshot().taps, 1);
     }
 
+    // Each scan replaces previous results, and a later successful request can recover from failure.
     #[test]
     fn scan_scenarios_clear_old_results_and_allow_recovery() {
         let mut sim = Simulation::default();
@@ -995,6 +997,7 @@ mod tests {
         assert_eq!(sim.debugger().results().networks().len(), 7);
     }
 
+    // Equivalent advances produce the same scan state and completed frame.
     #[test]
     fn scan_deadlines_and_frames_match_across_time_step_sizes() {
         let mut fast = Simulation::default();
@@ -1019,6 +1022,7 @@ mod tests {
         );
     }
 
+    // Leaving a scan or switching radios cancels the previous request.
     #[test]
     fn a_tab_change_or_back_cancels_the_old_scan() {
         let mut sim = Simulation::default();
@@ -1039,6 +1043,7 @@ mod tests {
         assert_eq!(sim.debugger().state(), ScanState::Complete);
     }
 
+    // A partial counter update must match the simulator and preserve pixels outside the counter.
     #[test]
     fn partial_tap_updates_match_simulator_and_preserve_pixels_outside_counter() {
         use embedded_graphics::primitives::Rectangle;
@@ -1102,6 +1107,7 @@ mod tests {
         }
     }
 
+    // The packed hardware framebuffer and the simulator must agree at every pixel.
     #[test]
     fn hardware_framebuffer_matches_every_simulator_pixel() {
         use paper_mesh_ed047tc1::{FRAME_BYTES, Framebuffer};
@@ -1132,6 +1138,7 @@ mod tests {
         sim.touch_native(TouchEvent::release(0, point));
     }
 
+    // The previous frame stays visible until completion, and idle time alone requests no frame.
     #[test]
     fn a_frame_is_visible_only_after_refresh_and_idle_does_not_refresh() {
         let mut sim = Simulation::default();
@@ -1145,6 +1152,7 @@ mod tests {
         assert_eq!(sim.snapshot().completed_refreshes, 1);
     }
 
+    // Input during refresh appears together in the next frame.
     #[test]
     fn input_during_refresh_is_coalesced_into_the_next_frame() {
         let mut sim = Simulation::default();
@@ -1167,6 +1175,7 @@ mod tests {
         assert_eq!(sim.display.pixels(), expected.drawing);
     }
 
+    // Every valid tap counts even when several releases precede display completion.
     #[test]
     fn rapid_taps_survive_multiple_pending_refreshes() {
         let mut sim = Simulation::default();
@@ -1190,6 +1199,7 @@ mod tests {
         assert_eq!(sim.display.pixels(), expected.drawing);
     }
 
+    // A single advance and smaller advances to the same time produce identical state and pixels.
     #[test]
     fn fast_forward_matches_small_steps_including_frames() {
         let mut fast = Simulation::default();
@@ -1208,6 +1218,7 @@ mod tests {
         );
     }
 
+    // PNG export preserves the framebuffer dimensions and gray levels.
     #[test]
     fn png_preserves_dimensions_and_grayscale_pixels() {
         let mut sim = Simulation::default();
@@ -1224,6 +1235,7 @@ mod tests {
         assert!(pixels.iter().all(|pixel| pixel % 17 == 0));
     }
 
+    // Rotating the completed native frame for export gives the same pixels as direct portrait rendering.
     #[test]
     fn portrait_export_matches_direct_render_after_native_refresh() {
         assert_eq!(SCREEN_SIZE, paper_mesh_app::SCREEN_SIZE);
@@ -1274,6 +1286,7 @@ mod tests {
         assert_ne!(sim.display.pixels(), expected.0);
     }
 
+    // Native and browser coordinates produce equivalent taps and honor the same cancellation rules.
     #[test]
     fn native_and_browser_touches_share_rotation_and_cancellation() {
         let mut sim = Simulation::default();
@@ -1296,6 +1309,7 @@ mod tests {
         assert_eq!(sim.snapshot().taps, 2);
     }
 
+    // A failed refresh leaves work pending so a subsequent attempt can present the frame.
     #[test]
     fn failed_refresh_is_retried() {
         struct FailingDisplay {

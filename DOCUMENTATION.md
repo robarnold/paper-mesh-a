@@ -34,6 +34,12 @@ Record known limitations with the behavior that they affect.
 Keep each detailed rule in one primary document.
 Link to that rule from other documents.
 
+## Test intent
+
+Write a short comment above each test that states the condition and the expected observable behavior.
+If the reason for that expectation is unclear, name the contract or failure the test guards against.
+Leave setup steps and assertion details in the test body.
+
 ## Document map
 
 Choose a document by the behavior or responsibility that it describes.
@@ -107,7 +113,9 @@ Check the upstream license for the selected version against the intended use and
 Check bundled artwork separately, including artwork that appears in generated images.
 If the terms are unclear, resolve the question before adoption.
 
-Record the source and license in the relevant documentation. Link to the file that pins the reviewed version.
+Record the source and license for dependencies and assets distributed with simulator or device images.
+Development-only tools require no license entry in project documentation.
+For distributed material, link to the file that pins the reviewed version.
 If no file identifies that version, record it with the license decision.
 Include required attribution and license notices with the distributed material.
 

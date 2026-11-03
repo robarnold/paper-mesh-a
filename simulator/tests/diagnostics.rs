@@ -27,6 +27,7 @@ fn advance(sim: &mut Simulation) {
     sim.hardware_button(0, false).unwrap();
 }
 
+// Each pattern fills the display and stays visible across heartbeats for inspection.
 #[test]
 fn normal_application_runs_full_patterns_and_holds_them_without_redraws() {
     let mut sim = Simulation::default();
@@ -64,6 +65,7 @@ fn normal_application_runs_full_patterns_and_holds_them_without_redraws() {
     assert_eq!(sim.snapshot().taps, 1);
 }
 
+// A BOOT press during refresh cannot skip a pattern or trigger shutdown by remaining held.
 #[test]
 fn press_during_refresh_and_a_long_hold_cannot_skip_patterns_or_power_off() {
     let mut sim = Simulation::default();
@@ -84,6 +86,7 @@ fn press_during_refresh_and_a_long_hold_cannot_skip_patterns_or_power_off() {
     assert_eq!(sim.snapshot().diagnostic_pattern, Some("white"));
 }
 
+// Leaving a pattern mid-refresh replaces it with a full frame of the destination page.
 #[test]
 fn exits_during_refresh_restore_the_menu_or_home_with_a_full_refresh() {
     for id in [1, 2] {
