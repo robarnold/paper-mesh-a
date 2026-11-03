@@ -8,7 +8,7 @@ publish = false
 paper-mesh-platform = { path = "../platform" }
 
 [dev-dependencies]
-embedded-graphics = "0.8.2"
+embedded-graphics = "=0.8.2"
 
 [lints]
 workspace = true
