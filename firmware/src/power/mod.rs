@@ -1,4 +1,11 @@
 //! Periodic power observations on core 0 through the shared I2C bus.
+//!
+//! # Design choices
+//!
+//! - Publish gauge and charger observations independently so a bus error for one
+//!   device does not invalidate the other.
+//!
+//! See [Hardware and execution](../../../docs/boards/lilygo-t5-s3-pro-power.md#hardware-and-execution).
 
 mod device;
 pub(crate) mod ship;

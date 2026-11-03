@@ -1,4 +1,11 @@
 //! Native checks for core coordination and expander preparation.
+//!
+//! # Design choices
+//!
+//! - Exercise the suspend handshake and board preparation without inferring physical
+//!   wake reliability from a host test.
+//!
+//! See [Manual light sleep](../../docs/boards/lilygo-t5-s3-pro-power.md#manual-light-sleep).
 
 #[path = "../../firmware/src/suspend/expander.rs"]
 mod expander;

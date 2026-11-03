@@ -1,4 +1,11 @@
 //! BQ25896 battery isolation after the runtime stops device services.
+//!
+//! # Design choices
+//!
+//! - Recheck the supply before battery isolation because external power can change
+//!   after preparation.
+//!
+//! See [System power-off](../../../docs/boards/lilygo-t5-s3-pro-power.md#system-power-off).
 
 use embedded_hal::i2c::I2c;
 

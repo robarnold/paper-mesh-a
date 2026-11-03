@@ -1,4 +1,11 @@
 //! Native tests execute the firmware register adapter without hardware.
+//!
+//! # Design choices
+//!
+//! - Use scripted bus observations to check power decoding when one sensor supplies
+//!   incomplete or invalid data.
+//!
+//! See [LILYGO power control and observations](../../docs/boards/lilygo-t5-s3-pro-power.md).
 
 #[path = "../../firmware/src/power/device.rs"]
 mod device;

@@ -1,4 +1,11 @@
 //! Stop core 1 at a lock-free point before core 0 enters light sleep.
+//!
+//! # Design choices
+//!
+//! - Park the display core before sleep so it cannot retain a lock needed for
+//!   preparation or resume.
+//!
+//! See [Manual light sleep](../../../docs/boards/lilygo-t5-s3-pro-power.md#manual-light-sleep).
 
 use core::sync::atomic::Ordering;
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};

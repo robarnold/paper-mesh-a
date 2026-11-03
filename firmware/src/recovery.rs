@@ -1,4 +1,11 @@
 //! Share the RTC watchdog without replacing another operation's deadline.
+//!
+//! # Design choices
+//!
+//! - Coordinate sleep recovery with display recovery because both use the same
+//!   hardware watchdog.
+//!
+//! See [Manual light sleep](../../docs/boards/lilygo-t5-s3-pro-power.md#manual-light-sleep).
 
 mod state;
 pub use state::Owner;

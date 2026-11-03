@@ -1,4 +1,11 @@
 //! Stable unused pins on the H752-01 control expander.
+//!
+//! # Design choices
+//!
+//! - Configure unused pins for sleep while preserving the bits that control supplies
+//!   and wake inputs.
+//!
+//! See [Manual light sleep](../../../docs/boards/lilygo-t5-s3-pro-power.md#manual-light-sleep).
 
 /// Hold unconnected IO0_1 through IO0_7 low without changing the auxiliary supply.
 pub fn quiet_unused<I: embedded_hal::i2c::I2c>(bus: &mut I) -> Result<(), I::Error> {

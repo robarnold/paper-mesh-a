@@ -1,4 +1,11 @@
 //! Retained suspend progress for diagnosis after an interrupted experiment.
+//!
+//! # Design choices
+//!
+//! - Keep sleep checkpoints across reset so diagnosis remains possible when the
+//!   application cannot finish its wake report.
+//!
+//! See [Manual light sleep](../../../docs/boards/lilygo-t5-s3-pro-power.md#manual-light-sleep).
 
 use core::{
     cell::RefCell,

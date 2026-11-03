@@ -1,4 +1,11 @@
 //! Decode captured GPIO interrupts without an invented control identity.
+//!
+//! # Design choices
+//!
+//! - Preserve simultaneous wake sources and report ambiguous expander interrupts
+//!   without attributing them to a button.
+//!
+//! See [Manual light sleep](../../../docs/boards/lilygo-t5-s3-pro-power.md#manual-light-sleep).
 
 use paper_mesh_platform::{input::buttons::ButtonId, suspend::WakeReason};
 

@@ -1,5 +1,12 @@
 //! BQ27220 and BQ25896 observations through embedded-hal.
 //! Register pointer writes do not change charger settings or gauge configuration.
+//!
+//! # Design choices
+//!
+//! - Check gauge readiness around each measurement so a change during the read cannot
+//!   produce a mixed sample.
+//!
+//! See [Fuel gauge](../../../docs/boards/lilygo-t5-s3-pro-power.md#fuel-gauge).
 
 use embedded_hal::i2c::I2c;
 use paper_mesh_platform::power::{

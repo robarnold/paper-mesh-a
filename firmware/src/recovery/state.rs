@@ -1,4 +1,11 @@
 //! Exclusive ownership of the hardware recovery deadline.
+//!
+//! # Design choices
+//!
+//! - Reject an overlapping watchdog reservation so a later operation cannot extend
+//!   the active recovery deadline.
+//!
+//! See [Power sequence and recovery](../../../docs/boards/lilygo-t5-s3-pro-display.md#power-sequence-and-recovery).
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Owner {

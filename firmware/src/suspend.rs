@@ -1,4 +1,11 @@
 //! Explicit light sleep after service preparation and a cooperative core stop.
+//!
+//! # Design choices
+//!
+//! - Pause device services and park the display core before sleep so peripheral work
+//!   cannot overlap the power transition.
+//!
+//! See [Manual light sleep](../../docs/boards/lilygo-t5-s3-pro-power.md#manual-light-sleep).
 
 use core::{
     cell::RefCell,

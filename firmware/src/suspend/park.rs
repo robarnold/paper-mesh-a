@@ -1,4 +1,11 @@
 //! A cancellation-safe handshake for a cooperative core stop.
+//!
+//! # Design choices
+//!
+//! - Allow cancellation of a park request so an abandoned suspend attempt cannot
+//!   strand the other core.
+//!
+//! See [Manual light sleep](../../../docs/boards/lilygo-t5-s3-pro-power.md#manual-light-sleep).
 
 use core::sync::atomic::{AtomicU32, Ordering};
 

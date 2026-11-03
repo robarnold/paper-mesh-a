@@ -1,3 +1,12 @@
+//! Charger isolation and cancellation tests.
+//!
+//! # Design choices
+//!
+//! - Inject supply changes and bus failures around battery isolation so uncertainty
+//!   cannot trigger a second cut request.
+//!
+//! See [System power-off](../../docs/boards/lilygo-t5-s3-pro-power.md#system-power-off).
+
 #[path = "../../firmware/src/power/ship.rs"]
 mod ship;
 
