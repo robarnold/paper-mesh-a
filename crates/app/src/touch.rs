@@ -1,4 +1,11 @@
 //! Touch diagnostics with a retained tap counter.
+//!
+//! # Design choices
+//!
+//! - Retain the count across page visits but cancel the pending gesture so a release
+//!   after returning cannot count as a new tap.
+//!
+//! See the [touch check](../../../docs/application.md#touch-check).
 
 use crate::screen::{STYLE, button};
 use paper_mesh_platform::ui::TextRole;

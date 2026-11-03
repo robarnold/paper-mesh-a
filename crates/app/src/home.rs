@@ -1,4 +1,11 @@
 //! Home destinations and retained uptime presentation.
+//!
+//! # Design choices
+//!
+//! - Clear the pending tap on entry and exit so a press from a previous visit cannot
+//!   open a destination on release.
+//!
+//! See the [application navigation rules](../../../docs/application-ui.md#destinations-and-operation-restrictions).
 
 use core::fmt::Write;
 use embedded_graphics::{pixelcolor::Gray4, prelude::*, text::Text};

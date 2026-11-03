@@ -1,4 +1,11 @@
 //! Component selection and common layout for application diagnostics.
+//!
+//! # Design choices
+//!
+//! - Use each component’s card bounds for both drawing and hit testing so moving a
+//!   card also moves its touch target.
+//!
+//! See the [diagnostics overview](../../../docs/application.md#diagnostics).
 
 use crate::screen::STYLE;
 use paper_mesh_platform::ui::TextRole;

@@ -1,4 +1,11 @@
 //! Application style selection and portrait layout.
+//!
+//! # Design choices
+//!
+//! - Derive the title width from the Back control and the style gap so a change to
+//!   either preserves space for navigation.
+//!
+//! See the [portrait layout rules](../../../docs/application-ui.md#portrait-layout).
 
 use embedded_graphics::{pixelcolor::Gray4, prelude::*, primitives::Rectangle};
 use paper_mesh_platform::ui::{Button, NavigationCard, ShellLayout, Style};

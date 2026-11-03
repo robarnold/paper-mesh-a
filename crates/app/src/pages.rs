@@ -1,4 +1,11 @@
 //! Application destinations and adapters for the platform Page contract.
+//!
+//! # Design choices
+//!
+//! - Keep power observations active across power subpages so opening the suspend
+//!   experiment does not interrupt sampling.
+//!
+//! See the [page ownership rules](../../../docs/application-ui.md#integration-and-ownership).
 
 use embedded_graphics::{pixelcolor::Gray4, prelude::*};
 use paper_mesh_platform::{

@@ -1,4 +1,11 @@
 //! Application controls for a small, manually advanced display check.
+//!
+//! # Design choices
+//!
+//! - Require a fresh press after refresh completion so input received while the panel
+//!   is busy cannot skip the pattern under inspection.
+//!
+//! See the [display check](../../../docs/application.md#display-check).
 
 use crate::screen::{STYLE, button};
 use paper_mesh_platform::ui::TextRole;
