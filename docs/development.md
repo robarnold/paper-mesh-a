@@ -2,62 +2,29 @@
 
 [Project overview](../README.md) · [Documentation guide](../DOCUMENTATION.md)
 
-The host must have Docker and the Dev Container CLI, or an editor with
-Dev Containers support. Run all project tools in the container:
+Use Docker with the Dev Container CLI or an editor that supports devcontainers.
+Follow the [README quick start](../README.md#start-development) to run the checks and simulator.
 
-```sh
-devcontainer up --workspace-folder .
-devcontainer exec --workspace-folder . just ci
-```
-
-The image contains a native Rust compiler and the Espressif Xtensa Rust toolchain,
-registered as `esp`. It also contains `espup`, `esp-generate`, `espflash`, and
-`just`. `.devcontainer/Dockerfile` specifies their versions.
-`firmware/rust-toolchain.toml` selects the installed `esp` toolchain.
-`firmware/Cargo.lock` fixes the firmware dependency versions.
-
-The native Rust compiler builds the simulator and tests both shared crates in the container. The root `Cargo.lock` fixes their dependency versions.
-
-The image build installs the tools. Rustup, Cargo, and Espressif files stay
-in the container filesystem. The container does not mount the host home
-directory. `espup` writes its environment script to `/opt/esp/export.sh`.
-The image sets the necessary paths for interactive and non-interactive commands.
-No host shell changes or manual script execution are necessary.
-
-Dev Containers can change the container user's numeric ID to match the host or
-GitHub runner. The creation hook then updates ownership of the tool directories.
-Cargo and Rustup keep write access after the ID change.
+Local development and CI use the same [container image](../.devcontainer/Dockerfile) so both build with the same toolchains.
+The tools stay inside the container, which avoids changes to the host shell.
+The [container configuration](../.devcontainer/devcontainer.json) restores write access to the tool directories when the container user's numeric ID changes.
 
 ## Simulator access
 
-The container publishes port 8080 only on the host's loopback interface.
-If an existing container predates this port setting, recreate it with this command:
+The container binds the simulator to the host loopback interface for local browser access.
+Recreate an existing container after changing the port mapping:
 
 ```sh
 devcontainer up --workspace-folder . --remove-existing-container
 ```
 
-The [simulator guide](simulator.md) gives the startup command and controls.
-The [firmware build guide](firmware-build.md) gives build commands, output paths, and linker details.
+See the [simulator guide](simulator.md) for controls and the [firmware build guide](firmware-build.md) for target builds.
 
 ## Continuous integration
 
-GitHub Actions uses a GitHub-hosted `ubuntu-24.04` runner to build the same
-devcontainer and execute `just ci`.
-The runner does not install or execute the Rust or ESP toolchain outside the
-container. CI checks infrastructure syntax, Rust formatting, and Clippy for
-both targets. It also runs native simulation scenarios, links release firmware,
-makes the boot image, and renders simulator screenshots.
-
-GitHub uploads the firmware image, ELF, and checksums as artifacts.
-It also uploads a separate simulator screenshot artifact.
-GitHub keeps these artifacts for 14 days.
-These checks do not verify hardware execution.
-
-CI operates without a project image registry. It does not publish container images.
-The first image build downloads and compiles development tools.
-Local builds reuse Docker layers.
-If build time becomes a problem, add a shared CI image cache.
+The [CI workflow](../.github/workflows/ci.yml) runs the same [checks](../justfile) that contributors run with `just ci`.
+The workflow defines which build artifacts reviewers can download and how long they remain available.
+A successful run verifies the build and simulator checks. Firmware startup and peripheral behavior require checks on a physical device.
 
 ## Hardware access
 
@@ -74,7 +41,6 @@ The ignored local configuration can use `PAPER_MESH_SERIAL_PORT` and
 Keep the actual `/dev/ttyACM*` name inside the container.
 Espflash uses this name to identify the USB interface.
 
-Use the default container for the simulator on host port 8080.
 After device identification, run these commands on the host:
 
 ```sh
