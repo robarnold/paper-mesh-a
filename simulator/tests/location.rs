@@ -1,3 +1,12 @@
+//! Location freshness and display updates tests.
+//!
+//! # Design choices
+//!
+//! - Compare fresh, stale, and missing receiver observations so one valid field
+//!   cannot conceal another field's expiry.
+//!
+//! See [GNSS screen](../../docs/simulator/scenarios.md#gnss-screen).
+
 use embedded_graphics::{prelude::*, primitives::Rectangle};
 use paper_mesh_app::diagnostics::{Component, HOME_TARGET};
 use paper_mesh_app::{

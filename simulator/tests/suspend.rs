@@ -1,3 +1,12 @@
+//! Application suspend and wake tests.
+//!
+//! # Design choices
+//!
+//! - Exercise sleep and wake through virtual time and input so retained state and
+//!   charge comparisons can be inspected after resume.
+//!
+//! See [Manual suspend experiment](../../docs/services/power.md#manual-suspend-experiment).
+
 use embedded_graphics::primitives::Rectangle;
 use paper_mesh_app::diagnostics::{Component, HOME_TARGET};
 use paper_mesh_app::{

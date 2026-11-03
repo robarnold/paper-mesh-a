@@ -1,3 +1,12 @@
+//! Calendar corrections and elapsed time tests.
+//!
+//! # Design choices
+//!
+//! - Exercise calendar corrections independently of elapsed time to detect unintended
+//!   changes to application deadlines.
+//!
+//! See [Calendar time and timers](../../docs/services/time.md).
+
 use paper_mesh_platform::{
     Clock,
     time::{Date, Month, Time, UtcDateTime},

@@ -1,3 +1,12 @@
+//! Battery and charger observation handling tests.
+//!
+//! # Design choices
+//!
+//! - Change one power source at a time and check freshness across virtual time
+//!   advances.
+//!
+//! See [Power screen](../../docs/simulator/scenarios.md#power-screen).
+
 use embedded_graphics::primitives::Rectangle;
 use paper_mesh_app::diagnostics::{Component, HOME_TARGET};
 use paper_mesh_app::{

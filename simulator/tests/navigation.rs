@@ -1,3 +1,12 @@
+//! Navigation across application pages tests.
+//!
+//! # Design choices
+//!
+//! - Exercise navigation restrictions through application input so blocked
+//!   transitions preserve the caller and page state.
+//!
+//! See [Destinations and operation restrictions](../../docs/application-ui.md#destinations-and-operation-restrictions).
+
 use embedded_graphics::primitives::Rectangle;
 use paper_mesh_app::{
     BACK_TARGET, TAP_TARGET,

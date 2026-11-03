@@ -1,3 +1,12 @@
+//! Hardware control routing tests.
+//!
+//! # Design choices
+//!
+//! - Verify button identities in the simulated backend and reject attempts to inject
+//!   lifecycle actions as keys.
+//!
+//! See [All physical controls](../../docs/boards/lilygo-t5-s3-pro.md#all-physical-controls).
+
 use paper_mesh_simulator::Simulation;
 
 #[test]

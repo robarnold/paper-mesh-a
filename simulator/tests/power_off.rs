@@ -1,3 +1,12 @@
+//! Shutdown requests and refusals tests.
+//!
+//! # Design choices
+//!
+//! - Exercise shutdown requests through the application so a refusal leaves controls
+//!   usable and success waits for the final frame.
+//!
+//! See [Explicit power off](../../docs/services/power.md#explicit-power-off).
+
 use embedded_graphics::primitives::Rectangle;
 use paper_mesh_app::diagnostics::{Component, HOME_TARGET};
 use paper_mesh_app::{BACK_TARGET, TAP_TARGET, power::OFF_TAB, power_off::START};

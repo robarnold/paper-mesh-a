@@ -1,3 +1,12 @@
+//! Contact identity across frames tests.
+//!
+//! # Design choices
+//!
+//! - Track contact identity through partial releases so lifting one finger cannot
+//!   erase another.
+//!
+//! See [Input and lifecycle controls](../../docs/services/input.md).
+
 use embedded_graphics::prelude::Point;
 use paper_mesh_platform::TouchEvent;
 use paper_mesh_simulator::Simulation;

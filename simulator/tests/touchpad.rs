@@ -1,3 +1,12 @@
+//! Host contact delivery tests.
+//!
+//! # Design choices
+//!
+//! - Check host contact delivery across entry, exit, and reconnect so a held finger
+//!   cannot start a new gesture.
+//!
+//! See [Host touchpad service](../../docs/services/touchpad.md).
+
 use embedded_graphics::prelude::Point;
 use paper_mesh_platform::{TouchEvent, touchpad::HostState};
 use paper_mesh_simulator::{REFRESH_MS, Simulation};

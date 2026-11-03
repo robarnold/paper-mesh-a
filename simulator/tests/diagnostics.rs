@@ -1,3 +1,12 @@
+//! Display diagnostics tests.
+//!
+//! # Design choices
+//!
+//! - Exercise the display check during pending refreshes so only completed patterns
+//!   can advance.
+//!
+//! See [Display check](../../docs/application.md#display-check).
+
 use embedded_graphics::primitives::Rectangle;
 use paper_mesh_app::{
     BACK_TARGET, TAP_TARGET,
