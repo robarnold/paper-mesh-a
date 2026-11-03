@@ -34,6 +34,17 @@ Record known limitations with the behavior that they affect.
 Keep each detailed rule in one primary document.
 Link to that rule from other documents.
 
+## Code comments and module documentation
+
+Use inline comments to explain why the code makes a choice.
+Name the constraint it satisfies or the failure it prevents. Omit comments that only restate the operation.
+
+Use module documentation to explain why the module exists and which responsibilities it owns.
+Link to the applicable specification and state what its requirements mean for this module.
+For example, the [input contract](docs/services/input.md) requires debounced button events.
+The button module must filter contact bounce so one physical press produces one press event.
+The backend selects the debounce interval for its hardware.
+
 ## Test intent
 
 Write a short comment above each test that states the condition and the expected observable behavior.
