@@ -1,4 +1,13 @@
-//! Shared page frame, Back gesture, and bounded content rendering.
+//! Shared page frame and Back control.
+//!
+//! # Design choices
+//!
+//! - Clip standard pages to the content region so drawing cannot cover navigation.
+//!   Give full-screen pages the entire viewport so they can use the header area.
+//! - Use the same Back control for rendering and hit testing so a disabled Back
+//!   button cannot complete a tap.
+//!
+//! See the [pages and shells contract](https://github.com/robarnold/paper-mesh-a/blob/main/docs/platform/toolkit.md#pages-and-shells).
 
 use embedded_graphics::{pixelcolor::Gray4, prelude::*, primitives::Rectangle};
 

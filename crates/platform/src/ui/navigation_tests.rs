@@ -1,3 +1,14 @@
+//! Tests for navigation history, page lifecycle, and shell input and rendering.
+//!
+//! # Design choices
+//!
+//! - Record lifecycle and touch events in the test pages so a rejected transition or
+//!   a stray release is observable even when the destination ID stays the same.
+//! - Have the test page fill its drawing area so the rendered pixels reveal whether
+//!   the shell reserved the header or granted the full viewport.
+//!
+//! See the [pages and shells contract](https://github.com/robarnold/paper-mesh-a/blob/main/docs/platform/toolkit.md#pages-and-shells).
+
 use super::*;
 use crate::ui::{Page, Presentation, ShellLayout};
 use embedded_graphics::primitives::Rectangle;
@@ -73,6 +84,7 @@ fn launch<const N: usize>() -> Navigator<Pages, N> {
     )
 }
 
+// Back must return to the page that opened this destination. Home must clear that path.
 #[test]
 fn one_page_returns_to_each_caller_and_home_clears_history() {
     let mut ui = launch::<4>();
@@ -124,6 +136,7 @@ fn one_page_returns_to_each_caller_and_home_clears_history() {
     assert_eq!(ui.return_to(), None);
 }
 
+// Revisiting a destination must preserve visit order. Reopening the active page must not repeat its callbacks.
 #[test]
 fn repeated_destinations_use_the_invocation_stack() {
     let mut ui = launch::<4>();
@@ -143,6 +156,7 @@ fn repeated_destinations_use_the_invocation_stack() {
     }
 }
 
+// When the return stack is full, an open request must leave the active page and its history intact.
 #[test]
 fn full_history_rejects_open_without_lifecycle_or_history_changes() {
     let mut ui = launch::<1>();
@@ -165,6 +179,7 @@ fn full_history_rejects_open_without_lifecycle_or_history_changes() {
     assert_eq!(root_only.current(), 0);
 }
 
+// A Back press that starts while disabled or before a transition must require a fresh tap.
 #[test]
 fn pending_and_transitions_cannot_complete_an_old_back_tap() {
     let mut ui = launch::<4>();
@@ -190,6 +205,7 @@ fn pending_and_transitions_cannot_complete_an_old_back_tap() {
     );
 }
 
+// A touch that opens a page must clear before the new page receives input.
 #[test]
 fn page_requests_run_callbacks_and_suppress_contacts_until_release() {
     let mut ui = launch::<4>();
@@ -236,6 +252,7 @@ impl DrawTarget for Canvas {
     }
 }
 
+// Standard content must leave room for the header. Home must still work from full-screen content.
 #[test]
 fn shell_clips_content_and_full_screen_keeps_home_navigation() {
     let mut ui = launch::<4>();
@@ -277,6 +294,7 @@ impl Page for SinglePage {
     }
 }
 
+// A root-only application must enter its single page once without an adapter.
 #[test]
 fn a_single_page_can_launch_without_a_collection_adapter() {
     let ui = Navigator::<_, 0>::launch(0, Shell::new(LAYOUT), SinglePage(0));

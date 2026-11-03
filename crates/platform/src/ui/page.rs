@@ -1,4 +1,13 @@
-//! Content and lifecycle contract for one application destination.
+//! Page behavior and lifecycle for application-defined destinations.
+//!
+//! # Design choices
+//!
+//! - Let the application supply destination IDs and page storage so the toolkit can
+//!   navigate without knowing which screens exist.
+//! - Have pages request navigation through a return value so the navigator can apply
+//!   restrictions before calling the exit and entry callbacks.
+//!
+//! See the [pages and shells contract](https://github.com/robarnold/paper-mesh-a/blob/main/docs/platform/toolkit.md#pages-and-shells).
 
 use embedded_graphics::{pixelcolor::Gray4, prelude::*};
 

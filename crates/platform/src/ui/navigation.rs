@@ -1,4 +1,15 @@
-//! Shell launch, caller-based navigation, and page lifecycle dispatch.
+//! Navigation between retained pages, including return history and input routing.
+//!
+//! # Design choices
+//!
+//! - Record the caller on a bounded stack so Back retraces visits even when different
+//!   pages open the same destination.
+//! - Reject an open request when history is full before leaving the current page.
+//!   This preserves both its lifecycle state and the existing return path.
+//! - Cancel pending gestures on transition so a finger already on the screen cannot
+//!   activate a control on the destination page.
+//!
+//! See the [pages and shells contract](https://github.com/robarnold/paper-mesh-a/blob/main/docs/platform/toolkit.md#pages-and-shells).
 
 use embedded_graphics::{pixelcolor::Gray4, prelude::*};
 use heapless::Vec;
