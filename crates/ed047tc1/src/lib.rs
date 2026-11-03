@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-only
 //! ED047TC1 framebuffer and scan encoding.
 //! The firmware supplies PSRAM storage and controls the panel bus.
-//! See ../README.md for source attribution and waveform limits.
+//!
+//! # Design choices
+//!
+//! - Base partial scans on the last completed image so an interrupted scan cannot
+//!   become the reference for the next transition.
+//!
+//! See [ED047TC1 scan encoding](../README.md).
 
 #![no_std]
 

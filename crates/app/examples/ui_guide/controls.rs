@@ -1,4 +1,11 @@
 //! Interactive control examples with their own navigation and retained state.
+//!
+//! # Design choices
+//!
+//! - The navigation example keeps its own page state so a preview action can
+//!   demonstrate a caller return in isolation.
+//!
+//! See [Pages and shells](../../../../docs/platform/toolkit.md#pages-and-shells).
 
 use embedded_graphics::{pixelcolor::Gray4, prelude::*, primitives::Rectangle, text::Text};
 use paper_mesh_platform::{

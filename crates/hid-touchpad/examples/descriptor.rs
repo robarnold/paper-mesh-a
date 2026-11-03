@@ -1,3 +1,12 @@
+//! Export the touchpad report descriptor for host inspection.
+//!
+//! # Design choices
+//!
+//! - Export the HID descriptor for inspection from the same definition used to
+//!   describe the device to a host.
+//!
+//! See [HID touchpad protocol](../README.md).
+
 use paper_mesh_hid_touchpad::{Descriptor, Geometry};
 fn main() {
     let descriptor = Descriptor::new(Geometry {

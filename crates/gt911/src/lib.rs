@@ -1,5 +1,12 @@
 //! GT911 contact frames through a borrowed I2C bus.
 //! Goodix Programming Guide Rev.10, sections 3.3 and 5, defines the report sequence.
+//!
+//! # Design choices
+//!
+//! - Acknowledge a contact report only after the required reads succeed so consumers
+//!   receive the complete sample.
+//!
+//! See [GT911 reports](../README.md).
 
 #![no_std]
 

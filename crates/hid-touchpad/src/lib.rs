@@ -1,6 +1,13 @@
 #![no_std]
 
 //! USB HID descriptors and complete contact reports for a five-contact touchpad.
+//!
+//! # Design choices
+//!
+//! - Encode complete contact reports so the host can distinguish movement, release,
+//!   and an empty frame.
+//!
+//! See [HID touchpad protocol](../README.md).
 
 use paper_mesh_platform::{
     Contact,

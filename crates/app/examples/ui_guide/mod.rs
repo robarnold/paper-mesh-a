@@ -1,4 +1,11 @@
 //! A small application for the UI guide. The simulator supplies its native host.
+//!
+//! # Design choices
+//!
+//! - Keep the guide examples independent of device state so exploring a control
+//!   cannot start a device operation.
+//!
+//! See [UI guide](../../../../docs/simulator/execution.md#ui-guide).
 
 use embedded_graphics::{pixelcolor::Gray4, prelude::*, primitives::Rectangle, text::Text};
 use paper_mesh_platform::{

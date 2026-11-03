@@ -3,6 +3,13 @@
 //! Shared application state and rendering.
 //! This crate operates without ESP registers, an OS, a heap, or an executor.
 //! Each platform delivers input and schedules application polls.
+//!
+//! # Design choices
+//!
+//! - The runtime supplies services and deadlines so the same application decisions
+//!   run on the device and in deterministic scenarios.
+//!
+//! See [Runtime execution](../../../docs/platform/runtime.md).
 
 pub mod debugger;
 pub mod diagnostics;

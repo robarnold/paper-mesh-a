@@ -1,3 +1,12 @@
+//! Rendering and input checks for shared controls.
+//!
+//! # Design choices
+//!
+//! - Draw into a bounded test canvas so a long label that escapes its control can be
+//!   detected at the pixel boundary.
+//!
+//! See [Control and data states](../../../../docs/ui.md#control-and-data-states).
+
 use super::*;
 use crate::{TouchEvent, input::TapGesture};
 use embedded_graphics::mock_display::MockDisplay;

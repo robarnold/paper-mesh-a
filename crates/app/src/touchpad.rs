@@ -1,4 +1,11 @@
 //! Touchpad application screen and activation policy.
+//!
+//! # Design choices
+//!
+//! - Give the host the full touch surface so a desktop gesture cannot also activate
+//!   a page control.
+//!
+//! See [Host touchpad service](../../../docs/services/touchpad.md).
 
 use crate::screen::STYLE;
 use paper_mesh_platform::ui::TextRole;

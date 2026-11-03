@@ -1,4 +1,11 @@
 //! Visual examples that use the application style and controls.
+//!
+//! # Design choices
+//!
+//! - Use production components so the catalog shows the same rendering as an
+//!   application.
+//!
+//! See [Visual catalog](../../../../docs/simulator/execution.md#visual-catalog).
 
 use super::{STYLE, line};
 use embedded_graphics::{pixelcolor::Gray4, prelude::*, primitives::Rectangle, text::Text};

@@ -1,4 +1,11 @@
 //! Interactive examples of text, spacing, and color roles.
+//!
+//! # Design choices
+//!
+//! - Render the selected visual roles with the shared profile so the samples track
+//!   changes to that profile.
+//!
+//! See [Visual language](../../../../docs/ui.md#visual-language).
 
 use embedded_graphics::{
     pixelcolor::Gray4,
