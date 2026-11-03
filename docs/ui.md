@@ -170,9 +170,9 @@ Review every component in its normal, selected, disabled, and applicable pending
 Check long text, content bounds, complete gestures, navigation restrictions, and full-screen exit paths.
 Use the [visual catalog](simulator/execution.md#visual-catalog) to inspect the shared profile with the production renderer.
 Keep implementation, examples, and this standard consistent when a shared rule changes.
-Each visual guide section must have an interactive device preview that uses the platform renderer and input path.
+Each guide section that demonstrates input behavior must have an interactive device preview that uses the platform renderer and input path.
 Keep interactions within that preview. Do not redirect users to another guide section to try its controls.
-Provide equivalent keyboard controls and an independent reset action for each example.
+Provide equivalent keyboard controls and an independent reset action for each example except the touch-only soft keyboard.
 Label separate static references explicitly.
 Run repository checks in the devcontainer.
 Physical display quality, touch accuracy, and optical contrast require device checks.

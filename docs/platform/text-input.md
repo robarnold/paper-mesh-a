@@ -1,6 +1,8 @@
 # Standard text field and soft keyboard
 
-The platform toolkit will provide two controls for text entry.
+The platform toolkit provides renderers for both text entry controls.
+The [visual guide](../simulator/execution.md#ui-guide) shows the empty field, a populated field, and four keyboard states.
+The following input behavior is planned.
 The soft keyboard produces input events. The text field applies those events and displays the result.
 The application supplies their bounds and the field capacity.
 It passes each keyboard event to the field in input order.
@@ -50,3 +52,9 @@ With an empty field and capacity for two bytes:
 | Backspace | `Backspace` | `A` | Off |
 
 A third character before Backspace would exceed capacity. The field would retain `Ab`.
+
+## Keyboard icons
+
+The platform uses the 24-pixel ArrowUp and Erase icons from [embedded-iconoir 0.2.3](https://docs.rs/embedded-iconoir/0.2.3/embedded_iconoir/).
+The [crate](https://github.com/Yandrik/embedded-iconoir/tree/c02d468425f448d7f00e2cd9fe56d05b665365e1) and its [Iconoir artwork](https://github.com/iconoir-icons/iconoir/tree/e2f9f3f94a3d85c43501894def504c3cc9d2dee3) each use the MIT license.
+Distribute the [crate notice](../../crates/platform/licenses/LICENSE-embedded-iconoir.txt) and [artwork notice](../../crates/platform/licenses/LICENSE-iconoir.txt) with products that include these icons.

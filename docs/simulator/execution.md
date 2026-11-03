@@ -69,9 +69,9 @@ These comparisons do not verify optical output or touch calibration.
 
 With the simulator running, open [localhost:8080/ui-guide](http://localhost:8080/ui-guide).
 The simulator home page also links to this guide.
-Its sections cover Shell and Page, text and spacing, and controls.
-Every section has an interactive device preview. Tap its controls directly without changing guide sections.
-Each preview uses the platform renderer and input path.
+Shell and Page, Text and spacing, and Controls have interactive device previews. Tap its controls directly without changing guide sections.
+In Text input, tap Shift or a page key to change the keyboard layout.
+The interactive previews use the platform renderer and input path.
 Expandable code examples come directly from the compiled example source.
 Reference links expose the shared standard, application rules, and toolkit API as Markdown.
 
@@ -85,7 +85,7 @@ Home and Reset example return the pill to **Home**.
 Try full-screen presentation and the simulated hardware Home key.
 Start the example operation to block navigation. Select **Finish operation** to release the restriction.
 Entry and exit counters show the lifecycle callbacks.
-Expand **Keyboard controls** below each preview for equivalent browser buttons.
+In the Shell and Page, Text and spacing, and Controls previews, expand **Keyboard controls** for equivalent browser buttons.
 
 The Controls section has a separate interactive preview.
 Tap the device screen to increase the action count, change the selection, or start an example operation.

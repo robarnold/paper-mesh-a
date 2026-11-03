@@ -13,6 +13,7 @@ pub fn handle(request: &mut Request, guide: &mut Guide) -> HttpResponse {
             "text/html; charset=utf-8",
             include_bytes!("ui_guide/index.html").to_vec(),
         ),
+        (&Method::Get, "/ui-guide/keyboard/state") => keyboard_state(guide),
         (&Method::Get, "/ui-guide/state") => state(guide),
         (&Method::Get, "/ui-guide/controls/state") => controls_state(guide),
         (&Method::Get, "/ui-guide/text/state") => text_state(guide),
@@ -51,11 +52,13 @@ pub fn handle(request: &mut Request, guide: &mut Guide) -> HttpResponse {
         (
             &Method::Get,
             path @ ("/ui-guide/frame.png"
+            | "/ui-guide/keyboard.png"
             | "/ui-guide/catalog.png"
             | "/ui-guide/text.png"
             | "/ui-guide/controls.png"),
         ) => {
             let png = match path {
+                "/ui-guide/keyboard.png" => guide.keyboard_png(),
                 "/ui-guide/frame.png" => guide.png(),
                 "/ui-guide/text.png" => guide.text_png(),
                 "/ui-guide/controls.png" => guide.controls_png(),
@@ -71,8 +74,12 @@ pub fn handle(request: &mut Request, guide: &mut Guide) -> HttpResponse {
         }
         (
             &Method::Post,
-            path @ ("/ui-guide/event" | "/ui-guide/controls/event" | "/ui-guide/text/event"),
+            path @ ("/ui-guide/event"
+            | "/ui-guide/keyboard/event"
+            | "/ui-guide/controls/event"
+            | "/ui-guide/text/event"),
         ) => {
+            let keyboard = path == "/ui-guide/keyboard/event";
             let controls = path == "/ui-guide/controls/event";
             let text = path == "/ui-guide/text/event";
             if !request.headers().iter().any(|header| {
@@ -91,13 +98,16 @@ pub fn handle(request: &mut Request, guide: &mut Guide) -> HttpResponse {
                 return response(400, "text/plain", "Invalid or oversized event.");
             }
             match serde_json::from_slice::<ui_guide::Command>(&body) {
-                Ok(command) => match if controls {
+                Ok(command) => match if keyboard {
+                    guide.keyboard_command(command)
+                } else if controls {
                     guide.controls_command(command)
                 } else if text {
                     guide.text_command(command)
                 } else {
                     guide.command(command)
                 } {
+                    Ok(()) if keyboard => keyboard_state(guide),
                     Ok(()) if controls => controls_state(guide),
                     Ok(()) if text => text_state(guide),
                     Ok(()) => state(guide),
@@ -132,4 +142,8 @@ fn text_state(guide: &Guide) -> HttpResponse {
         "application/json",
         serde_json::to_vec(&guide.text_state()).unwrap(),
     )
+}
+
+fn keyboard_state(guide: &Guide) -> HttpResponse {
+    response(200, "application/json", guide.keyboard_state().to_string())
 }

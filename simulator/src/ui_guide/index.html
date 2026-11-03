@@ -12,12 +12,13 @@ header{display:flex;justify-content:space-between;align-items:center;gap:20px}he
 figure{margin:0}.frame{background:#292f29;padding:12px;border-radius:14px;max-width:360px;margin:auto;box-shadow:0 10px 24px #27332112}.frame img{display:block;width:100%;height:auto;background:white}.frame.interactive img{cursor:pointer;touch-action:none}figcaption{font-size:12px;text-align:center;color:var(--muted);margin:12px 0}.controls{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.controls button{border:1px solid #b9c2af;border-radius:6px;padding:9px 12px;background:#fafbf5;color:var(--ink);font-size:13px}.controls button:hover:not(:disabled){background:white;border-color:var(--ink)}.controls .primary{background:var(--ink);color:white}.preview-label{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:0 0 12px}.preview-label strong{font-size:13px;font-weight:600}.metrics{display:grid;grid-template-columns:1fr 1fr;gap:8px;border-top:1px solid var(--line);padding-top:12px;margin:12px 0}.metrics dt{font-size:11px;color:var(--muted)}.metrics dd{margin:4px 0;font:13px ui-monospace,monospace}.transition{font:12px ui-monospace,monospace;overflow-wrap:anywhere}.state-note{font-size:13px;line-height:1.6;margin:12px 0;padding:12px;background:#e5ebde;border-radius:6px}
 details{border:1px solid var(--line);border-radius:8px;margin:14px 0;background:#f8f9f3}summary{cursor:pointer;font-size:13px;font-weight:600;padding:14px}pre{margin:0;padding:0 14px 16px;overflow:auto;font:12px/1.65 ui-monospace,monospace;tab-size:4}code{font-family:ui-monospace,monospace;font-size:.88em}pre code{font-size:inherit}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;font-size:14px;line-height:1.6}th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--line);vertical-align:top}th{font-size:12px;color:var(--muted);font-weight:600}footer{margin-top:40px;border-top:1px solid var(--line);padding-top:20px;display:flex;flex-wrap:wrap;gap:16px;font-size:13px}#error{color:#8f3422;font-size:14px}#error:empty{display:none}
 @media(min-width:851px){.frame{max-width:min(360px,calc((100dvh - 230px)*9/16 + 24px));min-width:240px}}@media(max-width:850px){body{padding:20px}.lesson{grid-template-columns:minmax(0,1fr);gap:28px}.preview{grid-column:1;grid-row:1;position:static}.copy{grid-row:2}.frame{max-width:320px}h1{font-size:30px}header{align-items:start;flex-wrap:wrap}nav{gap:4px}nav a{padding:9px 10px;font-size:13px}.preview-label,.controls,.metrics,.transition,.state-note{max-width:460px;margin-left:auto;margin-right:auto}}@media(max-width:380px){body{padding:16px}header a{font-size:13px}nav{gap:2px}nav a{font-size:12px;padding:9px 8px}.lesson{gap:24px}}
+#keyboard kbd { font-family: ui-monospace, monospace; font-weight: 600; white-space: nowrap; }
 </style>
 </head>
 <body><main>
 <header><div><p class="eyebrow">Paper Mesh / Platform toolkit</p><h1>UI guide</h1></div><a href="/">← Device simulator</a></header>
 <p class="intro">Learn the shared language. Tap each device screen to try its example.</p>
-<nav aria-label="Guide sections"><a href="#composition" data-section="composition">Shell &amp; Page</a><a href="#text" data-section="text">Text &amp; spacing</a><a href="#controls" data-section="controls">Controls</a></nav>
+<nav aria-label="Guide sections"><a href="#composition" data-section="composition">Shell &amp; Page</a><a href="#text" data-section="text">Text &amp; spacing</a><a href="#controls" data-section="controls">Controls</a><a href="#keyboard" data-section="keyboard">Text input</a></nav>
 <p id="error" role="alert"></p>
 <section id="composition" class="lesson" aria-label="Shell and Page">
 <aside class="preview" aria-label="Working example">
@@ -93,6 +94,13 @@ details{border:1px solid var(--line);border-radius:8px;margin:14px 0;background:
 <p class="hint">Tap the Component details card, then Back. Drag outside a control before release to cancel activation.</p>
 <p><a href="/ui-guide/controls.rs" target="_blank">Read the controls example source</a></p>
 </div></section>
+<section id="keyboard" class="lesson" aria-label="Text input" hidden>
+<div class="copy"><p class="step">04 / TEXT INPUT</p><h2>Text field and soft keyboard</h2>
+<p>Tap <kbd>123</kbd> for <em>Common symbols</em>. Use <kbd>[]=</kbd> for <em>Additional symbols</em> and <kbd>@#+</kbd> to return. Tap <kbd>ABC</kbd> for <em>Letters</em>. Tap <kbd>Shift</kbd> to change case.</p>
+<p>The two fields show empty and populated examples.</p>
+</div>
+<figure class="preview"><div class="frame interactive"><img id="keyboard-frame" draggable="false" width="540" height="960" src="/ui-guide/keyboard.png" alt="Soft keyboard with empty and populated text fields"></div></figure>
+</section>
 <footer aria-label="Further guidance"><a href="/ui-guide/reference/shared" target="_blank">Shared standard · Markdown</a><a href="/ui-guide/reference/application" target="_blank">Application rules · Markdown</a><a href="/ui-guide/reference/toolkit" target="_blank">Platform API · Markdown</a></footer>
 <noscript><p>Enable JavaScript to change guide sections and interact with the example. The preview images and reference links remain available.</p></noscript>
 </main>
@@ -103,14 +111,14 @@ async function checked(response) { if (!response.ok) throw new Error(await respo
 // All device previews use the same input transport and image updates.
 function createPreview({screenId, actionsId, stateUrl, eventUrl, frameUrl, resetId, homeId, finishId, showState}) {
   const screen = document.querySelector(screenId);
-  const actions = document.querySelector(actionsId);
+  const actions = actionsId && document.querySelector(actionsId);
   const pointers = new Map();
   let queue = Promise.resolve(), imageUrl = null, controlsKey = '', lastState = null;
   function update(state) {
     lastState = state;
-    showState(state);
+    showState?.(state);
     const key = JSON.stringify(state.controls);
-    if (key !== controlsKey) {
+    if (actions && key !== controlsKey) {
       actions.replaceChildren(...state.controls.map(control => {
         const button = document.createElement('button'); button.textContent = control.label; button.disabled = !control.enabled;
         button.addEventListener('click', () => {
@@ -162,17 +170,20 @@ function createPreview({screenId, actionsId, stateUrl, eventUrl, frameUrl, reset
   });
   screen.addEventListener('pointercancel',cancel);
   screen.addEventListener('lostpointercapture',event=>{if(pointers.has(event.pointerId))cancel();});
-  screen.addEventListener('keydown',event=>{if(event.key==='Home'){event.preventDefault();send({type:'home'});}if(event.key==='Escape')cancel();});
+  if (resetId) screen.addEventListener('keydown',event=>{if(event.key==='Home'){event.preventDefault();send({type:'home'});}if(event.key==='Escape')cancel();});
   window.addEventListener('blur',cancelActive);
   if (homeId) document.querySelector(homeId).addEventListener('click',()=>send({type:'home'}));
   if (finishId) document.querySelector(finishId).addEventListener('click',()=>send({type:'finish'}));
-  document.querySelector(resetId).addEventListener('click',()=>{pointers.clear();send({type:'reset'});});
+  if (resetId) document.querySelector(resetId).addEventListener('click',()=>{pointers.clear();send({type:'reset'});});
   queue = fetch(stateUrl).then(checked).then(r=>r.json()).then(async state=>{update(state);await frame();})
     .catch(reason=>{error.textContent=`The example could not load. ${reason.message}`;});
   return {cancelActive};
 }
 
 const previews = [
+  createPreview({
+    screenId:'#keyboard-frame', stateUrl:'/ui-guide/keyboard/state', eventUrl:'/ui-guide/keyboard/event', frameUrl:'/ui-guide/keyboard.png',
+  }),
   createPreview({
     screenId:'#text-screen', actionsId:'#text-actions', stateUrl:'/ui-guide/text/state', eventUrl:'/ui-guide/text/event', frameUrl:'/ui-guide/text.png', resetId:'#text-reset',
     showState(state) {
@@ -204,7 +215,7 @@ const previews = [
   })
 ];
 function section() {
-  const id = ['composition','text','controls'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'composition';
+  const id = ['composition','text','controls','keyboard'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'composition';
   document.querySelectorAll('.lesson').forEach(el => el.hidden = el.id !== id);
   document.querySelectorAll('[data-section]').forEach(el => { if (el.dataset.section === id) el.setAttribute('aria-current','page'); else el.removeAttribute('aria-current'); });
   previews.forEach(preview=>preview.cancelActive());

@@ -5,20 +5,25 @@ use embedded_graphics::{pixelcolor::Gray4, prelude::*, primitives::Rectangle, te
 use paper_mesh_platform::{
     TouchEvent,
     ui::{
-        Button, NavigationCard, Page, PageEvent, PageInfo, Presentation, TextRole,
-        format::measurement,
+        Button, NavigationCard, Page, PageEvent, PageInfo, Presentation, SoftKeyboard, TextField,
+        TextRole, format::measurement,
     },
 };
 
 #[derive(Clone, Copy)]
-pub enum Sheet {
+pub enum Sheet<'a> {
     Overview,
     Text,
     Controls,
+    Keyboard(&'a SoftKeyboard),
 }
-pub struct Catalog(pub Sheet);
+pub fn keyboard() -> SoftKeyboard {
+    SoftKeyboard::new(Rectangle::new(Point::new(28, 600), Size::new(484, 320)))
+}
 
-impl Page for Catalog {
+pub struct Catalog<'a>(pub Sheet<'a>);
+
+impl Page for Catalog<'_> {
     type Id = u8;
     fn page_info(&self) -> PageInfo<u8> {
         PageInfo {
@@ -27,6 +32,7 @@ impl Page for Catalog {
                 Sheet::Overview => "Visual language",
                 Sheet::Text => "Text and spacing",
                 Sheet::Controls => "Controls",
+                Sheet::Keyboard(_) => "Text input",
             },
             context: "PLATFORM UI",
             presentation: Presentation::Standard,
@@ -40,6 +46,26 @@ impl Page for Catalog {
     }
     fn render_page<D: DrawTarget<Color = Gray4>>(&self, display: &mut D) -> Result<(), D::Error> {
         match self.0 {
+            Sheet::Keyboard(keyboard) => {
+                let mut field = TextField::<64>::default();
+                line(display, "Message", 190, TextRole::Body)?;
+                field.render(
+                    display,
+                    Rectangle::new(Point::new(28, 210), Size::new(484, 58)),
+                    &STYLE,
+                )?;
+                line(display, "Example message", 310, TextRole::Body)?;
+                field
+                    .value
+                    .push_str("Meet at the gate")
+                    .expect("example fits");
+                field.render(
+                    display,
+                    Rectangle::new(Point::new(28, 330), Size::new(484, 58)),
+                    &STYLE,
+                )?;
+                keyboard.render(display, &STYLE)?;
+            }
             Sheet::Overview => {
                 text_roles(display)?;
                 controls(display, 330)?;

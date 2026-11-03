@@ -52,7 +52,7 @@ Pass the hit result to `TapGesture` to require a complete tap.
 The `button` function remains a convenience renderer with the default style.
 Its caller supplies hit testing separately.
 
-The [text input contract](text-input.md) defines the planned standard text field and soft keyboard.
+The [text input contract](text-input.md) describes the standard text field, soft keyboard, and planned input behavior.
 
 `NavigationCard` supplies a title, description, and direction marker inside caller-supplied bounds.
 Its hit test rejects disabled cards.

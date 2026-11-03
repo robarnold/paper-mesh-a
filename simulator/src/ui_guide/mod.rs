@@ -125,6 +125,34 @@ impl<E: Demo> Session<E> {
     }
 }
 
+use paper_mesh_platform::ui::SoftKeyboard;
+
+struct KeyboardExample {
+    keyboard: SoftKeyboard,
+    revision: u64,
+}
+
+impl Default for KeyboardExample {
+    fn default() -> Self {
+        Self {
+            revision: 0,
+            keyboard: example::catalog::keyboard(),
+        }
+    }
+}
+
+impl Demo for KeyboardExample {
+    fn touch(&mut self, event: TouchEvent) {
+        if self.keyboard.handle_touch(event) {
+            self.revision += 1;
+        }
+    }
+
+    fn home(&mut self) {
+        *self = Self::default();
+    }
+}
+
 trait Demo: Default {
     fn touch(&mut self, event: TouchEvent);
     fn home(&mut self);
@@ -166,6 +194,7 @@ impl Demo for TextExample {
 
 #[derive(Default)]
 pub struct Guide {
+    keyboard: Session<KeyboardExample>,
     composition: Session<Example>,
     controls: Session<ControlsExample>,
     text: Session<TextExample>,
@@ -193,6 +222,18 @@ pub struct ControlsState {
 }
 
 impl Guide {
+    pub fn keyboard_command(&mut self, command: Command) -> Result<(), &'static str> {
+        self.keyboard.command(command)
+    }
+
+    pub fn keyboard_png(&self) -> Result<Vec<u8>, png::EncodingError> {
+        catalog_png(Sheet::Keyboard(&self.keyboard.example.keyboard))
+    }
+
+    pub fn keyboard_state(&self) -> serde_json::Value {
+        serde_json::json!({ "revision": self.keyboard.example.revision })
+    }
+
     pub fn command(&mut self, command: Command) -> Result<(), &'static str> {
         self.composition.command(command)
     }
@@ -346,7 +387,7 @@ impl Guide {
     }
 }
 
-pub fn catalog_png(sheet: Sheet) -> Result<Vec<u8>, png::EncodingError> {
+pub fn catalog_png(sheet: Sheet<'_>) -> Result<Vec<u8>, png::EncodingError> {
     let mut canvas = Canvas::new();
     Navigator::<_, 0>::launch(0, Shell::new(LAYOUT), example::catalog::Catalog(sheet))
         .render(&mut canvas, &STYLE)

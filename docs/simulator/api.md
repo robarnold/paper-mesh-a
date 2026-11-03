@@ -66,6 +66,8 @@ Their events do not change device application state or each other.
 | `GET /ui-guide/controls.png` | Current Controls example |
 | `GET /ui-guide/text/state` | Selected text role, underline and bubble states, spacing, color role, and equivalent controls |
 | `GET /ui-guide/text.png` | Current Text and spacing example |
+| `GET /ui-guide/keyboard/state`, `GET /ui-guide/keyboard.png` | Keyboard preview revision and rendered frame |
+| `POST /ui-guide/keyboard/event` | Send touch or reset input to the keyboard example |
 | `GET /ui-guide/catalog.png` | Static visual catalog |
 | `GET /ui-guide/snippets` | Named Rust excerpts from the compiled example source |
 | `GET /ui-guide/source.rs`, `/ui-guide/controls.rs`, `/ui-guide/text.rs`, `/ui-guide/catalog.rs` | Complete example sources |
