@@ -88,10 +88,21 @@ and executable content during prose changes. Keep licenses, quoted source
 text, and third-party content. Keep vendor documents and the standard external.
 If reference processing is necessary, use the devcontainer's `/tmp` directory.
 
+## Third-party dependencies and assets
+
+Prefer package dependencies to copies of third-party source or assets.
+Check the upstream license for the selected version against the intended use and distribution.
+Check bundled artwork separately, including artwork that appears in generated images.
+If the terms are unclear, resolve the question before adoption.
+
+Record the source, version, and license in the relevant documentation.
+Include required attribution and license notices with the distributed material.
+
 ## External references and evidence
 
 Keep vendor documents external. Use links to upstream sources at specified
 revisions. Do not commit copies, extracted text, or document screenshots.
+Required license and attribution notices are an exception to this restriction.
 The reference index is `docs/vendor/lilygo/t5-s3-pro/README.md`.
 Download documents into the devcontainer's `/tmp` directory when necessary.
 

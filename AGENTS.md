@@ -5,6 +5,10 @@ This includes documentation, comments, review text, commit descriptions, and age
 
 Follow the [shared UI standard](docs/ui.md) and [application UI rules](docs/application-ui.md) when you add or change screens.
 
+## Third-party licenses
+
+Before adding or updating a third-party dependency or asset, follow the [license review rules](DOCUMENTATION.md#third-party-dependencies-and-assets).
+
 ## Development environment
 
 Run project tools in the devcontainer, except version control tools.
