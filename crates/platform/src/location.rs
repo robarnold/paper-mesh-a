@@ -1,4 +1,13 @@
 //! Location observations use the application's monotonic epoch.
+//!
+//! # Design choices
+//!
+//! - Keep receipt times separate so recent satellite reports cannot make an old
+//!   position fix appear fresh.
+//! - Require a date from the same report as the time of day before using it to set
+//!   the calendar clock.
+//!
+//! See the [location contract](../../../docs/services/location.md#current-location-interface).
 
 use crate::time::{Date, Time, UtcDateTime, UtcReference};
 

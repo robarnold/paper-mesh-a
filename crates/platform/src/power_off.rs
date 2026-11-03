@@ -1,4 +1,13 @@
 //! Failures from an explicit system power-off request.
+//!
+//! # Design choices
+//!
+//! - Distinguish external power from preparation failures so the caller can tell the
+//!   user when to disconnect a supply before retrying.
+//! - Report continued power after a shutdown attempt so the caller can distinguish a
+//!   request from physical power removal.
+//!
+//! See the [power-off contract](../../../docs/services/power.md#explicit-power-off).
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PowerOffError {

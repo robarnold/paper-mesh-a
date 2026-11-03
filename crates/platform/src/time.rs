@@ -1,4 +1,13 @@
 //! UTC calendar time, monotonic timers, and observation age checks.
+//!
+//! # Design choices
+//!
+//! - Measure deadlines and observation age on the monotonic clock so a UTC correction
+//!   cannot move either.
+//! - After a late poll, report one timer event and preserve the original phase so
+//!   missed intervals do not cause a burst of callbacks.
+//!
+//! See the [clock contract](../../../docs/services/time.md#clock-interface).
 
 use ::time::SignedDuration;
 pub use ::time::{Date, Month, Time, UtcDateTime};

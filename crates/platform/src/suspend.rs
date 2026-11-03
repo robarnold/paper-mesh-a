@@ -1,4 +1,13 @@
 //! Suspend requests and charge comparisons within one application epoch.
+//!
+//! # Design choices
+//!
+//! - Require a later, usable battery reading after wake so rereading the same sample
+//!   cannot imply zero charge loss.
+//! - Keep all reported wake causes because simultaneous interrupts may leave their
+//!   order unknown.
+//!
+//! See the [suspend contract](../../../docs/services/power.md#manual-suspend-experiment).
 
 use crate::{
     input::buttons::ButtonId,

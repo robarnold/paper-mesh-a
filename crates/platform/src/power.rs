@@ -1,4 +1,13 @@
 //! Battery measurements and charger observations. This interface has no control operations.
+//!
+//! # Design choices
+//!
+//! - Keep a timestamp and availability for each source so a gauge fault leaves valid
+//!   charger readings available.
+//! - Expose cached readings so rendering a power value does not require a bus
+//!   transaction.
+//!
+//! See the [power observation contract](../../../docs/services/power.md#current-observations).
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PowerAvailability {
