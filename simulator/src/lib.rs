@@ -1,6 +1,13 @@
 //! Native adapters and deterministic simulation.
 //! The binary controls HTTP and wall-clock pacing.
 //! Scenarios can use this library without either service.
+//!
+//! # Design choices
+//!
+//! - Visit virtual deadlines in order so fast-forward and small steps produce the
+//!   same visible state.
+//!
+//! See [Virtual time and display](../../docs/simulator/execution.md#virtual-time-and-display).
 
 use embedded_graphics::{pixelcolor::Gray4, prelude::*};
 use paper_mesh_app::App;

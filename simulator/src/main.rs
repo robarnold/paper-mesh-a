@@ -1,3 +1,12 @@
+//! HTTP host and wall-clock pacing for the device simulator.
+//!
+//! # Design choices
+//!
+//! - Translate HTTP input into simulation commands and pace the virtual clock so
+//!   callers can pause it for reproducible observations.
+//!
+//! See [Simulator API](../../docs/simulator/api.md).
+
 use std::{
     env, fs,
     io::{Cursor, Read},

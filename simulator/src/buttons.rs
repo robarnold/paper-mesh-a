@@ -1,4 +1,11 @@
 //! Hardware controls for the native board profile.
+//!
+//! # Design choices
+//!
+//! - Represent control capabilities separately so lifecycle controls cannot be
+//!   injected as ordinary button presses.
+//!
+//! See [Input and lifecycle controls](../../docs/services/input.md).
 
 use paper_mesh_platform::input::buttons::{
     ButtonCapability, ButtonDebouncer, ButtonDescriptor, ButtonEvent, ButtonId,

@@ -1,4 +1,11 @@
 //! Deterministic host connection and report observations.
+//!
+//! # Design choices
+//!
+//! - Record host observations locally so tests can inspect reports and detachments
+//!   without controlling the desktop.
+//!
+//! See [Host touchpad observations](../../docs/simulator/api.md#host-touchpad-observations).
 
 use paper_mesh_platform::touchpad::{HostFrame, HostState, TouchpadHost};
 

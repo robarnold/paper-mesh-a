@@ -1,4 +1,11 @@
 //! Deterministic power observations. These values are not hardware measurements.
+//!
+//! # Design choices
+//!
+//! - Vary gauge and charger readings independently so power scenarios can isolate a
+//!   source failure.
+//!
+//! See [Power screen](../../docs/simulator/scenarios.md#power-screen).
 
 use paper_mesh_platform::power::{
     BatteryState, ChargeFault, ChargeState, ChargerFaults, ChargerState, GaugeState, Power,

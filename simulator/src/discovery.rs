@@ -1,4 +1,11 @@
 //! Deterministic scan fixtures. This adapter does not access host radios.
+//!
+//! # Design choices
+//!
+//! - Complete scan fixtures on virtual deadlines so timeout and cancellation can be
+//!   reproduced.
+//!
+//! See [Radio debugger](../../docs/simulator/scenarios.md#radio-debugger).
 
 use paper_mesh_platform::discovery::{
     AddressKind, Discovery, Network, RadioKind, ScanCompletion, ScanError, ScanRequest,

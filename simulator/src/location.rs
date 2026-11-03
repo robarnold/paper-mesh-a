@@ -1,4 +1,11 @@
 //! Deterministic location observations. The simulator does not model satellite reception.
+//!
+//! # Design choices
+//!
+//! - Vary receiver and fix freshness independently to reproduce location scenarios
+//!   without host location data.
+//!
+//! See [GNSS screen](../../docs/simulator/scenarios.md#gnss-screen).
 
 use paper_mesh_platform::location::{
     Coordinates, Location, LocationAvailability, LocationObservation, LocationSnapshot,
