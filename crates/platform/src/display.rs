@@ -1,4 +1,12 @@
-//! Common frame submission for display consumers.
+//! Frame submission for callers that have a pending redraw.
+//!
+//! # Design choices
+//!
+//! - Check readiness before drawing so a busy display can defer the work.
+//! - Report success when the backend accepts a refresh. Callers that need a visible
+//!   frame must wait for completion separately.
+//!
+//! See the [display contract](../../../docs/platform/display.md#current-interface).
 
 use crate::Display;
 

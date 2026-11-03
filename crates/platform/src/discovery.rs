@@ -1,4 +1,13 @@
-//! Bounded observations for Wi-Fi and Bluetooth LE discovery.
+//! Bounded scan results for Wi-Fi and Bluetooth LE discovery.
+//!
+//! # Design choices
+//!
+//! - Update entries by address and address kind so repeated observations of one
+//!   device do not consume extra slots.
+//! - Keep the strongest signals when storage fills and report truncation so callers
+//!   know the list may be incomplete.
+//!
+//! See the [discovery contract](../../../docs/services/connectivity.md#current-discovery-interface).
 
 use core::cmp::Ordering;
 use heapless::{String, Vec};

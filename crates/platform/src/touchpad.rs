@@ -1,4 +1,13 @@
-//! Contact forwarding to an optional host without application dependencies.
+//! Contact forwarding for a host touchpad session.
+//!
+//! # Design choices
+//!
+//! - Track the transport generation so a reset between polls suppresses held contacts
+//!   even if the host appears ready again.
+//! - Cancel the host gesture if a complete frame cannot be delivered so the host
+//!   cannot continue from incomplete contact state.
+//!
+//! See the [host touchpad contract](../../../docs/services/touchpad.md).
 
 use crate::input::contacts::{ContactState, TouchFrame};
 

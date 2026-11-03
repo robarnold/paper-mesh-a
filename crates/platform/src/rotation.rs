@@ -1,5 +1,13 @@
 //! A clockwise portrait view of a native display.
-//! The adapter transforms pixel coordinates without a second framebuffer.
+//!
+//! # Design choices
+//!
+//! - Map drawing coordinates directly into native storage to avoid allocating a
+//!   rotated framebuffer.
+//! - Apply the inverse mapping to panel-aligned contacts so hit testing agrees with
+//!   the displayed controls.
+//!
+//! See the [orientation contract](../../../docs/platform/orientation.md#implemented-fixed-orientation).
 
 use embedded_graphics::{pixelcolor::Gray4, prelude::*};
 

@@ -1,10 +1,13 @@
 #![no_std]
 
-//! Reusable application toolkit, service contracts, and coordinate adapters.
-//! This crate has no application or backend dependency.
+//! Portable service contracts and reusable application controls.
 //!
-//! The platform adapter controls SPI, I2C, GPIO, interrupts, and executor selection.
-//! Drivers can use embedded-hal below these interfaces.
+//! # Design choices
+//!
+//! - Keep board resources and executor selection in each backend so the same
+//!   application can run on hardware and in the simulator.
+//!
+//! See the [platform responsibilities](../../../docs/platform.md#responsibilities).
 
 use embedded_graphics::{pixelcolor::Gray4, prelude::*};
 
