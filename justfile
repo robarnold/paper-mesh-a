@@ -25,7 +25,8 @@ toolchain-check: _require-container
 native-check: _require-container
     python3 -B -m unittest discover -s scripts/tests
     cargo clippy --locked --workspace --all-targets -- -D warnings
-    cargo test --locked --workspace
+    cargo nextest run --locked --workspace
+    cargo test --locked --workspace --doc
 
 # Rust runs in the container. The browser displays frames and sends input.
 sim: _require-container

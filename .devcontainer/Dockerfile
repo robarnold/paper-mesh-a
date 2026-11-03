@@ -46,4 +46,17 @@ ENV PATH="/opt/esp/bin:/usr/local/cargo/bin:${PATH}" \
 
 COPY --from=rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 /usr/local/bin/actionlint /usr/local/bin/actionlint
 
+ARG NEXTEST_VERSION=0.9.151
+RUN host="$(rustc -vV | sed -n 's/^host: //p')" \
+    && case "$host" in \
+        x86_64-unknown-linux-gnu) checksum=1d4ce302b820c41f4b89c5fb9bce45f0f0c94882c1cf08fc360caf08be6e7df4 ;; \
+        aarch64-unknown-linux-gnu) checksum=3e35e8f6913af92558ba09d7155f74e35dd1f0024ef3cd891637433ae4eacbdd ;; \
+        *) echo "Unsupported nextest host: $host" >&2; exit 1 ;; \
+    esac \
+    && release="cargo-nextest-${NEXTEST_VERSION}" \
+    && curl -fsSL --retry 3 "https://github.com/nextest-rs/nextest/releases/download/${release}/${release}-${host}.tar.gz" -o /tmp/nextest.tar.gz \
+    && echo "$checksum  /tmp/nextest.tar.gz" | sha256sum -c - \
+    && tar -xzf /tmp/nextest.tar.gz -C "$CARGO_HOME/bin" cargo-nextest \
+    && rm /tmp/nextest.tar.gz
+
 WORKDIR /workspaces/paper-mesh-a
