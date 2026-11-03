@@ -1,4 +1,11 @@
 //! Suspend experiment controls and the most recent charge comparison.
+//!
+//! # Design choices
+//!
+//! - Keep the last result when the user leaves the page so the charge comparison can
+//!   be inspected after wake. Clear it when another experiment starts.
+//!
+//! See the [suspend experiment](../../../docs/application.md#suspend-experiment).
 
 use crate::screen::{STYLE, button};
 use paper_mesh_platform::ui::TextRole;

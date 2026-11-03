@@ -1,4 +1,13 @@
 //! Explicit power-off controls and restart instructions from the backend.
+//!
+//! # Design choices
+//!
+//! - Require an explicit request so opening the page to read the restart instructions
+//!   cannot shut down the device.
+//! - Enable the request only when the backend supplies restart instructions so the
+//!   user can see how to recover power.
+//!
+//! See the [power-off policy](../../../docs/application.md#power-off).
 
 use crate::screen::{STYLE, button};
 use paper_mesh_platform::ui::TextRole;

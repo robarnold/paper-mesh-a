@@ -1,4 +1,11 @@
 //! Shared discovery controls and grayscale rendering.
+//!
+//! # Design choices
+//!
+//! - Accept results only for the active request and its deadline so a delayed scan
+//!   cannot populate a newly selected radio tab.
+//!
+//! See the [radio debugger policy](../../../docs/application.md#radio-debugger).
 
 use crate::screen::{STYLE, button};
 use paper_mesh_platform::ui::TextRole;

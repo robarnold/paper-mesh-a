@@ -1,4 +1,11 @@
 //! Shared location screen, observation validity, and display deadlines.
+//!
+//! # Design choices
+//!
+//! - Assess the position fix separately from receiver activity so incoming messages
+//!   cannot keep stale coordinates on screen.
+//!
+//! See the [location screen policy](../../../docs/application.md#location-screen).
 
 use crate::screen::STYLE;
 use paper_mesh_platform::ui::TextRole;

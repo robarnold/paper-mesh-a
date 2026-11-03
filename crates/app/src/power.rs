@@ -1,4 +1,11 @@
 //! Power details, observation expiry, and application display policy.
+//!
+//! # Design choices
+//!
+//! - Pace routine battery measurements to limit redraws, but request an update when
+//!   the supply or reading status changes so faults become visible promptly.
+//!
+//! See the [power screen policy](../../../docs/application.md#power-screen).
 
 use crate::screen::{STYLE, button};
 use paper_mesh_platform::ui::TextRole;
