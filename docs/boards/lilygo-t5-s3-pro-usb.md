@@ -80,15 +80,11 @@ Use BOOT and Reset when software entry is unavailable:
 1. Hold BOOT.
 2. Press and release Reset.
 3. Release BOOT.
-4. Confirm the ROM serial identity before flashing.
+4. Confirm that the ROM enumerates with the expected board serial.
 
 If the serial device does not return, disconnect USB and repeat the procedure after reconnecting with BOOT held.
-Run espflash inside a container with the ROM serial device passed through.
-The flash helper verifies the temporary software download request before flashing and preserves it through the transfer.
-The [download procedure](#enter-rom-download-mode) defines the checks and the restart method.
-It uses `--before no-reset` so the processor stays in the confirmed download session.
-The [build guide](../firmware-build.md) defines the ELF and boot image artifacts.
-No build recipe flashes hardware.
+The application exposes its own CDC interface. In download mode, the ROM exposes the chip's USB Serial/JTAG interface on the same connector.
+The host can assign a different port when that interface appears. Use the expected USB identity to establish which mode the board entered.
 
 ## Inspect the held framebuffer
 
@@ -281,40 +277,19 @@ Run the helper inside the USB devcontainer:
 python3 scripts/enter_download_mode.py --rom-serial '<expected-ROM-serial>'
 ```
 
-The helper checks the application identity before it sends one request.
-It keeps DTR asserted until the application disconnects, then closes the old port before it waits for ROM enumeration.
-It then requires USB identity `303a:1001` with the specified ROM serial.
-Both steps share a ten-second deadline after acknowledgement.
-It sends no retry, flash command, or hardware reset after an error or uncertain result.
-The application serial defaults to `paper-mesh-prototype`. Use `--application-serial` to specify another identity.
+The [ROM-entry helper](../../scripts/enter_download_mode.py) checks the application identity before sending the request.
+It waits for the application to detach and for the expected ROM serial to appear.
+If USB disconnects before acknowledgement, the host cannot tell whether the application acted on the request.
+Stop at that point and identify the current interface before attempting recovery. Repeating the request could reset a device that already changed state.
 
-The reset uses volatile control registers. It does not write eFuses or flash.
-The chip must permit software download through USB Serial/JTAG and use the expected internal PHY selection.
-Manual BOOT/Reset remains necessary for older firmware, an unresponsive application, or a rejected recovery state.
+Software entry uses volatile control registers and requires USB Serial/JTAG download support.
+Use the [manual BOOT/Reset procedure](#diagnostics-and-recovery) when the application cannot accept the request.
 
-After download entry, flash the checked ELF with a new output directory:
+The [firmware transfer helper](../../scripts/flash_firmware.py) defines its command interface and records transfer and reset results.
+Software entry leaves a download request set across the transfer. The helper checks the ROM identity before clearing that request.
+See Espressif's [ROM serial protocol][rom-protocol] for the underlying commands.
 
-```sh
-python3 scripts/flash_firmware.py target/artifacts/paper-mesh-firmware.elf backups/firmware-flash --rom-serial '<expected-ROM-serial>'
-```
-
-Use the actual ELF path from the [build output](../firmware-build.md).
-The helper requires the USB devcontainer and the shared `/tmp/paper-mesh-cdc.lock`.
-It does not enter download mode or start a display check.
-It writes ROM preparation, flash output, and any required finalization evidence into the output directory.
-A completed flash does not confirm application startup. Check enumeration and startup logs separately.
-
-`scripts/flash_firmware.py` prepares each flash with `scripts/prepare_rom_flash.py`.
-Preparation verifies the ROM USB identity and the ESP32-S3 chip identity without register writes.
-For software download, flashing preserves `FORCE_DOWNLOAD_BOOT` and returns the stub to ROM after a successful transfer.
-The helper then verifies ROM identity, chip identity, and the retained request again.
-ROM readiness permits up to four read-only SYNC attempts within ten seconds. Protocol errors stop this step.
-It clears only bit 0 of `RTC_CNTL_OPTION1`, verifies the readback, and requests an RTC chip reset.
-Application USB and startup logs must confirm the return. A reset request does not prove that startup completed.
-For manual download with no retained request, the helper selects `hard-reset` or `watchdog-reset` from the latched boot straps.
-A transport, identity, readback, or flash error stops the procedure after synchronization. Register writes and reset requests never retry.
-The helper does not use another board.
-The register operations follow Espressif's [ROM serial protocol][rom-protocol].
+A successful transfer establishes that the image reached the device. To confirm startup, check for application USB enumeration and the boot banner and heartbeat on CDC.
 
 ## Verification limits
 

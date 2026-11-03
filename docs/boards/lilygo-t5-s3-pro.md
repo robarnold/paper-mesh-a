@@ -220,16 +220,15 @@ Unconfigured devices do not establish managed battery operation.
 
 1. Confirm the board revision.
 2. Check USB and serial passthrough into the devcontainer.
-3. When flashing is requested, confirm the device identity and flash the selected image.
-4. Check the boot banner and heartbeat through USB.
-5. Check recovery after reset and USB disconnection and reconnection.
-6. Establish I2C identification, battery measurements, and controlled peripheral power before display, touch, or radio operation.
-7. Identify all physical controls, the touch variant, Home key, GNSS variant, and backup battery.
-8. Check each intended sleep mode's wake sources separately.
-9. Check SD removal and concurrent SD and radio activity.
-10. Check auxiliary-rail sharing.
-11. Compare shutdown with USB power and battery-only power.
-12. Check recovery after reset during I/O.
+3. Check the boot banner and heartbeat through USB.
+4. Check recovery after reset and USB disconnection and reconnection.
+5. Establish I2C identification, battery measurements, and controlled peripheral power before display, touch, or radio operation.
+6. Identify all physical controls, the touch variant, Home key, GNSS variant, and backup battery.
+7. Check each intended sleep mode's wake sources separately.
+8. Check SD removal and concurrent SD and radio activity.
+9. Check auxiliary-rail sharing.
+10. Compare shutdown with USB power and battery-only power.
+11. Check recovery after reset during I/O.
 
 Current firmware initializes display storage, display output, GT911 input, requested radio scans, and continuous GNSS input.
 Other peripherals stay uninitialized.
