@@ -1,3 +1,12 @@
+//! Interaction and rendering checks for the visual guide.
+//!
+//! # Design choices
+//!
+//! - Exercise guide sessions through their inputs so rendered examples and reported
+//!   state can be checked together.
+//!
+//! See [UI guide](../../../docs/simulator/api.md#ui-guide).
+
 use super::*;
 
 fn tap(guide: &mut Guide, label: &str) {

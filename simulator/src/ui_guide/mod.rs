@@ -1,4 +1,11 @@
 //! Native host for the guide's independent examples and catalog.
+//!
+//! # Design choices
+//!
+//! - Keep each guide example in a separate session so exploring a control cannot
+//!   mutate the device application.
+//!
+//! See [UI guide](../../../docs/simulator/execution.md#ui-guide).
 
 use embedded_graphics::{pixelcolor::Gray4, prelude::*};
 use paper_mesh_platform::{

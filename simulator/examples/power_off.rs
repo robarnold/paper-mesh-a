@@ -1,4 +1,11 @@
 //! Export the power-off instructions for layout review.
+//!
+//! # Design choices
+//!
+//! - Capture both the instructions and the external-power refusal so the layout
+//!   review covers the retry path.
+//!
+//! See [Power off](../../docs/application.md#power-off).
 
 use paper_mesh_app::diagnostics::{Component, HOME_TARGET};
 use paper_mesh_app::{power::OFF_TAB, power_off::START};

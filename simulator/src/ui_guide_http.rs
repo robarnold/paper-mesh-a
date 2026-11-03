@@ -1,4 +1,11 @@
 //! HTTP transport for the native UI guide.
+//!
+//! # Design choices
+//!
+//! - Route each guide request to its own example so commands and preview frames use
+//!   the same state.
+//!
+//! See [UI guide](../../docs/simulator/api.md#ui-guide).
 
 use crate::{HttpResponse, response};
 use paper_mesh_simulator::ui_guide::{self, Guide, Sheet};

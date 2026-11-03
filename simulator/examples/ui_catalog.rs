@@ -1,4 +1,11 @@
 //! Export the same visual catalog that the browser guide displays.
+//!
+//! # Design choices
+//!
+//! - Use the guide renderer for catalog exports so a saved reference shows the same
+//!   controls as the browser.
+//!
+//! See [Visual catalog](../../docs/simulator/execution.md#visual-catalog).
 
 use paper_mesh_simulator::ui_guide::{Sheet, catalog_png};
 

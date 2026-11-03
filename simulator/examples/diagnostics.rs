@@ -1,4 +1,11 @@
 //! Export the normal diagnostics flow for layout review.
+//!
+//! # Design choices
+//!
+//! - Drive the diagnostic pages through application input so exported images reflect
+//!   reachable states.
+//!
+//! See [Visual catalog](../../docs/simulator/execution.md#visual-catalog).
 
 use paper_mesh_app::{
     BACK_TARGET, TAP_TARGET,
