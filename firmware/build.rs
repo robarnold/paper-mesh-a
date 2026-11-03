@@ -1,3 +1,12 @@
+//! Linker configuration for the firmware image.
+//!
+//! # Design choices
+//!
+//! - Select the corrected linker script and reject writable executable segments so an
+//!   upstream linker change cannot silently restore those permissions.
+//!
+//! See [Linker configuration](../docs/firmware-build.md#linker-configuration).
+
 use std::{env, fs, path::PathBuf};
 
 fn main() {

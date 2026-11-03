@@ -1,3 +1,12 @@
+//! Board startup and scheduling for the shared application.
+//!
+//! # Design choices
+//!
+//! - Connect the application to board services and serialize runtime decisions so
+//!   power transitions can wait for display ownership.
+//!
+//! See [Runtime execution](../../docs/platform/runtime.md).
+
 #![no_std]
 #![no_main]
 

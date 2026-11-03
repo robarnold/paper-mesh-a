@@ -1,4 +1,11 @@
 //! H752-01 controls. Reset and QON have no readable button signal.
+//!
+//! # Design choices
+//!
+//! - Translate physical controls into stable levels while preserving the expander
+//!   outputs used by the panel.
+//!
+//! See [All physical controls](../../docs/boards/lilygo-t5-s3-pro.md#all-physical-controls).
 
 use core::cell::RefCell;
 use embassy_sync::{

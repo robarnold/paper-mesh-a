@@ -1,4 +1,11 @@
 //! Exercise bus contention between interrupt tasks and the synchronous display client.
+//!
+//! # Design choices
+//!
+//! - Check shared-bus arbitration with competing callers so releasing one transaction
+//!   permits waiting work to proceed.
+//!
+//! See [Concurrent display and touch](../../docs/boards/lilygo-t5-s3-pro-touch.md#concurrent-display-and-touch).
 
 #[path = "../../firmware/src/bus/arbitration.rs"]
 mod arbitration;

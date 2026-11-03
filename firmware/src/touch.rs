@@ -1,4 +1,11 @@
 //! H752-01 touch adapter and event queue.
+//!
+//! # Design choices
+//!
+//! - Preserve contact identities across touch reports and cancel uncertain sequences
+//!   so a missed sample cannot complete a gesture.
+//!
+//! See [LILYGO touch input and interrupts](../../docs/boards/lilygo-t5-s3-pro-touch.md).
 
 use crate::display::NATIVE_SCREEN_SIZE;
 use core::{

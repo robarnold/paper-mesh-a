@@ -1,4 +1,11 @@
 //! Shared I2C access for display controls, touch, power, GNSS, and the RTC.
+//!
+//! # Design choices
+//!
+//! - Serialize transactions on the shared bus so a display control update cannot
+//!   interleave with another client's transfer.
+//!
+//! See [Shared buses, power domains, and wake routing](../../docs/boards/lilygo-t5-s3-pro.md#shared-buses-power-domains-and-wake-routing).
 
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use esp_hal::{

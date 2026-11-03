@@ -1,4 +1,11 @@
 //! Queue bus clients without waking other waiters before the owner releases the bus.
+//!
+//! # Design choices
+//!
+//! - Let interrupt tasks wait for bus ownership without masking the interrupts needed
+//!   to finish other work.
+//!
+//! See [Concurrent display and touch](../../../docs/boards/lilygo-t5-s3-pro-touch.md#concurrent-display-and-touch).
 
 use core::ops::{Deref, DerefMut};
 use embassy_sync::{
