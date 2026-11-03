@@ -5,7 +5,7 @@
 //! - Consume every event for the reserved Home key so application bindings cannot act on
 //!   its press or release.
 //!
-//! See the [input contract](https://github.com/robarnold/paper-mesh-a/blob/main/docs/services/input.md#system-navigation-routing).
+//! See the [input contract](../../../../docs/services/input.md#system-navigation-routing).
 
 use super::buttons::{ButtonEvent, ButtonId, ButtonState};
 

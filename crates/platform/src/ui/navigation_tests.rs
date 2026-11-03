@@ -7,7 +7,7 @@
 //! - Have the test page fill its drawing area so the rendered pixels reveal whether
 //!   the shell reserved the header or granted the full viewport.
 //!
-//! See the [pages and shells contract](https://github.com/robarnold/paper-mesh-a/blob/main/docs/platform/toolkit.md#pages-and-shells).
+//! See the [pages and shells contract](../../../../docs/platform/toolkit.md#pages-and-shells).
 
 use super::*;
 use crate::ui::{Page, Presentation, ShellLayout};

@@ -43,7 +43,7 @@ Use module documentation to explain why the module exists and which responsibili
 For Rust documentation conventions, follow [How to write documentation in the rustdoc book](https://doc.rust-lang.org/rustdoc/how-to-write-documentation.html).
 When the module makes a design or implementation choice, add a `# Design choices` section.
 Use one bullet per choice. Explain the constraint it satisfies or the consequence for callers.
-Link to the applicable specification using a URL that readers can follow from generated documentation.
+Link to repository specifications with paths relative to the source file so readers reach the specification in the same revision.
 For example, the [input contract](docs/services/input.md) requires debounced button events.
 The button module must filter contact bounce so one physical press produces one press event.
 The backend selects the debounce interval for its hardware.

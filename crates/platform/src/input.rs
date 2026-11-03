@@ -5,7 +5,7 @@
 //! - Activate a control on release so leaving the target or adding another contact can
 //!   cancel the gesture.
 //!
-//! See the [input contract](https://github.com/robarnold/paper-mesh-a/blob/main/docs/services/input.md).
+//! See the [input contract](../../../docs/services/input.md).
 
 use embedded_graphics::prelude::Point;
 

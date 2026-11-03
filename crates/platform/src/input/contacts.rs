@@ -6,7 +6,7 @@
 //! - Apply the whole frame before publishing changes so consumers cannot observe a partial
 //!   update.
 //!
-//! See the [input contract](https://github.com/robarnold/paper-mesh-a/blob/main/docs/services/input.md).
+//! See the [input contract](../../../../docs/services/input.md).
 
 use crate::{Contact, TouchEvent};
 

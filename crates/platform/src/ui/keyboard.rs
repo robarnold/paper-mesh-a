@@ -7,7 +7,7 @@
 //! - Use the visible key bounds for hit testing so drawing and touch agree on which key
 //!   occupies each position.
 //!
-//! See the [text input contract](https://github.com/robarnold/paper-mesh-a/blob/main/docs/platform/text-input.md).
+//! See the [text input contract](../../../../docs/platform/text-input.md).
 
 use super::{Style, TextInput, TextRole};
 use crate::{TouchEvent, input::TapGesture};

@@ -6,7 +6,7 @@
 //! - After a layout change, wait for presentation and a fresh contact so each tap matches
 //!   the visible labels.
 //!
-//! See the [text input contract](https://github.com/robarnold/paper-mesh-a/blob/main/docs/platform/text-input.md).
+//! See the [text input contract](../../../docs/platform/text-input.md).
 
 use crate::{pages::Route, screen::STYLE};
 use embedded_graphics::{pixelcolor::Gray4, prelude::*, primitives::Rectangle, text::Text};

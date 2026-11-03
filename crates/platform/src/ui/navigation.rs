@@ -9,7 +9,7 @@
 //! - Cancel pending gestures on transition so a finger already on the screen cannot
 //!   activate a control on the destination page.
 //!
-//! See the [pages and shells contract](https://github.com/robarnold/paper-mesh-a/blob/main/docs/platform/toolkit.md#pages-and-shells).
+//! See the [pages and shells contract](../../../../docs/platform/toolkit.md#pages-and-shells).
 
 use embedded_graphics::{pixelcolor::Gray4, prelude::*};
 use heapless::Vec;

@@ -7,7 +7,7 @@
 //! - Report the initial level as synchronization so a button held at startup cannot
 //!   trigger an action.
 //!
-//! See the [input contract](https://github.com/robarnold/paper-mesh-a/blob/main/docs/services/input.md).
+//! See the [input contract](../../../../docs/services/input.md).
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ButtonId(pub u8);

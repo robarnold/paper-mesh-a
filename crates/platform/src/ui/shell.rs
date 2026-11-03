@@ -7,7 +7,7 @@
 //! - Use the same Back control for rendering and hit testing so a disabled Back
 //!   button cannot complete a tap.
 //!
-//! See the [pages and shells contract](https://github.com/robarnold/paper-mesh-a/blob/main/docs/platform/toolkit.md#pages-and-shells).
+//! See the [pages and shells contract](../../../../docs/platform/toolkit.md#pages-and-shells).
 
 use embedded_graphics::{pixelcolor::Gray4, prelude::*, primitives::Rectangle};
 

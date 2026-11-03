@@ -6,7 +6,7 @@
 //!   previous value stays intact.
 //! - Remove one Unicode scalar on Backspace so deletion preserves valid UTF-8.
 //!
-//! See the [text input contract](https://github.com/robarnold/paper-mesh-a/blob/main/docs/platform/text-input.md).
+//! See the [text input contract](../../../../docs/platform/text-input.md).
 
 use super::{Style, TextRole};
 use embedded_graphics::{
