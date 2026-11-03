@@ -37,11 +37,10 @@ The keyboard owns its letter page and two symbol pages.
 **Show letters** returns to QWERTY from either symbol page.
 A page change clears Shift. Shift and page changes emit no field event.
 
-Use each visible key's bounds for hit testing.
-Use the toolkit tap recognizer to activate a key once on release.
-Leaving the key or adding a second contact cancels the tap. Holding a key produces no repeat.
-Apply each event immediately, even during a text refresh.
-After a layout change, accept a fresh press when the new labels are visible and all contacts have lifted.
+Use the [shared tap rules](../ui.md#control-and-data-states). Holding a key produces no repeat.
+During a text refresh, key meanings stay visible, so the field can accept each edit immediately.
+A layout change can assign a different character to the same location.
+After that change, accept a fresh press only when the new labels are visible and all contacts have lifted.
 
 ## Example
 

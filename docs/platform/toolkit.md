@@ -2,72 +2,23 @@
 
 [Platform overview](../platform.md)
 
-This document describes the implemented toolkit components.
-
-Common functionality belongs in the platform crate.
-Reusable components accept caller choices through parameters and callbacks.
-They have no dependency on application screens or state.
-Toolkit modules group related functions by responsibility.
-
-| Module | Current functionality | Caller choices |
-| --- | --- | --- |
-| [`ui`](../../crates/platform/src/ui/mod.rs) | Headers, buttons, navigation cards, text badges, and style | Bounds, text regions, labels, fonts, colors, and enabled state |
-| [`ui::navigation`](../../crates/platform/src/ui/navigation.rs), [`ui::shell`](../../crates/platform/src/ui/shell.rs), [`ui::page`](../../crates/platform/src/ui/page.rs) | Shell launch, return history, input dispatch, page presentation, and lifecycle | Page identities, retained storage, geometry, and restrictions |
-| [`ui::format`](../../crates/platform/src/ui/format.rs) | Bounded value labels and satellite labels | Values and format functions with explicit units |
-| [`input`](../../crates/platform/src/input.rs) | Tap recognition and cancellation | Hit testing, control identity, and resulting action |
-| [`input::navigation`](../../crates/platform/src/input/navigation.rs) | Reserved Home-key routing | Backend key identity and application home destination |
-| [`time`](../../crates/platform/src/time.rs) | Periodic deadlines and observation age checks | Epoch, interval, current time, and maximum age |
-| [`display`](../../crates/platform/src/display.rs) | Frame submission with busy and error checks | Redraw request and rendering callback |
-| [`rotation`](../../crates/platform/src/rotation.rs) | Pixel and touch coordinate conversion | Native dimensions |
-
-`TapGesture` returns a control identity after one contact stays on that control through release.
-Movement outside the control cancels the tap. Movement back inside does not arm it again.
-A second contact cancels the tap until all contacts lift.
-Raw contact events remain available to other consumers.
-Release and cancellation clear the armed control.
-The application maps the returned identity to an action.
+Applications supply control identities, actions, and geometry so the toolkit can serve different screens and devices.
+The [tap recognizer](../../crates/platform/src/input.rs) returns the activated control on release.
+Use the [shared control rules](../ui.md#control-and-data-states) when connecting hit tests to actions.
 
 The [system navigation router](../services/input.md#system-navigation-routing) consumes the Home key before application bindings.
 It has no application dependency or screen layout.
 
 ## User interface components
 
-The [shared UI standard](../ui.md) defines visual roles and interaction requirements.
-`Style` supplies fonts, color roles, and a `Spacing` profile.
-`Style::text` resolves a semantic `TextRole` into a text style.
-`Style::underlined_text` adds an underline in the resolved text color.
-`Style::GRAYSCALE` supplies optional defaults. Applications can supply another style.
-The toolkit has no fixed viewport, application destinations, or feature labels.
+Buttons and navigation cards use the same bounds and enabled state for drawing and hit testing.
+Pass their hit results to the tap recognizer. The caller supplies the action or destination.
+Badges annotate content and have no input behavior.
+The [text input contract](text-input.md) defines how the field receives edits from the soft keyboard.
 
-`TextBadge` draws a label inside a rounded rectangle at a caller-supplied position.
-Its `bounds` method measures the label with the role's font and the style's badge inset.
-Its `render` method uses foreground fill and background text. It can also underline the label.
-An empty label has zero bounds and draws nothing. The caller controls count formatting and available space.
-Badges have no hit test or input behavior.
-
-`Button` stores bounds, a label, selected state, and enabled state.
-`Button::render` and `Button::hit` use that same definition.
-A disabled button never passes hit testing.
-Pass the hit result to `TapGesture` to require a complete tap.
-The `button` function remains a convenience renderer with the default style.
-Its caller supplies hit testing separately.
-
-The [text input contract](text-input.md) describes the standard text field, soft keyboard, and input behavior.
-
-`NavigationCard` supplies a title, description, and direction marker inside caller-supplied bounds.
-Its hit test rejects disabled cards.
-The card uses relative insets and does not select a destination.
-
-`Header` draws context, title, divider, and supplied controls.
-Its caller supplies separate text regions and control bounds.
-It does not clear the complete screen or process navigation.
-Controls and header text clip their output to the supplied regions.
-The caller must allocate sufficient space for readable labels and descriptions.
-Automatic text wrapping and content pagination remain planned work.
-
-The [application rules](../application-ui.md) select geometry, destinations, and operation restrictions.
-The simulator and firmware use these components through the same application renderer.
-Toolkit tests check disabled gestures and clipping with long labels and small bounds.
+The caller must allocate enough space for essential text. Header and control renderers clip to their assigned regions.
+Compare working controls in the [visual guide](../simulator/execution.md#ui-guide).
+See the [toolkit API](../../crates/platform/src/ui/mod.rs) for available components.
 
 ## Pages and shells
 

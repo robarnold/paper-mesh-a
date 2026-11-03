@@ -69,79 +69,22 @@ Do not use grayscale alone to communicate status or selection meaning.
 
 ### Text roles
 
-`TextRole` names a purpose, even when several roles currently share a font.
-Applications select roles instead of individual fonts and shades in each renderer.
-
-| Role | Use | Default profile |
-| --- | --- | --- |
-| Title | Page and section names | `FONT_10X20`, 10 × 20 px, foreground |
-| Body | Instructions and measurement values | `FONT_10X20`, 10 × 20 px, foreground |
-| Caption | Short context and group labels | `FONT_6X10`, 6 × 10 px, foreground |
-| Secondary | Supporting information | `FONT_10X20`, 10 × 20 px, secondary text |
-
-The default profile uses the built-in ASCII monospace bitmap fonts from `embedded-graphics`.
-Sizes give character-cell width × height in logical device pixels.
-Stroke weight is fixed in each bitmap. The profile has no bold variant or numeric weight setting.
-Title and Body share the same font, size, and weight. Secondary uses a lighter color.
-Selected controls invert colors without changing font weight.
-
-Each role has a normal variant through `Style::text(role)` and an underlined variant through `Style::underlined_text(role)`.
-Underline is a decoration, not a separate text role or font weight.
-It preserves the role's font, size, and color. The current fonts have no italic variant.
-Use underline for short emphasis. An underline alone does not identify an action or explain status.
-
-`TextBadge` supplies bubbled text for short labels and notification counts.
-It measures the label and adds a rounded rectangle with padding on all sides.
-The bubble uses the foreground color. Its text uses the background color for contrast and retains the selected role's font and size.
-The default profile gives white text on a black bubble, with an 8-pixel corner radius.
-Underline can also apply inside a bubble.
-
-Badges display information. Use a separate control for actions.
-The application supplies the label and decides when to hide or cap a count.
-
-The header context and short group labels use `Caption`.
-In the visual catalog, `PLATFORM UI` and `TEXT ROLES` show this role.
-Controls select their own label style from the shared profile.
-Use `Body` for status messages. Explain pending work, unavailable data, and failures with explicit words.
-
-Use short titles. Keep units with values and align comparable values.
-Use additional lines or pages when text does not fit.
-Clipping protects adjacent regions. It does not make truncated essential text acceptable.
-Automatic wrapping and pagination remain planned work.
+Choose text roles by purpose so the same screen stays readable when the style changes.
+Use captions for context and body text for instructions, values, and status. Keep units with values and align comparable measurements.
+Reserve underline for short emphasis. Use badges for short labels and counts.
+Provide another line or page if essential text would be clipped.
 
 ### Color roles
 
-The default `Style::GRAYSCALE` profile uses 16 shades, from 0 for black to 15 for white.
-
-| Role | Shade | Use |
-| --- | --- | --- |
-| Foreground | 0 | Essential text, outlines, and selected control fill |
-| Background | 15 | Page background and selected control text |
-| Secondary text | 6 | Supporting text |
-| Divider | 9 | Group boundaries and data outlines |
-| Control fill | 14 | Unselected and disabled control surfaces |
-| Disabled text | 8 | Controls that cannot accept input |
-| Data fill | 5 | Filled measurement bars |
-| Alternating row | 12 | Separation within dense data lists |
-
-Selected controls use inverse text. Disabled controls do not use the selected fill.
-A pending label explains an operation in progress. Disabled appearance alone does not explain the cause.
-Diagnostic image values are test data and do not use theme colors.
+Pair a visual state with words when the reader needs to know why an action is pending or unavailable.
+Diagnostic patterns use fixed shades because their pixel values are part of the test.
+For fonts, shades, and dimensions, see the [style profile](../crates/platform/src/ui/style.rs).
 
 ### Spacing roles
 
-| Role | Default pixels | Use |
-| --- | --- | --- |
-| Badge inset | 8 horizontal, 4 vertical | Padding on each side of a badge label |
-| Control inset | 16 | Leading space inside a button |
-| Card inset | 20 | Space inside a destination card |
-| Control gap | 12 | Separation between adjacent controls |
-| Section gap | 28 | Separation between content groups |
-| Minimum control height | 52 | Minimum height for a touch target |
-
-These values form one initial profile. They do not define a universal viewport or fixed page layout.
-The application supplies geometry that follows its chosen profile.
-Validate alternate profiles on their intended display and input device.
+Use the selected profile's gaps and insets to group related information and separate adjacent targets.
+Check alternate profiles on the intended display and input device.
+Compare text, color, and spacing in the [visual guide](simulator/execution.md#ui-guide).
 
 ## Control and data states
 
