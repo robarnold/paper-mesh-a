@@ -1,4 +1,12 @@
 //! Bounded single-line text field.
+//!
+//! # Design choices
+//!
+//! - Reject a character if its UTF-8 encoding exceeds the remaining byte capacity so the
+//!   previous value stays intact.
+//! - Remove one Unicode scalar on Backspace so deletion preserves valid UTF-8.
+//!
+//! See the [text input contract](https://github.com/robarnold/paper-mesh-a/blob/main/docs/platform/text-input.md).
 
 use super::{Style, TextRole};
 use embedded_graphics::{

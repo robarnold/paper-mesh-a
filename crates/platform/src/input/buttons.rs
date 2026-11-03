@@ -1,4 +1,13 @@
-//! Hardware control identities and debounced observations.
+//! Hardware button identities and debounced events.
+//!
+//! # Design choices
+//!
+//! - Wait for a stable level over the backend’s debounce interval so contact bounce cannot
+//!   produce extra presses.
+//! - Report the initial level as synchronization so a button held at startup cannot
+//!   trigger an action.
+//!
+//! See the [input contract](https://github.com/robarnold/paper-mesh-a/blob/main/docs/services/input.md).
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ButtonId(pub u8);

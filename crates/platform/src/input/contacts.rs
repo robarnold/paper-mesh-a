@@ -1,4 +1,12 @@
-//! Complete contact frames with bounded storage.
+//! Bounded contact frames and active contact state.
+//!
+//! # Design choices
+//!
+//! - Track contacts by ID so releasing one finger preserves the others.
+//! - Apply the whole frame before publishing changes so consumers cannot observe a partial
+//!   update.
+//!
+//! See the [input contract](https://github.com/robarnold/paper-mesh-a/blob/main/docs/services/input.md).
 
 use crate::{Contact, TouchEvent};
 

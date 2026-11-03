@@ -1,4 +1,13 @@
-//! Standard keyboard pages and their visible key bounds.
+//! Soft keyboard for character entry and deletion.
+//!
+//! # Design choices
+//!
+//! - Keep Shift and page selection in the keyboard so the field can consume text events
+//!   independently of the layout.
+//! - Use the visible key bounds for hit testing so drawing and touch agree on which key
+//!   occupies each position.
+//!
+//! See the [text input contract](https://github.com/robarnold/paper-mesh-a/blob/main/docs/platform/text-input.md).
 
 use super::{Style, TextInput, TextRole};
 use crate::{TouchEvent, input::TapGesture};
