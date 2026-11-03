@@ -6,6 +6,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/require-container.sh"
 
 rustc --version
 cargo --version
+cargo nextest --version
 rustc +esp --version
 espup --version
 espflash --version

@@ -23,6 +23,7 @@ See the [simulator guide](simulator.md) for controls and the [firmware build gui
 ## Continuous integration
 
 The [CI workflow](../.github/workflows/ci.yml) runs the same [checks](../justfile) that contributors run with `just ci`.
+Nextest runs native tests across workspace binaries in parallel. Cargo runs documentation tests separately.
 The workflow defines which build artifacts reviewers can download and how long they remain available.
 A successful run verifies the build and simulator checks. Firmware startup and peripheral behavior require checks on a physical device.
 

@@ -46,4 +46,7 @@ ENV PATH="/opt/esp/bin:/usr/local/cargo/bin:${PATH}" \
 
 COPY --from=rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 /usr/local/bin/actionlint /usr/local/bin/actionlint
 
+ARG NEXTEST_VERSION=0.9.151
+RUN cargo install --locked cargo-nextest --version "$NEXTEST_VERSION"
+
 WORKDIR /workspaces/paper-mesh-a
