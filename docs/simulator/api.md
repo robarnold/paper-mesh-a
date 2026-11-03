@@ -60,6 +60,7 @@ Their events do not change device application state or each other.
 | Endpoint | Result or input |
 | --- | --- |
 | `GET /ui-guide` | Browser guide |
+| `GET /ui-guide/build` | Build identifier for live refresh, or an empty response in a normal session |
 | `GET /ui-guide/state` | Shell and Page state, complete back stack, return destination, lifecycle counts, and equivalent controls |
 | `GET /ui-guide/frame.png` | Current Shell and Page example |
 | `GET /ui-guide/controls/state` | Controls state, action count, selection, and equivalent controls |

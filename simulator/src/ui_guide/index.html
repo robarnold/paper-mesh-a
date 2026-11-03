@@ -105,6 +105,21 @@ details{border:1px solid var(--line);border-radius:8px;margin:14px 0;background:
 <noscript><p>Enable JavaScript to change guide sections and interact with the example. The preview images and reference links remain available.</p></noscript>
 </main>
 <script>
+const guideBuild = '{{guide_build}}';
+async function checkBuild() {
+  try {
+    const response = await fetch('/ui-guide/build', {cache: 'no-store'});
+    if (response.ok && await response.text() !== guideBuild) {
+      location.reload();
+      return;
+    }
+  } catch {
+    // The server can be unavailable during a restart.
+  }
+  setTimeout(checkBuild, 1000);
+}
+if (guideBuild) setTimeout(checkBuild, 1000);
+
 const error = document.querySelector('#error');
 async function checked(response) { if (!response.ok) throw new Error(await response.text()); return response; }
 

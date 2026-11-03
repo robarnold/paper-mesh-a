@@ -69,6 +69,16 @@ These comparisons do not verify optical output or touch calibration.
 
 With the simulator running, open [localhost:8080/ui-guide](http://localhost:8080/ui-guide).
 The simulator home page also links to this guide.
+
+For live refresh during development, start the server with `devcontainer exec --workspace-folder . just sim-watch`.
+Use this command in place of `just sim` on the same port.
+The devcontainer includes the [Watchman CLI](https://facebook.github.io/watchman/) from Debian Bookworm (4.9.0, Apache-2.0).
+Watchman sends file change notifications for simulator build inputs.
+After a source change, the watcher builds the simulator while the previous server continues to serve requests.
+A successful build restarts the server and resets its example and device state.
+Open guide tabs reload at their current section.
+If the build fails, the watcher prints the error and waits for another edit.
+
 Shell and Page, Text and spacing, and Controls have interactive device previews. Tap its controls directly without changing guide sections.
 In Text input, tap Shift or a page key to change the keyboard layout.
 The interactive previews use the platform renderer and input path.

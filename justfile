@@ -31,6 +31,11 @@ sim:
     bash scripts/require-container.sh
     cargo run --locked -p paper-mesh-simulator
 
+# Rebuild on edits and refresh open UI guide tabs.
+sim-watch:
+    bash scripts/require-container.sh
+    python3 scripts/watch_simulator.py
+
 simulator-snapshot:
     bash scripts/require-container.sh
     cargo run --locked -p paper-mesh-simulator -- --snapshot target/simulator/hello.png

@@ -5,14 +5,23 @@ use paper_mesh_simulator::ui_guide::{self, Guide, Sheet};
 use std::io::Read;
 use tiny_http::{Method, Request};
 
+fn guide_build() -> String {
+    std::env::var("PAPER_MESH_GUIDE_BUILD")
+        .ok()
+        .and_then(|value| value.parse::<u128>().ok())
+        .map(|id| id.to_string())
+        .unwrap_or_default()
+}
+
 pub fn handle(request: &mut Request, guide: &mut Guide) -> HttpResponse {
     let path = request.url().split('?').next().unwrap_or("");
     match (request.method(), path) {
         (&Method::Get, "/ui-guide" | "/ui-guide/") => response(
             200,
             "text/html; charset=utf-8",
-            include_bytes!("ui_guide/index.html").to_vec(),
+            include_str!("ui_guide/index.html").replace("{{guide_build}}", &guide_build()),
         ),
+        (&Method::Get, "/ui-guide/build") => response(200, "text/plain", guide_build()),
         (&Method::Get, "/ui-guide/keyboard/state") => keyboard_state(guide),
         (&Method::Get, "/ui-guide/state") => state(guide),
         (&Method::Get, "/ui-guide/controls/state") => controls_state(guide),

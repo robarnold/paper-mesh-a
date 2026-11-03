@@ -10,7 +10,7 @@ ARG JUST_VERSION=1.58.0
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        libudev-dev libssl-dev pkg-config python3 python3-yaml shellcheck sudo \
+        libudev-dev libssl-dev pkg-config python3 python3-yaml shellcheck sudo watchman \
     && rm -rf /var/lib/apt/lists/*
 
 # Rust, Cargo, and espup write only to the container filesystem.
