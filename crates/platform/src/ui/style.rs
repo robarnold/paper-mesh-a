@@ -1,4 +1,11 @@
 //! Semantic visual roles for grayscale interfaces.
+//!
+//! # Design choices
+//!
+//! - Select fonts and shades by role so applications can change the profile without
+//!   editing each page renderer.
+//!
+//! See the [shared visual language](../../../../docs/ui.md#visual-language).
 
 use embedded_graphics::{
     mono_font::{

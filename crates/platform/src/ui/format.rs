@@ -1,4 +1,12 @@
 //! Bounded value formatting with explicit units.
+//!
+//! # Design choices
+//!
+//! - Use a distinct marker for a missing measurement so a valid zero remains
+//!   recognizable.
+//! - Return fixed-capacity strings so callers can format readings without a heap.
+//!
+//! See the [formatting contract](../../../../docs/platform/toolkit.md#time-and-display-helpers).
 
 use core::fmt::Write;
 use heapless::String;

@@ -1,4 +1,11 @@
 //! Bounded controls with shared rendering and hit-test state.
+//!
+//! # Design choices
+//!
+//! - Use the same bounds and enabled state for drawing and hit testing so a disabled
+//!   control cannot accept a tap.
+//!
+//! See the [control and data states](../../../../docs/ui.md#control-and-data-states).
 
 use embedded_graphics::{
     mono_font::MonoTextStyle,

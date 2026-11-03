@@ -1,4 +1,11 @@
 //! Header rendering with caller-supplied text regions and navigation controls.
+//!
+//! # Design choices
+//!
+//! - Clip the title and context to separate regions so long text cannot cover a
+//!   navigation control.
+//!
+//! See the [toolkit contract](../../../../docs/platform/toolkit.md#user-interface-components).
 
 use embedded_graphics::{
     pixelcolor::Gray4,

@@ -1,4 +1,11 @@
 //! Reusable presentation components without screen destinations or fixed layouts.
+//!
+//! # Design choices
+//!
+//! - Leave placement and actions to the caller so the same control can serve
+//!   different screens.
+//!
+//! See the [toolkit contract](../../../../docs/platform/toolkit.md#user-interface-components).
 
 use embedded_graphics::{pixelcolor::Gray4, prelude::*, primitives::Rectangle};
 

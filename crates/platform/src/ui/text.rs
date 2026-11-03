@@ -1,4 +1,12 @@
 //! Text with a rounded background for short labels and counts.
+//!
+//! # Design choices
+//!
+//! - Measure the label with its role’s font before adding padding so the badge fits
+//!   the text.
+//! - Give an empty label zero bounds so omitting a count also removes its background.
+//!
+//! See the [text roles](../../../../docs/ui.md#text-roles).
 
 use embedded_graphics::{
     pixelcolor::Gray4,
