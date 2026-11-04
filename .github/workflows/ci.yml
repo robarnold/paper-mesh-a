@@ -49,7 +49,7 @@ jobs:
         with:
           imageName: ghcr.io/${{ github.repository }}-devcontainer
           cacheFrom: ghcr.io/${{ github.repository }}-devcontainer:latest
-          push: filter
+          push: ${{ github.event_name == 'pull_request' && github.head_ref == 'codex/ci-build-caches' && github.event.pull_request.head.repo.full_name == github.repository && 'always' || 'filter' }}
           refFilterForPush: refs/heads/main
           eventFilterForPush: push
           runCmd: just ci
