@@ -123,6 +123,19 @@ If reference processing is necessary, use the devcontainer's `/tmp` directory.
 ## Third-party dependencies and assets
 
 Prefer package dependencies to copies of third-party source or assets.
+Pin each new or updated third-party dependency to an explicit version.
+Apply this rule to runtime, build, and development dependencies.
+
+For Cargo registry dependencies, use an exact requirement such as `=0.9.0`.
+Do not use implicit caret requirements, version ranges, or wildcards.
+For Git dependencies, use a full commit hash in `rev`.
+Keep local workspace dependencies as path dependencies.
+
+Exact requirements keep dependency updates explicit when Cargo resolves dependencies again.
+Keep the applicable lockfile consistent with each manifest change.
+The [workspace lockfile](Cargo.lock) and [firmware lockfile](firmware/Cargo.lock) record the resolved dependency graphs.
+Keep version values in manifests and lockfiles instead of duplicating them in prose.
+
 Check the upstream license for the selected version against the intended use and distribution.
 Check bundled artwork separately, including artwork that appears in generated images.
 If the terms are unclear, resolve the question before adoption.
