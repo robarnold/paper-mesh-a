@@ -27,6 +27,20 @@ Nextest runs native tests across workspace binaries in parallel. Cargo runs docu
 The workflow defines which build artifacts reviewers can download and how long they remain available.
 A successful run verifies the build and simulator checks. Firmware startup and peripheral behavior require checks on a physical device.
 
+CI reuses devcontainer image layers from GitHub Container Registry to avoid repeated tool installation.
+Only successful push runs on `main` publish the image cache. Pull requests can reuse the image layers while checking their own Dockerfile.
+Registry access uses the workflow token for repository branches. Forks need anonymous read access to the package to reuse its image cache.
+See the [devcontainer action documentation](https://github.com/devcontainers/ci/blob/main/docs/github-action.md) for image cache behavior.
+
+Separate GitHub Actions caches retain native and firmware build outputs in the mounted checkout.
+The cache keys include container inputs, Cargo configuration, manifests, and lockfiles because these inputs can change compiled dependencies.
+Each revision can save a new cache. A compatible earlier revision supplies build outputs when the exact key is absent.
+
+The native cache stores the debug profile used by CI. The firmware cache stores both host and Xtensa build outputs.
+Generated simulator snapshots and merged firmware images stay outside these caches. CI generates the published artifacts on each run.
+Cache misses require a full build. GitHub controls cache access across branches and can evict old entries.
+See the [GitHub cache reference](https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching) for cache scope and retention.
+
 ## Hardware access
 
 The default container operates without a connected device and also operates in CI.
