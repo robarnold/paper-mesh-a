@@ -23,15 +23,13 @@ details{border:1px solid var(--line);border-radius:8px;margin:14px 0;background:
 <section id="composition" class="lesson" aria-label="Shell and Page">
 <aside class="preview" aria-label="Working example">
 <div class="preview-label"><strong>Navigation path</strong><span class="badge" id="page-badge">Loading</span></div>
-<figure><div class="frame interactive"><img id="demo-screen" src="/ui-guide/frame.png" width="540" height="960" draggable="false" tabindex="0" alt="Interactive example application. Tap the device screen to open pages and try their controls. Keyboard controls follow the preview."></div><figcaption>Interactive example · tap the device screen</figcaption></figure>
-<details><summary>Keyboard controls</summary><div class="controls" id="demo-controls" role="group" aria-label="Example page controls"></div></details>
-<div class="controls" role="group" aria-label="Example host controls"><button id="home-key">Hardware Home</button><button id="finish" disabled>Finish operation</button><button id="reset">Reset example</button></div>
+<figure><div class="frame interactive"><img id="demo-screen" src="/ui-guide/frame.png" width="540" height="960" draggable="false" tabindex="0" alt="Interactive example application. Tap the device screen to open pages and try their controls. Focus the preview for keyboard input."></div><figcaption>Interactive example · tap the device screen</figcaption></figure>
 <dl class="metrics"><div><dt>Home · entry / exit</dt><dd id="home-visits">0 / 0</dd></div><div><dt>Detail · entry / exit</dt><dd id="detail-visits">0 / 0</dd></div></dl>
 <p class="transition" id="transition">Home.enter</p>
 </aside>
 <div class="copy"><p class="step">01 / COMPOSITION</p><h2>One shell. Three pages.</h2><p>The navigator manages transitions and return history. The shell supplies the frame. Each page owns its content and local state.</p>
-<ol><li>Select <strong>Open Detail</strong>, then <strong>Count a tap</strong>.</li><li>Select <strong>Back</strong>. Select <strong>Open Tools</strong>, then <strong>Open Detail</strong>. The count remains.</li><li>Select <strong>Back</strong>. You return to Tools, which opened Detail.</li><li>Open Detail again. Select <strong>Enter full screen</strong>. Use <strong>Hardware Home</strong> to exit.</li></ol>
-<p class="hint">Tap the device screen or expand Keyboard controls below it. With the preview focused, the Home key returns Home.</p>
+<ol><li>Select <strong>Open Detail</strong>, then <strong>Count a tap</strong>.</li><li>Select <strong>Back</strong>. Select <strong>Open Tools</strong>, then <strong>Open Detail</strong>. The count remains.</li><li>Select <strong>Back</strong>. You return to Tools, which opened Detail.</li><li>Open Detail again. Select <strong>Enter full screen</strong>. Press <strong>Home</strong> with the preview focused to exit.</li></ol>
+<p class="hint">Focus the preview. Use arrow keys to select a control and Enter to activate it. Home returns Home. Shift+Escape resets this example.</p>
 <h3>Navigator: launch and transitions</h3><p>Launch one shell with the root identity and retained page collection. The platform navigator handles input dispatch, return history, and lifecycle callbacks.</p><p class="rule">Open records the caller. Back returns to that caller. Home returns to the root and clears history.</p>
 <details><summary>Code · launch the shell and pages</summary><pre><code data-snippet="composition">Loading source…</code></pre></details>
 <details><summary>Code · request a transition</summary><pre><code data-snippet="navigation">Loading source…</code></pre></details>
@@ -41,17 +39,15 @@ details{border:1px solid var(--line);border-radius:8px;margin:14px 0;background:
 <h3>Connect input and output</h3><p>Send touch input and navigation requests to the navigator. It completes each transition before returning. Render the active page through the navigator.</p>
 <details><summary>Code · route touch input</summary><pre><code data-snippet="input">Loading source…</code></pre></details>
 <details><summary>Code · render the active page</summary><pre><code data-snippet="render">Loading source…</code></pre></details>
-<h3>Try the exceptions</h3><ul><li><strong>Full screen:</strong> the header disappears. Hardware Home keeps its meaning.</li><li><strong>Pending operation:</strong> start the example operation. Back becomes disabled and Home cannot leave. Select Finish operation to restore navigation.</li></ul>
+<h3>Try the exceptions</h3><ul><li><strong>Full screen:</strong> the header disappears. Hardware Home keeps its meaning.</li><li><strong>Pending operation:</strong> start the example operation. Back becomes disabled and Home cannot leave. Press F with the preview focused to finish the operation.</li></ul>
 <p class="hint">The example reserves eight return entries. A full stack rejects Open without changing the active page.</p><p class="hint">This example has independent state and performs no device operations. Frames update immediately. It does not model display refresh timing.</p>
 <p><a href="/ui-guide/source.rs" target="_blank">Read the complete example source</a></p>
 </div></section>
 <section id="text" class="lesson" aria-label="Text and spacing" hidden>
 <aside class="preview" aria-label="Interactive style example"><div class="preview-label"><strong>Explore the style</strong></div>
-<figure><div class="frame interactive"><img id="text-screen" src="/ui-guide/text.png" width="540" height="960" draggable="false" tabindex="0" alt="Interactive style example. Tap a text role, Underline, Bubbled, a spacing control, or a color swatch. Keyboard controls follow the preview."></div><figcaption>Interactive example · tap the device screen</figcaption></figure>
-<div class="controls"><button id="text-reset">Reset style</button></div>
-<details><summary>Keyboard controls</summary><div class="controls" id="text-actions" role="group" aria-label="Equivalent style controls"></div></details>
+<figure><div class="frame interactive"><img id="text-screen" src="/ui-guide/text.png" width="540" height="960" draggable="false" tabindex="0" alt="Interactive style example. Tap a text role, Underline, Bubbled, a spacing control, or a color swatch. Focus the preview for keyboard input."></div><figcaption>Interactive example · tap the device screen</figcaption></figure>
 </aside>
-<div class="copy"><p class="step">02 / VISUAL LANGUAGE</p><h2>Choose a purpose.</h2><p>Start with four text roles. Controls select their own label styles. Use Body for status messages.</p>
+<div class="copy"><p class="step">02 / VISUAL LANGUAGE</p><h2>Choose a purpose.</h2><p class="hint">Focus the preview. Use arrow keys to select a control and Enter to activate it. Shift+Escape resets this example.</p><p>Start with four text roles. Controls select their own label styles. Use Body for status messages.</p>
 <div class="table-wrap"><table><thead><tr><th>Role</th><th>Use it for</th></tr></thead><tbody><tr><td><code>Title</code></td><td>Page and section names.</td></tr><tr><td><code>Body</code></td><td>Instructions, values, and status messages.</td></tr><tr><td><code>Caption</code></td><td>Page context and short group labels, such as PLATFORM UI and TEXT ROLES.</td></tr><tr><td><code>Secondary</code></td><td>Supporting information.</td></tr></tbody></table></div>
 <h3>Fonts, sizes, and weights</h3>
 <p>The device uses the built-in ASCII monospace bitmap fonts from <code>embedded-graphics</code>. Each character occupies a cell with a fixed width.</p>
@@ -79,11 +75,9 @@ details{border:1px solid var(--line);border-radius:8px;margin:14px 0;background:
 </div></section>
 <section id="controls" class="lesson" aria-label="Controls" hidden>
 <aside class="preview" aria-label="Interactive controls example"><div class="preview-label"><strong>Tap the controls</strong></div>
-<figure><div class="frame interactive"><img id="controls-screen" src="/ui-guide/controls.png" width="540" height="960" draggable="false" tabindex="0" alt="Interactive controls example. Tap Action, Selected, Start operation, or the Component details card. Keyboard controls follow the preview."></div><figcaption>Interactive example · tap the device screen</figcaption></figure>
-<div class="controls"><button id="controls-reset">Reset controls</button></div>
-<details><summary>Keyboard controls</summary><div class="controls" id="controls-actions" role="group" aria-label="Equivalent controls"></div></details>
+<figure><div class="frame interactive"><img id="controls-screen" src="/ui-guide/controls.png" width="540" height="960" draggable="false" tabindex="0" alt="Interactive controls example. Tap Action, Selected, Start operation, or the Component details card. Focus the preview for keyboard input."></div><figcaption>Interactive example · tap the device screen</figcaption></figure>
 </aside>
-<div class="copy"><p class="step">03 / CONTROLS</p><h2>Make the action clear.</h2><p>Tap the device screen to try each control. This example stays in the Controls tab.</p><h3>Button</h3><p>Use a button for an action or selection. Its bounds and enabled state must agree for drawing and hit testing.</p><p class="rule">Activate after a complete press and release inside the same target. Movement outside cancels the tap.</p>
+<div class="copy"><p class="step">03 / CONTROLS</p><h2>Make the action clear.</h2><p class="hint">Focus the preview. Use arrow keys to select a control and Enter to activate it. Shift+Escape resets this example.</p><p>Tap the device screen to try each control. This example stays in the Controls tab.</p><h3>Button</h3><p>Use a button for an action or selection. Its bounds and enabled state must agree for drawing and hit testing.</p><p class="rule">Activate after a complete press and release inside the same target. Movement outside cancels the tap.</p>
 <details><summary>Code · define the buttons</summary><pre><code data-snippet="button">Loading source…</code></pre></details>
 <h3>Control states</h3><ul><li><strong>Normal:</strong> tap Action to increase the count.</li><li><strong>Selected:</strong> tap Selected to toggle the selection and inverse text.</li><li><strong>Unavailable:</strong> this control stays disabled and ignores taps.</li><li><strong>Pending:</strong> tap Start operation. Select Finish operation on the screen to restore the controls.</li></ul>
 <h3>NavigationCard</h3><p>Use a card to open a destination. Give it a short title and a description of what the user will find.</p>
@@ -121,26 +115,35 @@ const error = document.querySelector('#error');
 async function checked(response) { if (!response.ok) throw new Error(await response.text()); return response; }
 
 // All device previews use the same input transport and image updates.
-function createPreview({screenId, actionsId, stateUrl, eventUrl, frameUrl, resetId, homeId, finishId, showState}) {
+function createPreview({screenId, stateUrl, eventUrl, frameUrl, calculator = false, finish = false, showState}) {
   const screen = document.querySelector(screenId);
-  const actions = actionsId && document.querySelector(actionsId);
+  const marker = document.createElement('span');
+  marker.setAttribute('aria-hidden', 'true');
+  marker.style.cssText = 'position:absolute;width:28px;height:28px;border:3px solid #6d8854;border-radius:50%;transform:translate(-50%,-50%);pointer-events:none;display:none';
+  screen.parentElement.style.position = 'relative';
+  screen.parentElement.append(marker);
+  let selected = -1;
+  function hideSelection() { selected = -1; marker.style.display = 'none'; }
+  function showSelection() {
+    const control = lastState?.controls?.[selected];
+    if (!control) { hideSelection(); return; }
+    marker.style.left = `${screen.offsetLeft + screen.clientWidth * control.x / 540}px`;
+    marker.style.top = `${screen.offsetTop + screen.clientHeight * control.y / 960}px`;
+    marker.style.display = 'block';
+    screen.setAttribute('aria-label', `Selected control: ${control.label}. Press Enter to activate.`);
+  }
   const pointers = new Map();
   let queue = Promise.resolve(), imageUrl = null, controlsKey = '', lastState = null;
   function update(state) {
     lastState = state;
     showState?.(state);
     const key = JSON.stringify(state.controls);
-    if (actions && key !== controlsKey) {
-      actions.replaceChildren(...state.controls.map(control => {
-        const button = document.createElement('button'); button.textContent = control.label; button.disabled = !control.enabled;
-        button.addEventListener('click', () => {
-          send({type:'touch_down',id:15,x:control.x,y:control.y});
-          send({type:'touch_up',id:15,x:control.x,y:control.y});
-        });
-        return button;
-      }));
-      controlsKey = key;
-    }
+    if (key !== controlsKey) { hideSelection(); controlsKey = key; }
+  }
+  function activate(control) {
+    if (!control?.enabled || pointers.size) return;
+    send({type:'touch_down',id:15,x:control.x,y:control.y});
+    send({type:'touch_up',id:15,x:control.x,y:control.y});
   }
   async function frame() {
     const response = await checked(await fetch(frameUrl));
@@ -166,7 +169,7 @@ function createPreview({screenId, actionsId, stateUrl, eventUrl, frameUrl, reset
   screen.addEventListener('pointerdown', event => {
     if (event.button !== 0 || pointers.size >= 5) return;
     const p = position(event); if (!p) return;
-    event.preventDefault(); screen.focus({preventScroll:true});
+    event.preventDefault(); hideSelection(); screen.focus({preventScroll:true});
     const id = Array.from({length:5},(_,i)=>i).find(id=>![...pointers.values()].includes(id));
     pointers.set(event.pointerId,id); screen.setPointerCapture(event.pointerId); send({type:'touch_down',id,...p});
   });
@@ -182,11 +185,37 @@ function createPreview({screenId, actionsId, stateUrl, eventUrl, frameUrl, reset
   });
   screen.addEventListener('pointercancel',cancel);
   screen.addEventListener('lostpointercapture',event=>{if(pointers.has(event.pointerId))cancel();});
-  if (resetId) screen.addEventListener('keydown',event=>{if(event.key==='Home'){event.preventDefault();send({type:'home'});}if(event.key==='Escape')cancel();});
+  screen.addEventListener('keydown', event => {
+    if (event.ctrlKey || event.metaKey || event.altKey || event.repeat) return;
+    if (event.key === 'Escape') {
+      event.preventDefault(); cancel(); hideSelection();
+      if (event.shiftKey) send({type:'reset'});
+      return;
+    }
+    if (event.key === 'Home') { event.preventDefault(); hideSelection(); send({type:'home'}); return; }
+    if (finish && event.key.toLowerCase() === 'f') { event.preventDefault(); send({type:'finish'}); return; }
+    const controls = lastState?.controls || [];
+    if (event.key.startsWith('Arrow') && controls.length) {
+      event.preventDefault();
+      const direction = ['ArrowLeft','ArrowUp'].includes(event.key) ? -1 : 1;
+      for (let i = 0; i < controls.length; i++) {
+        selected = (selected + direction + controls.length) % controls.length;
+        if (controls[selected].enabled) break;
+      }
+      showSelection(); return;
+    }
+    if ((event.key === 'Enter' || event.key === ' ') && selected >= 0) {
+      event.preventDefault(); activate(controls[selected]); return;
+    }
+    if (calculator) {
+      const label = ({'*':'x', 'Enter':'=', 'Backspace':'Del', 'Delete':'C', 'c':'C', 'C':'C'})[event.key] || event.key;
+      const control = controls.find(control => control.label === label);
+      if (control) { event.preventDefault(); activate(control); }
+    }
+  });
+  screen.addEventListener('blur', hideSelection);
+  window.addEventListener('resize', () => { if (selected >= 0) showSelection(); });
   window.addEventListener('blur',cancelActive);
-  if (homeId) document.querySelector(homeId).addEventListener('click',()=>send({type:'home'}));
-  if (finishId) document.querySelector(finishId).addEventListener('click',()=>send({type:'finish'}));
-  if (resetId) document.querySelector(resetId).addEventListener('click',()=>{pointers.clear();send({type:'reset'});});
   queue = fetch(stateUrl).then(checked).then(r=>r.json()).then(async state=>{update(state);await frame();})
     .catch(reason=>{error.textContent=`The example could not load. ${reason.message}`;});
   return {cancelActive};
@@ -197,21 +226,20 @@ const previews = [
     screenId:'#keyboard-frame', stateUrl:'/ui-guide/keyboard/state', eventUrl:'/ui-guide/keyboard/event', frameUrl:'/ui-guide/keyboard.png',
   }),
   createPreview({
-    screenId:'#text-screen', actionsId:'#text-actions', stateUrl:'/ui-guide/text/state', eventUrl:'/ui-guide/text/event', frameUrl:'/ui-guide/text.png', resetId:'#text-reset',
+    screenId:'#text-screen', stateUrl:'/ui-guide/text/state', eventUrl:'/ui-guide/text/event', frameUrl:'/ui-guide/text.png',
   }),
   createPreview({
-    screenId:'#demo-screen', actionsId:'#demo-controls', stateUrl:'/ui-guide/state', eventUrl:'/ui-guide/event', frameUrl:'/ui-guide/frame.png',
-    resetId:'#reset', homeId:'#home-key', finishId:'#finish',
+    screenId:'#demo-screen', stateUrl:'/ui-guide/state', eventUrl:'/ui-guide/event', frameUrl:'/ui-guide/frame.png',
+    finish: true,
     showState(state) {
       document.querySelector('#page-badge').textContent = [...state.back_stack, state.page].join(' → ');
       document.querySelector('#home-visits').textContent = `${state.home_entries} / ${state.home_exits}`;
       document.querySelector('#detail-visits').textContent = `${state.detail_entries} / ${state.detail_exits}`;
       document.querySelector('#transition').textContent = state.transition;
-      document.querySelector('#finish').disabled = !state.pending;
     }
   }),
   createPreview({
-    screenId:'#controls-screen', actionsId:'#controls-actions', stateUrl:'/ui-guide/controls/state', eventUrl:'/ui-guide/controls/event', frameUrl:'/ui-guide/controls.png', resetId:'#controls-reset',
+    screenId:'#controls-screen', stateUrl:'/ui-guide/controls/state', eventUrl:'/ui-guide/controls/event', frameUrl:'/ui-guide/controls.png',
   })
 ];
 function section() {

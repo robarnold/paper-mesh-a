@@ -261,7 +261,7 @@ impl Page for ExamplePage {
                 )?;
                 line(
                     display,
-                    "Select Finish operation beside the preview.",
+                    "Focus the preview and press F to finish.",
                     660,
                     TextRole::Body,
                 )?;
