@@ -29,6 +29,7 @@ The [snapshot recipe](../../justfile) specifies the output paths.
 Use the [interactive guide](http://localhost:8080/ui-guide) to try platform controls and inspect the Rust examples that draw them.
 Each example has its own state. Browser tabs on the same server share that state, so an action in one tab can affect another.
 Guide previews update immediately. Use the device simulator to check behavior during a pending refresh.
+Follow the [shared guide rules](../ui.md#display-updates-and-validation) for previews, controls, and external state readouts.
 
 For live refresh, run `devcontainer exec --workspace-folder . just sim-watch`.
 The previous server stays available during a build and after a build failure.

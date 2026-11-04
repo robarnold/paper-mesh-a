@@ -22,12 +22,11 @@ details{border:1px solid var(--line);border-radius:8px;margin:14px 0;background:
 <p id="error" role="alert"></p>
 <section id="composition" class="lesson" aria-label="Shell and Page">
 <aside class="preview" aria-label="Working example">
-<div class="preview-label"><strong>Working example</strong><span class="badge" id="page-badge">Loading</span></div>
+<div class="preview-label"><strong>Navigation path</strong><span class="badge" id="page-badge">Loading</span></div>
 <figure><div class="frame interactive"><img id="demo-screen" src="/ui-guide/frame.png" width="540" height="960" draggable="false" tabindex="0" alt="Interactive example application. Tap the device screen to open pages and try their controls. Keyboard controls follow the preview."></div><figcaption>Interactive example · tap the device screen</figcaption></figure>
 <details><summary>Keyboard controls</summary><div class="controls" id="demo-controls" role="group" aria-label="Example page controls"></div></details>
 <div class="controls" role="group" aria-label="Example host controls"><button id="home-key">Hardware Home</button><button id="finish" disabled>Finish operation</button><button id="reset">Reset example</button></div>
-<p class="state-note" id="state-note" aria-live="polite">Loading the example…</p>
-<dl class="metrics"><div><dt>Retained count</dt><dd id="count">0</dd></div><div><dt>Retained choice</dt><dd id="choice">Unselected</dd></div><div><dt>Home · entry / exit</dt><dd id="home-visits">0 / 0</dd></div><div><dt>Detail · entry / exit</dt><dd id="detail-visits">0 / 0</dd></div></dl>
+<dl class="metrics"><div><dt>Home · entry / exit</dt><dd id="home-visits">0 / 0</dd></div><div><dt>Detail · entry / exit</dt><dd id="detail-visits">0 / 0</dd></div></dl>
 <p class="transition" id="transition">Home.enter</p>
 </aside>
 <div class="copy"><p class="step">01 / COMPOSITION</p><h2>One shell. Three pages.</h2><p>The navigator manages transitions and return history. The shell supplies the frame. Each page owns its content and local state.</p>
@@ -47,9 +46,8 @@ details{border:1px solid var(--line);border-radius:8px;margin:14px 0;background:
 <p><a href="/ui-guide/source.rs" target="_blank">Read the complete example source</a></p>
 </div></section>
 <section id="text" class="lesson" aria-label="Text and spacing" hidden>
-<aside class="preview" aria-label="Interactive style example"><div class="preview-label"><strong>Explore the style</strong><span class="badge" id="text-badge">Body</span></div>
+<aside class="preview" aria-label="Interactive style example"><div class="preview-label"><strong>Explore the style</strong></div>
 <figure><div class="frame interactive"><img id="text-screen" src="/ui-guide/text.png" width="540" height="960" draggable="false" tabindex="0" alt="Interactive style example. Tap a text role, Underline, Bubbled, a spacing control, or a color swatch. Keyboard controls follow the preview."></div><figcaption>Interactive example · tap the device screen</figcaption></figure>
-<p class="state-note" id="text-note" aria-live="polite">Loading the style example…</p>
 <div class="controls"><button id="text-reset">Reset style</button></div>
 <details><summary>Keyboard controls</summary><div class="controls" id="text-actions" role="group" aria-label="Equivalent style controls"></div></details>
 </aside>
@@ -80,9 +78,8 @@ details{border:1px solid var(--line);border-radius:8px;margin:14px 0;background:
 <p><a href="/ui-guide/text.rs" target="_blank">Read the style example source</a></p><p><a href="/ui-guide/catalog.png" target="_blank">Open the static visual catalog</a></p>
 </div></section>
 <section id="controls" class="lesson" aria-label="Controls" hidden>
-<aside class="preview" aria-label="Interactive controls example"><div class="preview-label"><strong>Tap the controls</strong><span class="badge" id="controls-badge">Controls</span></div>
+<aside class="preview" aria-label="Interactive controls example"><div class="preview-label"><strong>Tap the controls</strong></div>
 <figure><div class="frame interactive"><img id="controls-screen" src="/ui-guide/controls.png" width="540" height="960" draggable="false" tabindex="0" alt="Interactive controls example. Tap Action, Selected, Start operation, or the Component details card. Keyboard controls follow the preview."></div><figcaption>Interactive example · tap the device screen</figcaption></figure>
-<p class="state-note" id="controls-note" aria-live="polite">Loading the controls…</p>
 <div class="controls"><button id="controls-reset">Reset controls</button></div>
 <details><summary>Keyboard controls</summary><div class="controls" id="controls-actions" role="group" aria-label="Equivalent controls"></div></details>
 </aside>
@@ -201,32 +198,20 @@ const previews = [
   }),
   createPreview({
     screenId:'#text-screen', actionsId:'#text-actions', stateUrl:'/ui-guide/text/state', eventUrl:'/ui-guide/text/event', frameUrl:'/ui-guide/text.png', resetId:'#text-reset',
-    showState(state) {
-      const variant = [state.bubbled && 'Bubbled', state.underlined && 'Underlined'].filter(Boolean).join(' + ') || 'Normal';
-      document.querySelector('#text-badge').textContent = `${state.role} · ${variant}`;
-      document.querySelector('#text-note').textContent = `${state.role}, ${variant.toLowerCase()}. ${state.spacing}: ${state.gap} px. ${state.color}: shade ${state.shade}.`;
-    }
   }),
   createPreview({
     screenId:'#demo-screen', actionsId:'#demo-controls', stateUrl:'/ui-guide/state', eventUrl:'/ui-guide/event', frameUrl:'/ui-guide/frame.png',
     resetId:'#reset', homeId:'#home-key', finishId:'#finish',
     showState(state) {
-      document.querySelector('#page-badge').textContent = [...state.back_stack, state.page].join(' → ') + (state.full_screen ? ' · Full screen' : '');
-      document.querySelector('#count').textContent = state.count;
-      document.querySelector('#choice').textContent = state.selected ? 'Selected' : 'Unselected';
+      document.querySelector('#page-badge').textContent = [...state.back_stack, state.page].join(' → ');
       document.querySelector('#home-visits').textContent = `${state.home_entries} / ${state.home_exits}`;
       document.querySelector('#detail-visits').textContent = `${state.detail_entries} / ${state.detail_exits}`;
       document.querySelector('#transition').textContent = state.transition;
       document.querySelector('#finish').disabled = !state.pending;
-      document.querySelector('#state-note').textContent = state.pending ? 'Operation pending. Back and Home cannot leave. Select Finish operation to continue.' : state.full_screen ? 'The header is hidden. Hardware Home still returns Home.' : state.page === 'Home' ? 'Home has no Back control. Open Detail to explore page behavior.' : `Back returns to ${state.return_to}. The Detail page keeps its count and choice.`;
     }
   }),
   createPreview({
     screenId:'#controls-screen', actionsId:'#controls-actions', stateUrl:'/ui-guide/controls/state', eventUrl:'/ui-guide/controls/event', frameUrl:'/ui-guide/controls.png', resetId:'#controls-reset',
-    showState(state) {
-      document.querySelector('#controls-badge').textContent = state.page;
-      document.querySelector('#controls-note').textContent = state.pending ? 'Operation pending. Select Finish operation on the device screen.' : state.page === 'Controls' ? `Action count: ${state.count}. ${state.selected ? 'Selected' : 'Unselected'}. Tap the device screen to try the controls.` : 'The card opened this page. Select Back on the device screen to return to Controls.';
-    }
   })
 ];
 function section() {

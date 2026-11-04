@@ -117,5 +117,8 @@ Each guide section that demonstrates input behavior must have an interactive dev
 Keep interactions within that preview. Do not redirect users to another guide section to try its controls.
 Provide equivalent keyboard controls and an independent reset action for each example except the touch-only soft keyboard.
 Label separate static references explicitly.
+Do not add an external state readout when the device preview already shows that state.
+Use external readouts only to explain relevant behavior that the preview cannot show, such as lifecycle callbacks.
+Keep instructions, equivalent keyboard controls, and reset actions separate from state readouts.
 Run repository checks in the devcontainer.
 Physical display quality, touch accuracy, and optical contrast require device checks.
