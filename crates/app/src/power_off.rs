@@ -10,15 +10,16 @@
 //! See the [power-off policy](../../../docs/application.md#power-off).
 
 use crate::screen::{STYLE, button};
+use paper_mesh_platform::ui::EnabledState;
 use paper_mesh_platform::ui::TextRole;
 
 use embedded_graphics::{pixelcolor::Gray4, prelude::*, primitives::Rectangle, text::Text};
-use paper_mesh_platform::{TouchEvent, input::TapGesture, power_off::PowerOffError};
+use paper_mesh_platform::power_off::PowerOffError;
 
 pub const START: Rectangle = Rectangle::new(Point::new(28, 420), Size::new(484, 64));
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Action {
+pub enum Action {
     Start,
 }
 
@@ -28,7 +29,7 @@ pub struct PowerOffScreen {
     request: bool,
     error: Option<PowerOffError>,
     restart_hint: Option<&'static str>,
-    gesture: TapGesture<Action>,
+    pub(crate) elements: paper_mesh_platform::ui::elements::Elements<PowerOffScreen, Action, 8, 0>,
 }
 
 impl Default for PowerOffScreen {
@@ -45,7 +46,9 @@ impl PowerOffScreen {
             request: false,
             error: None,
             restart_hint: None,
-            gesture: TapGesture::new(),
+            elements: paper_mesh_platform::ui::elements::Elements::new(
+                crate::screen::LAYOUT.viewport,
+            ),
         }
     }
 
@@ -58,12 +61,10 @@ impl PowerOffScreen {
 
     pub fn open(&mut self) {
         self.open = true;
-        self.gesture.cancel();
     }
 
     pub fn close(&mut self) {
         self.open = false;
-        self.gesture.cancel();
     }
 
     pub fn set_restart_hint(&mut self, hint: &'static str) {
@@ -80,32 +81,25 @@ impl PowerOffScreen {
             self.error = None;
             self.pending = true;
             self.request = true;
-            self.gesture.cancel();
         }
     }
 
     pub fn finish(&mut self, error: PowerOffError) {
         self.pending = false;
         self.error = Some(error);
-        self.gesture.cancel();
     }
 
     pub fn error(&self) -> Option<PowerOffError> {
         self.error
     }
 
-    pub fn touch(&mut self, event: TouchEvent) -> bool {
-        if self.pending {
-            return false;
-        }
-        let action = self.gesture.update(event, |point| {
-            if self.restart_hint.is_some() && START.contains(point) {
-                Some(Action::Start)
-            } else {
-                None
-            }
-        });
-        match action {
+    pub(crate) fn sync_nodes(&mut self) {
+        self.elements
+            .surface([(START, Action::Start, EnabledState::from(self.can_start()))])
+            .expect("fixed surface fits element capacity");
+    }
+    pub(crate) fn activate(&mut self, action: Action) -> bool {
+        match Some(action) {
             Some(Action::Start) => {
                 self.request();
             }

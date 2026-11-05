@@ -8,6 +8,7 @@
 //! See the [display check](../../../docs/application.md#display-check).
 
 use crate::screen::{STYLE, button};
+use paper_mesh_platform::ui::EnabledState;
 use paper_mesh_platform::ui::TextRole;
 
 use embedded_graphics::{
@@ -16,13 +17,7 @@ use embedded_graphics::{
     primitives::{PrimitiveStyle, Rectangle},
     text::Text,
 };
-use paper_mesh_platform::{
-    TouchEvent,
-    input::{
-        TapGesture,
-        buttons::{ButtonDescriptor, ButtonEvent, ButtonState},
-    },
-};
+use paper_mesh_platform::input::buttons::{ButtonDescriptor, ButtonEvent, ButtonState};
 
 pub const START: Rectangle = Rectangle::new(Point::new(28, 420), Size::new(484, 64));
 
@@ -50,8 +45,8 @@ impl Pattern {
     }
 }
 
-#[derive(PartialEq)]
-enum Action {
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Action {
     Start,
 }
 
@@ -65,7 +60,7 @@ pub struct DisplayCheck {
     available: bool,
     advance: Option<ButtonDescriptor>,
     exit_hint: &'static str,
-    gesture: TapGesture<Action>,
+    pub(crate) elements: paper_mesh_platform::ui::elements::Elements<DisplayCheck, Action, 8, 0>,
 }
 
 impl Default for DisplayCheck {
@@ -86,7 +81,9 @@ impl DisplayCheck {
             available: true,
             advance: None,
             exit_hint: "",
-            gesture: TapGesture::new(),
+            elements: paper_mesh_platform::ui::elements::Elements::new(
+                crate::screen::LAYOUT.viewport,
+            ),
         }
     }
 
@@ -98,7 +95,6 @@ impl DisplayCheck {
     pub fn open(&mut self) {
         self.open = true;
         self.complete = false;
-        self.gesture.cancel();
     }
     pub fn is_open(&self) -> bool {
         self.open
@@ -118,7 +114,6 @@ impl DisplayCheck {
         self.submitted = false;
         self.ready_after_ms = None;
         self.pressed = false;
-        self.gesture.cancel();
     }
 
     pub fn close(&mut self) {
@@ -173,27 +168,23 @@ impl DisplayCheck {
         false
     }
 
-    pub fn touch(&mut self, event: TouchEvent) -> bool {
-        if self.pattern.is_some() {
+    pub(crate) fn sync_nodes(&mut self) {
+        self.elements
+            .surface([(
+                START,
+                Action::Start,
+                EnabledState::from(self.pattern.is_none() && self.can_start()),
+            )])
+            .expect("fixed surface fits element capacity");
+    }
+    pub(crate) fn activate(&mut self, _: Action) -> bool {
+        if self.pattern.is_some() || !self.can_start() {
             return false;
         }
-        let can_start = self.can_start();
-        match self.gesture.update(event, |point| {
-            if can_start && START.contains(point) {
-                Some(Action::Start)
-            } else {
-                None
-            }
-        }) {
-            Some(Action::Start) => {
-                self.complete = false;
-                self.select(Some(Pattern::Black));
-            }
-            None => return false,
-        }
+        self.complete = false;
+        self.select(Some(Pattern::Black));
         true
     }
-
     pub fn render<D: DrawTarget<Color = Gray4>>(&self, display: &mut D) -> Result<(), D::Error> {
         if let Some(pattern) = self.pattern {
             return display.clear(pattern.color());
@@ -247,12 +238,25 @@ impl DisplayCheck {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use paper_mesh_platform::{TouchEvent, composition::Layers, ui::PageRuntime};
+    fn touch(page: &mut DisplayCheck, layers: &mut Layers<64>, event: TouchEvent) {
+        let root = layers.initialize(crate::screen::LAYOUT.viewport).unwrap();
+        let mut tx = layers.begin(root).unwrap();
+        page.publish(&mut tx, root).unwrap();
+        tx.commit().unwrap();
+        if let Some(e) = layers.touch(event) {
+            PageRuntime::activate(page, e.handler.slot, e.gesture);
+        }
+    }
     use paper_mesh_platform::input::buttons::{ButtonCapability, ButtonId};
 
     fn start(check: &mut DisplayCheck) {
         check.open();
-        check.touch(TouchEvent::touch(0, START.center()));
-        check.touch(TouchEvent::release(0, START.center()));
+        use paper_mesh_platform::ui::PageRuntime;
+        check.prepare().unwrap();
+        let mut layers = Layers::new();
+        touch(check, &mut layers, TouchEvent::touch(0, START.center()));
+        touch(check, &mut layers, TouchEvent::release(0, START.center()));
     }
 
     fn configured() -> DisplayCheck {

@@ -61,6 +61,7 @@ fn function_and_home_exit_and_suppress_a_held_contact() {
         assert!(!sim.snapshot().touchpad_open);
         assert_eq!(sim.snapshot().touchpad_reports, 1);
         sim.hardware_button(button, false).unwrap();
+        sim.advance(REFRESH_MS);
         sim.touch_portrait(TouchEvent::touch(
             3,
             paper_mesh_app::touchpad::TOUCHPAD_TARGET.center(),

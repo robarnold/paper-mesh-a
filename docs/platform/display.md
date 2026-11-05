@@ -20,6 +20,8 @@ It does not indicate an atomic optical replacement.
 ## Current interface
 
 The current implementation uses a direct `App` → `Display` path.
+The [Composition](composition.md) tracks committed and presented revisions. Current clients redraw the complete viewport through this path.
+This does not add physical region submissions or a general display scheduler.
 
 Drawing changes staging storage.
 A `refresh()` result of `Ok(())` confirms acceptance of the frame.

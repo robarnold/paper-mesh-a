@@ -9,6 +9,39 @@
 
 use super::*;
 
+// The retained-layout guide uses production calculator input and has an independent reset.
+#[test]
+fn calculator_preview_uses_the_shared_touch_path() {
+    let mut guide = Guide::default();
+    for label in ["2", "+", "3", "x", "4", "="] {
+        let c = guide
+            .calculator_state()
+            .controls
+            .into_iter()
+            .find(|c| c.label == label)
+            .unwrap();
+        guide
+            .calculator_command(Command::TouchDown {
+                id: 0,
+                x: c.x,
+                y: c.y,
+            })
+            .unwrap();
+        guide
+            .calculator_command(Command::TouchUp {
+                id: 0,
+                x: c.x,
+                y: c.y,
+            })
+            .unwrap();
+    }
+    assert_eq!(guide.calculator_state().value, "20");
+    assert!(guide.calculator_png().unwrap().starts_with(b"\x89PNG"));
+    guide.calculator_command(Command::Reset).unwrap();
+    assert_eq!(guide.calculator_state().value, "0");
+    assert_eq!(guide.state().count, 0);
+}
+
 fn tap(guide: &mut Guide, label: &str) {
     let control = guide
         .state()

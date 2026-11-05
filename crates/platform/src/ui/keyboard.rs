@@ -10,7 +10,7 @@
 //! See the [text input contract](../../../../docs/platform/text-input.md).
 
 use super::{Style, TextInput, TextRole};
-use crate::{TouchEvent, input::TapGesture};
+
 use embedded_graphics::{
     image::Image,
     pixelcolor::Gray4,
@@ -29,7 +29,7 @@ enum KeyboardPage {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum Key {
+pub enum Key {
     Character(char),
     Backspace,
     Shift,
@@ -46,7 +46,6 @@ pub struct KeyboardUpdate {
 
 pub struct SoftKeyboard {
     bounds: Rectangle,
-    gesture: TapGesture<Key>,
     page: KeyboardPage,
 }
 
@@ -55,23 +54,11 @@ impl SoftKeyboard {
         Self {
             bounds,
             page: KeyboardPage::Letters,
-            gesture: TapGesture::new(),
         }
     }
 
-    /// Report text input and label changes from a recognized tap.
-    pub fn handle_touch(&mut self, event: TouchEvent) -> KeyboardUpdate {
-        let hit = match event {
-            TouchEvent::Touch(contact) | TouchEvent::Release(contact) => self
-                .keys()
-                .find(|(_, bounds)| bounds.contains(contact.position))
-                .map(|(key, _)| key),
-            TouchEvent::Cancel => None,
-        };
-        let Some(key) = self.gesture.update(event, |_| hit) else {
-            return KeyboardUpdate::default();
-        };
-
+    /// Apply a key identity emitted by a UI activation binding.
+    pub fn activate(&mut self, key: Key) -> KeyboardUpdate {
         use KeyboardPage::{AdditionalSymbols, CommonSymbols, Letters, ShiftedLetters};
         let previous = self.page;
         let input = match key {
@@ -94,7 +81,7 @@ impl SoftKeyboard {
     }
 
     /// Each item supplies the key identity and its visible touch target.
-    fn keys(&self) -> impl Iterator<Item = (Key, Rectangle)> + '_ {
+    pub fn keys(&self) -> impl Iterator<Item = (Key, Rectangle)> + '_ {
         use KeyboardPage::{AdditionalSymbols, CommonSymbols, Letters, ShiftedLetters};
         let rows = match self.page {
             Letters => ["qwertyuiop", "asdfghjkl", "zxcvbnm"],

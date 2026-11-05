@@ -22,7 +22,7 @@ Limit display updates to meaningful visible changes.
 | --- | --- |
 | Navigator | Shell launch, active destination, return history, input dispatch, and page lifecycle |
 | Shell | Shared header, Back gesture, and content bounds |
-| Page | One destination's content, local input, entry, exit, and presentation request |
+| Page | One destination's layer and element runtime, model, action handler, lifecycle hooks, and presentation request |
 | Control | One action or selection with shared geometry and state for drawing and hit testing |
 | Style | Named text, color, and spacing roles |
 
@@ -92,7 +92,9 @@ Activate a touch control only after a complete press and release inside the same
 Movement outside the target cancels the tap. Movement back inside does not restore it.
 A second contact cancels the tap until all contacts lift.
 A press on a disabled control must not activate after the control becomes enabled.
-Use the same bounds and enabled state for drawing and hit testing.
+Derive drawing and hit testing from the same resolved layout and enabled state.
+Input bounds can explicitly extend beyond visual bounds within the parent's clip.
+The [Composition input contract](platform/composition.md#input-and-presentation) defines target expansion and overlap behavior.
 
 Show a reason when an unavailable capability prevents an action.
 Keep a failure visible until a new request or the workflow's specified exit.

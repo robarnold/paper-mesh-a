@@ -72,3 +72,16 @@ For example, a driver can serialize requests, and a renderer can render a frame.
 
 Descriptions distinguish capability from availability. They also distinguish
 request acceptance from completion and current implementation from planned work.
+
+## UI and Composition
+
+- **Composition:** The graphics/input system that owns layers, clipping, drawing, touch recognition, and atomic publication.
+- **UI:** The system that provides elements, layout, controls, and callbacks on top of Composition.
+- **Layer:** A retained graphics/input object with explicit geometry, ordered children, drawing, and optional gesture bindings.
+- **Element:** A UI object that supplies layout, styling, and control behavior, then publishes layers.
+- **System runtime:** The owner of shared layers, client roots, navigation, focus, and the soft keyboard.
+- **Layer batch:** An atomic set of layer changes. Failed validation preserves the committed hierarchy.
+- **Committed revision:** The latest published layer state, used immediately for input.
+- **Submitted revision:** The layer state accepted for display refresh.
+- **Presented revision:** The submitted state acknowledged by display completion.
+- **Text session:** The identity of a focused edit destination. Focus transfer rejects edits from the previous session.

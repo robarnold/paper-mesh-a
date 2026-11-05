@@ -4,10 +4,31 @@ The application selects workflows and decides when service observations are usef
 The same [application](../crates/app/src/lib.rs) runs on hardware and in the simulator.
 Backends supply observations and logical controls through the [device services](device-interfaces.md).
 
+The [aspirational application flows](application-flows.md) specify proposed applications and their service dependencies.
+They supply use cases for the [UI requirements](platform/ui-requirements.md).
+
 ## Layout and input
 
 Layout and hit testing use the same logical viewport so a mounting change can rotate drawing and touch together.
 The application selects the viewport and supplies page geometry. See the [application UI rules](application-ui.md#portrait-layout).
+
+## Calculator
+
+Home opens the [calculator](../crates/app/src/calculator.rs), which composes a readout and keypad through the [UI runtime](platform/ui.md).
+The application selects layout constraints. The platform derives geometry and input regions.
+Readout changes invalidate drawing without another layout pass.
+The keypad uses committed input bindings immediately, including before initial presentation completes.
+
+Arithmetic resolves sequentially: `2 + 3 x 4 =` produces `20`.
+An operator before the next operand replaces the pending operator. Equals without that operand preserves input and shows an explanation.
+Repeated equals preserves the result. A digit after a result starts a new calculation.
+Sign changes the current operand. Delete edits the current input. Clear resets the calculation and errors.
+
+Decimal input supports nine whole digits and six fractional digits.
+Multiplication and division round to six fractional digits, with ties away from zero.
+Capacity limits retain accepted digits. Division by zero and numeric overflow show recoverable errors.
+Clear or new numeric input leaves an arithmetic error.
+Back and Home retain the calculation during the session. Restart clears it.
 
 ## Deadlines and display submission
 

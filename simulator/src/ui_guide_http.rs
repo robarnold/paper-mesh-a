@@ -33,6 +33,16 @@ pub fn handle(request: &mut Request, guide: &mut Guide) -> HttpResponse {
         (&Method::Get, "/ui-guide/state") => state(guide),
         (&Method::Get, "/ui-guide/controls/state") => controls_state(guide),
         (&Method::Get, "/ui-guide/text/state") => text_state(guide),
+        (&Method::Get, "/ui-guide/calculator/state") => calculator_state(guide),
+        (&Method::Get, "/ui-guide/calculator.rs") => response(
+            200,
+            "text/plain; charset=utf-8",
+            ui_guide::CALCULATOR_SOURCE,
+        ),
+        (&Method::Get, "/ui-guide/calculator.png") => match guide.calculator_png() {
+            Ok(bytes) => response(200, "image/png", bytes),
+            Err(_) => response(500, "text/plain", "Guide render failed."),
+        },
         (&Method::Get, "/ui-guide/snippets") => response(
             200,
             "application/json",
@@ -93,11 +103,13 @@ pub fn handle(request: &mut Request, guide: &mut Guide) -> HttpResponse {
             path @ ("/ui-guide/event"
             | "/ui-guide/keyboard/event"
             | "/ui-guide/controls/event"
+            | "/ui-guide/calculator/event"
             | "/ui-guide/text/event"),
         ) => {
             let keyboard = path == "/ui-guide/keyboard/event";
             let controls = path == "/ui-guide/controls/event";
             let text = path == "/ui-guide/text/event";
+            let calculator = path == "/ui-guide/calculator/event";
             if !request.headers().iter().any(|header| {
                 header.field.equiv("Content-Type") && header.value.as_str() == "application/json"
             }) {
@@ -114,7 +126,9 @@ pub fn handle(request: &mut Request, guide: &mut Guide) -> HttpResponse {
                 return response(400, "text/plain", "Invalid or oversized event.");
             }
             match serde_json::from_slice::<ui_guide::Command>(&body) {
-                Ok(command) => match if keyboard {
+                Ok(command) => match if calculator {
+                    guide.calculator_command(command)
+                } else if keyboard {
                     guide.keyboard_command(command)
                 } else if controls {
                     guide.controls_command(command)
@@ -123,6 +137,7 @@ pub fn handle(request: &mut Request, guide: &mut Guide) -> HttpResponse {
                 } else {
                     guide.command(command)
                 } {
+                    Ok(()) if calculator => calculator_state(guide),
                     Ok(()) if keyboard => keyboard_state(guide),
                     Ok(()) if controls => controls_state(guide),
                     Ok(()) if text => text_state(guide),
@@ -162,4 +177,12 @@ fn text_state(guide: &Guide) -> HttpResponse {
 
 fn keyboard_state(guide: &Guide) -> HttpResponse {
     response(200, "application/json", guide.keyboard_state().to_string())
+}
+
+fn calculator_state(guide: &Guide) -> HttpResponse {
+    response(
+        200,
+        "application/json",
+        serde_json::to_vec(&guide.calculator_state()).unwrap(),
+    )
 }

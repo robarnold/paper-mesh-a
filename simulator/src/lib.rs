@@ -241,6 +241,9 @@ pub struct Snapshot {
     pub satellite_signals: Vec<SatelliteSnapshot>,
     pub location_scenario: LocationScenario,
     pub diagnostics_open: bool,
+    pub calculator_open: bool,
+    pub calculator_value: String,
+    pub calculator_notice: String,
     pub diagnostic_component: Option<&'static str>,
     pub diagnostic_pattern: Option<&'static str>,
     pub diagnostic_ready: bool,
@@ -611,6 +614,10 @@ impl Simulation {
         self.poll();
     }
 
+    pub fn input_ready(&self) -> bool {
+        self.app.input_ready()
+    }
+
     pub fn debugger(&self) -> &Debugger {
         self.app.debugger()
     }
@@ -677,9 +684,17 @@ impl Simulation {
         let power = self.app.power();
         let power_view = power.view();
         let keyboard_open = self.app.active_diagnostic() == Some(Component::Keyboard);
+        let calculator_open = self.app.current_page() == paper_mesh_app::pages::Route::Calculator;
+        let calculator_targets: Vec<_> = paper_mesh_app::calculator::KEYS
+            .iter()
+            .enumerate()
+            .map(|(i, (_, label))| (*label, self.app.calculator().key_bounds(i)))
+            .collect();
         let targets: &[(&str, embedded_graphics::primitives::Rectangle)] =
             if self.powered_off || self.app.touchpad_open() {
                 &[]
+            } else if calculator_open {
+                &calculator_targets
             } else if self.app.display_check().is_open() {
                 if self.app.display_check().pattern().is_some() {
                     &[]
@@ -728,6 +743,7 @@ impl Simulation {
                 &[
                     ("Diagnostics", HOME_TARGET),
                     ("USB touchpad", paper_mesh_app::touchpad::TOUCHPAD_TARGET),
+                    ("Calculator", paper_mesh_app::calculator::HOME_TARGET),
                 ]
             };
         Snapshot {
@@ -778,6 +794,9 @@ impl Simulation {
                 .collect(),
             hardware_buttons: self.buttons.snapshot(),
             diagnostics_open: self.app.diagnostics().is_open(),
+            calculator_open,
+            calculator_value: self.app.calculator().value().into(),
+            calculator_notice: self.app.calculator().notice().into(),
             diagnostic_component: self.app.active_diagnostic().map(Component::label),
             diagnostic_pattern: self
                 .app
@@ -883,7 +902,10 @@ impl Simulation {
                     x: target.center().x,
                     y: target.center().y,
                     enabled: self.suspended.is_none()
-                        && if power.is_open() && power.off.open {
+                        && self.app.input_ready()
+                        && if calculator_open {
+                            self.app.calculator().input_ready()
+                        } else if power.is_open() && power.off.open {
                             power.off.can_start()
                         } else if power.is_open() && power.suspend.open {
                             !power.suspend.pending()
@@ -918,6 +940,9 @@ mod tests {
     use paper_mesh_platform::discovery::ScanError;
 
     fn press(sim: &mut Simulation, target: embedded_graphics::primitives::Rectangle) {
+        while !sim.input_ready() {
+            sim.advance(REFRESH_MS);
+        }
         sim.touch_portrait(TouchEvent::touch(0, target.center()));
         sim.touch_portrait(TouchEvent::release(0, target.center()));
     }
@@ -962,6 +987,7 @@ mod tests {
         press(&mut sim, BACK_TARGET);
         assert!(!sim.debugger().is_open());
         press(&mut sim, Component::Touch.target());
+        sim.advance(REFRESH_MS);
         tap(&mut sim);
         assert_eq!(sim.snapshot().taps, 1);
     }
@@ -1061,6 +1087,7 @@ mod tests {
         let mut sim = Simulation::default();
         press(&mut sim, HOME_TARGET);
         press(&mut sim, Component::Touch.target());
+        sim.advance(REFRESH_MS);
         sim.advance(2 * REFRESH_MS);
         let mut staging = vec![0; FRAME_BYTES];
         let mut previous = vec![0; FRAME_BYTES];
@@ -1165,15 +1192,17 @@ mod tests {
         let mut sim = Simulation::default();
         press(&mut sim, HOME_TARGET);
         press(&mut sim, Component::Touch.target());
+        sim.advance(REFRESH_MS);
+        let baseline = sim.snapshot().completed_refreshes;
         tap(&mut sim);
         tap(&mut sim);
         tap(&mut sim);
         assert_eq!(sim.snapshot().taps, 3);
         sim.advance(REFRESH_MS);
-        assert_eq!(sim.snapshot().completed_refreshes, 1);
+        assert_eq!(sim.snapshot().completed_refreshes, baseline + 1);
         assert!(sim.snapshot().display_busy);
         sim.advance(REFRESH_MS);
-        assert_eq!(sim.snapshot().completed_refreshes, 2);
+        assert_eq!(sim.snapshot().completed_refreshes, baseline + 2);
         assert!(!sim.snapshot().display_busy);
         let mut expected = SimDisplay::default();
         sim.app
@@ -1188,6 +1217,7 @@ mod tests {
         let mut sim = Simulation::default();
         press(&mut sim, HOME_TARGET);
         press(&mut sim, Component::Touch.target());
+        sim.advance(REFRESH_MS);
         let point = Point::new(270, 480);
         for count in 1..=40 {
             sim.touch_portrait(TouchEvent::touch(0, point));
@@ -1273,6 +1303,7 @@ mod tests {
         let mut sim = Simulation::default();
         press(&mut sim, HOME_TARGET);
         press(&mut sim, Component::Touch.target());
+        sim.advance(REFRESH_MS);
         sim.advance(2 * REFRESH_MS);
         let before = sim.portrait_png().unwrap();
         tap(&mut sim);
@@ -1299,6 +1330,7 @@ mod tests {
         let mut sim = Simulation::default();
         press(&mut sim, HOME_TARGET);
         press(&mut sim, Component::Touch.target());
+        sim.advance(REFRESH_MS);
         tap(&mut sim);
         assert_eq!(sim.snapshot().taps, 1);
         sim.touch_portrait(TouchEvent::touch(0, Point::new(270, 480)));

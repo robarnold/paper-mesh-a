@@ -184,6 +184,7 @@ impl LocationView {
 }
 
 pub struct LocationScreen {
+    pub(crate) elements: paper_mesh_platform::ui::elements::Elements<LocationScreen, (), 1, 0>,
     open: bool,
     view: LocationView,
     next_update_ms: u64,
@@ -199,6 +200,9 @@ impl Default for LocationScreen {
 impl LocationScreen {
     pub const fn new() -> Self {
         Self {
+            elements: paper_mesh_platform::ui::elements::Elements::new(
+                crate::screen::LAYOUT.viewport,
+            ),
             open: false,
             view: LocationView {
                 status: FixStatus::Starting,

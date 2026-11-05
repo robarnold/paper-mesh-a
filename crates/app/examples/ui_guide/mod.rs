@@ -8,12 +8,12 @@
 //! See [UI guide](../../../../docs/simulator/execution.md#ui-guide).
 
 use embedded_graphics::{pixelcolor::Gray4, prelude::*, primitives::Rectangle, text::Text};
+use paper_mesh_platform::ui::EnabledState;
 use paper_mesh_platform::{
     TouchEvent,
-    input::TapGesture,
     ui::{
-        Button, Navigation, NavigationCard, Navigator, Page, PageEvent, PageInfo, Presentation,
-        Shell, ShellLayout, Style, TextRole, Transition,
+        Button, Navigation, NavigationCard, Navigator, Page, PageEvent, PageInfo, PageRuntime,
+        Presentation, Shell, ShellLayout, Style, TextRole, Transition,
     },
 };
 
@@ -57,7 +57,7 @@ pub struct ExamplePage {
     pub pending: bool,
     pub entries: u32,
     pub exits: u32,
-    gesture: TapGesture<usize>,
+    elements: paper_mesh_platform::ui::elements::Elements<ExamplePage, usize, 7, 0>,
 }
 
 impl ExamplePage {
@@ -70,7 +70,7 @@ impl ExamplePage {
             pending: false,
             entries: 0,
             exits: 0,
-            gesture: TapGesture::new(),
+            elements: paper_mesh_platform::ui::elements::Elements::new(LAYOUT.viewport),
         }
     }
 
@@ -149,62 +149,86 @@ impl Page for ExamplePage {
     // guide:page:end
 
     // guide:lifecycle:start
-    fn enter(&mut self) {
-        self.gesture.cancel();
+    fn did_enter(&mut self) {
         self.entries += 1;
     }
 
-    fn leave(&mut self) {
-        self.gesture.cancel();
+    fn will_leave(&mut self) {
         self.full_screen = false;
         self.exits += 1;
         // The count and selection remain in this page object.
     }
     // guide:lifecycle:end
 
-    fn handle_touch(&mut self, event: TouchEvent) -> PageEvent<Route> {
-        let card = self.card();
-        let tools_card = self.tools_card();
-        let buttons = self.buttons();
-        let home = self.route == Route::Home;
-        let menu = self.route != Route::Detail;
-        let action = self.gesture.update(event, |point| {
-            if menu {
-                if card.hit(point) {
-                    Some(0)
-                } else if home && tools_card.hit(point) {
-                    Some(1)
-                } else {
-                    None
-                }
-            } else {
-                buttons.iter().position(|button| button.hit(point))
-            }
-        });
-        match action {
-            Some(0) if menu => PageEvent::Navigate(Navigation::Open(Route::Detail)),
-            Some(1) if menu => PageEvent::Navigate(Navigation::Open(Route::Tools)),
-            Some(0) => {
-                self.count += 1;
-                PageEvent::Changed
-            }
-            Some(1) => {
-                self.selected = !self.selected;
-                PageEvent::Changed
-            }
-            Some(2) => {
-                self.full_screen = !self.full_screen;
-                PageEvent::Changed
-            }
-            Some(3) => {
-                self.pending = true;
-                PageEvent::Changed
-            }
-            _ => PageEvent::None,
+    type Elements = paper_mesh_platform::ui::elements::Elements<Self, usize, 7, 0>;
+    fn elements(&self) -> &Self::Elements {
+        &self.elements
+    }
+    fn elements_mut(&mut self) -> &mut Self::Elements {
+        &mut self.elements
+    }
+    fn sync_elements(&mut self) {
+        if self.route != Route::Detail {
+            let card = self.card();
+            let tools = self.tools_card();
+            self.elements
+                .surface([
+                    (card.bounds, 0, EnabledState::from(card.enabled)),
+                    (
+                        tools.bounds,
+                        1,
+                        EnabledState::from(self.route == Route::Home && tools.enabled),
+                    ),
+                ])
+                .expect("fixed surface fits element capacity");
+        } else {
+            let buttons = self.buttons();
+            self.elements
+                .surface(
+                    buttons
+                        .into_iter()
+                        .enumerate()
+                        .map(|(i, b)| (b.bounds, i, EnabledState::from(b.enabled))),
+                )
+                .expect("fixed surface fits element capacity");
         }
     }
+    fn configure_handlers(&mut self) {
+        self.elements_mut()
+            .default_callback(|page, context, action| {
+                let result = {
+                    let menu = page.route != Route::Detail;
+                    match Some(action) {
+                        Some(0) if menu => PageEvent::Navigate(Navigation::Open(Route::Detail)),
+                        Some(1) if menu => PageEvent::Navigate(Navigation::Open(Route::Tools)),
+                        Some(0) => {
+                            page.count += 1;
+                            PageEvent::Changed
+                        }
+                        Some(1) => {
+                            page.selected = !page.selected;
+                            PageEvent::Changed
+                        }
+                        Some(2) => {
+                            page.full_screen = !page.full_screen;
+                            PageEvent::Changed
+                        }
+                        Some(3) => {
+                            page.pending = true;
+                            PageEvent::Changed
+                        }
+                        _ => PageEvent::None,
+                    }
+                };
+                context.respond(result);
+            });
+    }
 
-    fn render_page<D: DrawTarget<Color = Gray4>>(&self, display: &mut D) -> Result<(), D::Error> {
+    fn draw_custom<D: DrawTarget<Color = Gray4>>(
+        &self,
+        _: u16,
+        display: &mut D,
+    ) -> Result<(), D::Error> {
         if self.full_screen {
             line(display, "Full-screen Detail", 48, TextRole::Title)?;
             line(display, "The shell hides its header.", 84, TextRole::Body)?;
@@ -327,6 +351,9 @@ impl ExamplePages {
 impl paper_mesh_platform::ui::PageSet for ExamplePages {
     type Id = Route;
 
+    fn invalidate_page(&mut self, id: Route) {
+        self.page_mut(id).invalidate();
+    }
     fn info(&self, id: Route) -> PageInfo<Route> {
         self.page(id).page_info()
     }
@@ -336,15 +363,29 @@ impl paper_mesh_platform::ui::PageSet for ExamplePages {
     fn leave_page(&mut self, id: Route) {
         self.page_mut(id).leave();
     }
-    fn touch_page(&mut self, id: Route, event: TouchEvent) -> PageEvent<Route> {
-        self.page_mut(id).handle_touch(event)
+    fn publish_page(
+        &mut self,
+        id: Route,
+        tx: &mut paper_mesh_platform::composition::Transaction<'_, 64>,
+        root: paper_mesh_platform::composition::LayerId,
+    ) -> Result<(), paper_mesh_platform::composition::Error> {
+        self.page_mut(id).publish(tx, root)
     }
-    fn draw_page<D: DrawTarget<Color = Gray4>>(
+    fn activate_page(
+        &mut self,
+        id: Route,
+        slot: u16,
+        gesture: paper_mesh_platform::composition::Gesture,
+    ) -> PageEvent<Route> {
+        self.page_mut(id).activate(slot, gesture)
+    }
+    fn draw_page_custom<D: DrawTarget<Color = Gray4>>(
         &self,
         id: Route,
+        slot: u16,
         display: &mut D,
     ) -> Result<(), D::Error> {
-        self.page(id).render_page(display)
+        self.page(id).draw_custom(slot, display)
     }
 }
 
@@ -398,3 +439,5 @@ impl Example {
     }
     // guide:render:end
 }
+
+pub mod focus;

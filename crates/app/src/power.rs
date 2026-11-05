@@ -8,6 +8,7 @@
 //! See the [power screen policy](../../../docs/application.md#power-screen).
 
 use crate::screen::{STYLE, button};
+use paper_mesh_platform::ui::EnabledState;
 use paper_mesh_platform::ui::TextRole;
 
 use core::fmt::{self, Write};
@@ -19,8 +20,6 @@ use embedded_graphics::{
 };
 use heapless::String;
 use paper_mesh_platform::{
-    TouchEvent,
-    input::TapGesture,
     power::{
         BatteryState, ChargeFault, ChargeState, ChargerState, GaugeState, Power, PowerAvailability,
         PowerReading, PowerSnapshot, PowerSource, ThermistorState,
@@ -126,7 +125,7 @@ fn reading<T: Copy>(
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Action {
+pub enum Action {
     Suspend,
     PowerOff,
     Battery,
@@ -138,7 +137,7 @@ pub struct PowerScreen {
     pub off: crate::power_off::PowerOffScreen,
     open: bool,
     charger_tab: bool,
-    gesture: TapGesture<Action>,
+    pub(crate) elements: paper_mesh_platform::ui::elements::Elements<PowerScreen, Action, 8, 0>,
     view: PowerView,
     next_update_ms: u64,
     expires_at_ms: Option<u64>,
@@ -157,7 +156,9 @@ impl PowerScreen {
             off: crate::power_off::PowerOffScreen::new(),
             open: false,
             charger_tab: false,
-            gesture: TapGesture::new(),
+            elements: paper_mesh_platform::ui::elements::Elements::new(
+                crate::screen::LAYOUT.viewport,
+            ),
             view: PowerView::INITIAL,
             next_update_ms: 0,
             expires_at_ms: None,
@@ -179,7 +180,7 @@ impl PowerScreen {
         self.off.close();
         self.open = true;
         self.charger_tab = false;
-        self.gesture.cancel();
+
         self.next_update_ms = 0;
     }
 
@@ -187,19 +188,15 @@ impl PowerScreen {
         self.open = false;
         self.suspend.close();
         self.off.close();
-        self.gesture.cancel();
     }
 
     pub fn enter_page(&mut self) {
         if !self.open {
             self.open();
         }
-        self.gesture.cancel();
     }
 
-    pub fn leave_page(&mut self) {
-        self.gesture.cancel();
-    }
+    pub fn leave_page(&mut self) {}
 
     pub fn next_deadline_ms(&self) -> Option<u64> {
         self.open.then_some(
@@ -238,23 +235,23 @@ impl PowerScreen {
         false
     }
 
-    pub fn touch(
+    pub(crate) fn sync_nodes(&mut self) {
+        self.elements
+            .surface([
+                (BATTERY_TAB, Action::Battery, EnabledState::Enabled),
+                (CHARGER_TAB, Action::Charger, EnabledState::Enabled),
+                (SUSPEND_TAB, Action::Suspend, EnabledState::Enabled),
+                (OFF_TAB, Action::PowerOff, EnabledState::Enabled),
+            ])
+            .expect("fixed surface fits element capacity");
+    }
+    pub(crate) fn activate(
         &mut self,
-        event: TouchEvent,
+        action: Action,
     ) -> paper_mesh_platform::ui::PageEvent<crate::pages::Route> {
         use crate::pages::Route;
         use paper_mesh_platform::ui::{Navigation, PageEvent};
-        let action = self.gesture.update(event, |point| {
-            [
-                (BATTERY_TAB, Action::Battery),
-                (CHARGER_TAB, Action::Charger),
-                (SUSPEND_TAB, Action::Suspend),
-                (OFF_TAB, Action::PowerOff),
-            ]
-            .into_iter()
-            .find_map(|(target, action)| target.contains(point).then_some(action))
-        });
-        match action {
+        match Some(action) {
             Some(Action::Suspend) => return PageEvent::Navigate(Navigation::Open(Route::Suspend)),
             Some(Action::PowerOff) => {
                 return PageEvent::Navigate(Navigation::Open(Route::PowerOff));

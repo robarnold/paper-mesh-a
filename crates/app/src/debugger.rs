@@ -8,6 +8,7 @@
 //! See the [radio debugger policy](../../../docs/application.md#radio-debugger).
 
 use crate::screen::{STYLE, button};
+use paper_mesh_platform::ui::EnabledState;
 use paper_mesh_platform::ui::TextRole;
 
 use core::fmt::Write;
@@ -18,12 +19,8 @@ use embedded_graphics::{
     text::Text,
 };
 use heapless::String;
-use paper_mesh_platform::{
-    TouchEvent,
-    discovery::{
-        AddressKind, Discovery, RadioKind, ScanError, ScanRequest, ScanResults, ScanSource,
-    },
-    input::TapGesture,
+use paper_mesh_platform::discovery::{
+    AddressKind, Discovery, RadioKind, ScanError, ScanRequest, ScanResults, ScanSource,
 };
 
 pub const SCAN_TIMEOUT_MS: u64 = 10_000;
@@ -45,7 +42,7 @@ pub enum ScanState {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Action {
+pub enum Action {
     Wifi,
     Bluetooth,
     Scan,
@@ -63,7 +60,7 @@ pub struct Debugger {
     active: Option<ScanRequest>,
     request_id: u64,
     page: usize,
-    gesture: TapGesture<Action>,
+    pub(crate) elements: paper_mesh_platform::ui::elements::Elements<Debugger, Action, 8, 0>,
 }
 
 impl Default for Debugger {
@@ -84,7 +81,9 @@ impl Debugger {
             active: None,
             request_id: 0,
             page: 0,
-            gesture: TapGesture::new(),
+            elements: paper_mesh_platform::ui::elements::Elements::new(
+                crate::screen::LAYOUT.viewport,
+            ),
         }
     }
     pub fn is_open(&self) -> bool {
@@ -115,12 +114,11 @@ impl Debugger {
 
     pub fn close(&mut self) {
         self.open = false;
-        self.gesture.cancel();
     }
 
     pub fn open(&mut self) {
         self.open = true;
-        self.gesture.cancel();
+
         self.request_scan();
     }
 
@@ -193,22 +191,33 @@ impl Debugger {
         false
     }
 
-    fn action(point: Point) -> Option<Action> {
-        [
-            (WIFI_TARGET, Action::Wifi),
-            (BLUETOOTH_TARGET, Action::Bluetooth),
-            (SCAN_TARGET, Action::Scan),
-            (PREVIOUS_TARGET, Action::Previous),
-            (NEXT_TARGET, Action::Next),
-        ]
-        .into_iter()
-        .find_map(|(target, action)| target.contains(point).then_some(action))
+    pub(crate) fn sync_nodes(&mut self) {
+        self.elements
+            .surface([
+                (WIFI_TARGET, Action::Wifi, EnabledState::Enabled),
+                (BLUETOOTH_TARGET, Action::Bluetooth, EnabledState::Enabled),
+                (
+                    SCAN_TARGET,
+                    Action::Scan,
+                    EnabledState::from(!matches!(
+                        self.state,
+                        ScanState::Requested | ScanState::Active
+                    )),
+                ),
+                (
+                    PREVIOUS_TARGET,
+                    Action::Previous,
+                    EnabledState::from(self.page > 0),
+                ),
+                (
+                    NEXT_TARGET,
+                    Action::Next,
+                    EnabledState::from(self.has_next_page()),
+                ),
+            ])
+            .expect("fixed surface fits element capacity");
     }
-
-    pub fn touch(&mut self, event: TouchEvent) -> bool {
-        let Some(action) = self.gesture.update(event, Self::action) else {
-            return false;
-        };
+    pub(crate) fn activate(&mut self, action: Action) -> bool {
         match action {
             Action::Wifi | Action::Bluetooth => {
                 let kind = if action == Action::Wifi {
@@ -366,6 +375,16 @@ impl Debugger {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use paper_mesh_platform::{TouchEvent, composition::Layers, ui::PageRuntime};
+    fn touch(page: &mut Debugger, layers: &mut Layers<64>, event: TouchEvent) {
+        let root = layers.initialize(crate::screen::LAYOUT.viewport).unwrap();
+        let mut tx = layers.begin(root).unwrap();
+        page.publish(&mut tx, root).unwrap();
+        tx.commit().unwrap();
+        if let Some(e) = layers.touch(event) {
+            PageRuntime::activate(page, e.handler.slot, e.gesture);
+        }
+    }
     use paper_mesh_platform::discovery::{ScanCompletion, UnavailableDiscovery};
 
     #[derive(Default)]
@@ -391,8 +410,15 @@ mod tests {
     }
 
     fn press(debugger: &mut Debugger, target: Rectangle) {
-        debugger.touch(TouchEvent::touch(0, target.center()));
-        debugger.touch(TouchEvent::release(0, target.center()));
+        use paper_mesh_platform::ui::PageRuntime;
+        debugger.prepare().unwrap();
+        let mut layers = Layers::new();
+        touch(debugger, &mut layers, TouchEvent::touch(0, target.center()));
+        touch(
+            debugger,
+            &mut layers,
+            TouchEvent::release(0, target.center()),
+        );
     }
 
     #[test]
@@ -423,16 +449,37 @@ mod tests {
     #[test]
     fn unavailable_adapter_and_incomplete_gestures_do_not_create_results() {
         let mut debugger = Debugger::default();
+        let mut layers = Layers::new();
         debugger.open();
         debugger.poll(0, &mut UnavailableDiscovery);
         assert_eq!(debugger.state(), ScanState::Error(ScanError::Unsupported));
         assert_eq!(debugger.source(), None);
-        debugger.touch(TouchEvent::release(0, BLUETOOTH_TARGET.center()));
-        debugger.touch(TouchEvent::touch(0, BLUETOOTH_TARGET.center()));
-        debugger.touch(TouchEvent::Cancel);
-        debugger.touch(TouchEvent::release(0, BLUETOOTH_TARGET.center()));
-        debugger.touch(TouchEvent::touch(0, BLUETOOTH_TARGET.center()));
-        debugger.touch(TouchEvent::release(0, WIFI_TARGET.center()));
+        touch(
+            &mut debugger,
+            &mut layers,
+            TouchEvent::release(0, BLUETOOTH_TARGET.center()),
+        );
+        touch(
+            &mut debugger,
+            &mut layers,
+            TouchEvent::touch(0, BLUETOOTH_TARGET.center()),
+        );
+        touch(&mut debugger, &mut layers, TouchEvent::Cancel);
+        touch(
+            &mut debugger,
+            &mut layers,
+            TouchEvent::release(0, BLUETOOTH_TARGET.center()),
+        );
+        touch(
+            &mut debugger,
+            &mut layers,
+            TouchEvent::touch(0, BLUETOOTH_TARGET.center()),
+        );
+        touch(
+            &mut debugger,
+            &mut layers,
+            TouchEvent::release(0, WIFI_TARGET.center()),
+        );
         assert_eq!(debugger.kind(), RadioKind::Wifi);
         assert!(debugger.results().networks().is_empty());
     }

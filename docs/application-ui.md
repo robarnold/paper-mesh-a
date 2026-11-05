@@ -23,6 +23,8 @@ See the [shared navigation rules](ui.md#navigation-and-presentation).
 After a refused hardware shutdown, Back returns to the page where the user invoked shutdown.
 The Diagnostics menu groups component checks and measurements.
 USB touchpad remains a separate destination on Home.
+Calculator is also a Home destination. Its retained state survives Back and Home.
+Its keypad uses platform layout constraints and separate input outsets. See the [UI contract](platform/ui.md).
 
 Suspend and Power off block navigation while their requests are pending.
 A failed request restores navigation and permits a new request.

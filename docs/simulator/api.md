@@ -17,6 +17,8 @@ A pending refresh can make the two differ. Send `{"type":"resume"}` to restore i
 Each guide example accepts events separately from the device session.
 Send an input sequence to the same example whose state and frame you inspect.
 The [guide routes](../../simulator/src/ui_guide_http.rs) identify each example and its endpoints.
+The calculator uses `/ui-guide/calculator/state`, `/ui-guide/calculator/event`, and `/ui-guide/calculator.png`.
+Device snapshots also report calculator visibility, value, status text, and resolved key targets.
 
 ## Pointer conversion
 

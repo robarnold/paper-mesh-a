@@ -13,12 +13,10 @@ use paper_mesh_platform::ui::TextRole;
 use crate::pages::Route;
 use embedded_graphics::{pixelcolor::Gray4, prelude::*, primitives::Rectangle, text::Text};
 use paper_mesh_platform::touchpad::HostState;
-use paper_mesh_platform::{
-    TouchEvent,
-    ui::{Page, PageEvent, PageInfo, Presentation},
-};
+use paper_mesh_platform::ui::{Page, PageEvent, PageInfo, Presentation};
 
 pub struct TouchpadPage {
+    elements: paper_mesh_platform::ui::elements::Elements<TouchpadPage, (), 1, 0>,
     pub host: HostState,
 }
 
@@ -32,24 +30,44 @@ impl TouchpadPage {
     pub const fn new() -> Self {
         Self {
             host: HostState::Disconnected,
+            elements: paper_mesh_platform::ui::elements::Elements::new(
+                crate::screen::LAYOUT.viewport,
+            ),
         }
     }
 }
 
 impl Page for TouchpadPage {
     type Id = Route;
+    type Elements = paper_mesh_platform::ui::elements::Elements<Self, (), 1, 0>;
+    fn elements(&self) -> &Self::Elements {
+        &self.elements
+    }
+    fn elements_mut(&mut self) -> &mut Self::Elements {
+        &mut self.elements
+    }
+    fn sync_elements(&mut self) {
+        self.elements
+            .surface([])
+            .expect("fixed surface fits element capacity");
+    }
     fn page_info(&self) -> PageInfo<Route> {
         PageInfo {
             presentation: Presentation::FullScreen,
             ..Route::Touchpad.info()
         }
     }
-    fn enter(&mut self) {}
-    fn leave(&mut self) {}
-    fn handle_touch(&mut self, _: TouchEvent) -> PageEvent<Route> {
-        PageEvent::None
+    fn configure_handlers(&mut self) {
+        self.elements_mut().default_callback(|_page, context, _| {
+            let result = PageEvent::None;
+            context.respond(result);
+        });
     }
-    fn render_page<D: DrawTarget<Color = Gray4>>(&self, display: &mut D) -> Result<(), D::Error> {
+    fn draw_custom<D: DrawTarget<Color = Gray4>>(
+        &self,
+        _: u16,
+        display: &mut D,
+    ) -> Result<(), D::Error> {
         render(display, self.host)
     }
 }

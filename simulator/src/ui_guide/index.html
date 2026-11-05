@@ -18,7 +18,7 @@ details{border:1px solid var(--line);border-radius:8px;margin:14px 0;background:
 <body><main>
 <header><div><p class="eyebrow">Paper Mesh / Platform toolkit</p><h1>UI guide</h1></div><a href="/">← Device simulator</a></header>
 <p class="intro">Learn the shared language. Tap each device screen to try its example.</p>
-<nav aria-label="Guide sections"><a href="#composition" data-section="composition">Shell &amp; Page</a><a href="#text" data-section="text">Text &amp; spacing</a><a href="#controls" data-section="controls">Controls</a><a href="#keyboard" data-section="keyboard">Text input</a></nav>
+<nav aria-label="Guide sections"><a href="#composition" data-section="composition">Shell &amp; Page</a><a href="#text" data-section="text">Text &amp; spacing</a><a href="#controls" data-section="controls">Controls</a><a href="#keyboard" data-section="keyboard">Text input</a><a href="#calculator" data-section="calculator">Retained layout</a></nav>
 <p id="error" role="alert"></p>
 <section id="composition" class="lesson" aria-label="Shell and Page">
 <aside class="preview" aria-label="Working example">
@@ -33,7 +33,7 @@ details{border:1px solid var(--line);border-radius:8px;margin:14px 0;background:
 <h3>Navigator: launch and transitions</h3><p>Launch one shell with the root identity and retained page collection. The platform navigator handles input dispatch, return history, and lifecycle callbacks.</p><p class="rule">Open records the caller. Back returns to that caller. Home returns to the root and clears history.</p>
 <details><summary>Code · launch the shell and pages</summary><pre><code data-snippet="composition">Loading source…</code></pre></details>
 <details><summary>Code · request a transition</summary><pre><code data-snippet="navigation">Loading source…</code></pre></details>
-<h3>Shell: the shared frame</h3><p>The shell draws the header, recognizes Back gestures, and clips page content. The navigator supplies the active page and return availability.</p><h3>Page: one destination</h3><p>A page supplies a title, presentation mode, and navigation availability. It handles local input and draws its content.</p><p class="rule">Keep page objects in the collection when their state must survive navigation. The navigator calls leave before enter. Pages do not declare parents.</p>
+<h3>Shell: the shared frame</h3><p>The shell draws the header. Shared layers clip content and recognize Back taps. The navigator supplies the active page and return availability.</p><h3>Page: one destination</h3><p>A page supplies a title, presentation mode, and navigation availability. It retains UI elements and application state. The system supplies its layer root, routes touch input, and renders shared layers.</p><p class="rule">Keep page objects in the collection when their state must survive navigation. The navigator calls leave before enter. It swaps the content root’s child atomically. Pages do not declare parents.</p>
 <details><summary>Code · describe a page</summary><pre><code data-snippet="page">Loading source…</code></pre></details>
 <details><summary>Code · entry and exit callbacks</summary><pre><code data-snippet="lifecycle">Loading source…</code></pre></details>
 <h3>Connect input and output</h3><p>Send touch input and navigation requests to the navigator. It completes each transition before returning. Render the active page through the navigator.</p>
@@ -68,7 +68,7 @@ details{border:1px solid var(--line);border-radius:8px;margin:14px 0;background:
 <p><code>TextBadge</code> supplies this style in the platform toolkit. Its default padding is 8 px horizontally and 4 px vertically, with an 8 px corner radius.</p>
 <p>Badges display information. Use a separate control for actions. The application supplies the label and decides when to hide or cap a count.</p>
 <details><summary>Code · text, underline, and badges</summary><pre><code data-snippet="text">Loading source…</code></pre></details>
-<h3>Give content room</h3><p>Use the shared spacing profile for control insets and gaps. The application chooses its layout and viewport.</p><p>Tap Control gap or Section gap to compare their values and the space between the blocks.</p><p>Keep essential text within its assigned region. Add lines or pages when it does not fit.</p>
+<p>Drag across a control to let its ancestor claim a pan. The on-screen distance changes, and the child tap is canceled.</p><h3>Give content room</h3><p>Use the shared spacing profile for control insets and gaps. The application chooses its layout and viewport.</p><p>Tap Control gap or Section gap to compare their values and the space between the blocks.</p><p>Keep essential text within its assigned region. Add lines or pages when it does not fit.</p>
 <h3>Keep the palette small</h3><p>Use named colors for foreground, background, supporting text, dividers, controls, and data. Selected controls use inverse text.</p><p>Tap a swatch to see its color role and grayscale value.</p>
 <p class="hint">Validate readability on the physical display.</p>
 <p><a href="/ui-guide/text.rs" target="_blank">Read the style example source</a></p><p><a href="/ui-guide/catalog.png" target="_blank">Open the static visual catalog</a></p>
@@ -85,12 +85,26 @@ details{border:1px solid var(--line);border-radius:8px;margin:14px 0;background:
 <p class="hint">Tap the Component details card, then Back. Drag outside a control before release to cancel activation.</p>
 <p><a href="/ui-guide/controls.rs" target="_blank">Read the controls example source</a></p>
 </div></section>
+<section id="calculator" class="lesson" aria-label="Retained layout" hidden>
+<aside class="preview" aria-label="Interactive calculator">
+<figure><div class="frame interactive"><img id="calculator-screen" src="/ui-guide/calculator.png" width="540" height="960" draggable="false" tabindex="0" alt="Calculator with a retained column and keypad grid. Tap the keys to calculate."></div><figcaption>Interactive example · production calculator</figcaption></figure>
+</aside>
+<div class="copy"><p class="step">05 / RETAINED LAYOUT</p><h2>Compose layout, graphics, and input.</h2><p class="hint">Focus the preview. Use arrow keys to select a control and Enter to activate it. Shift+Escape resets this example.</p><p class="hint">You can also type digits, decimal points, and arithmetic operators. Enter calculates, Backspace deletes, and C clears.</p>
+<p>The calculator uses a column for its readout and keypad. An equal-cell grid places the keys within the remaining space.</p>
+<p>Each key has a solid graphics node and a text child. Its input target extends three pixels beyond the fill.</p>
+<p>Input targets stay within the parent clip. A decorative child does not intercept its parent's input.</p>
+<h3>Separate layout from drawing</h3><p>Value changes invalidate the readout without changing keypad geometry. Layout changes invalidate old and new regions.</p>
+<p>Pages retain elements with explicit identities. Button callbacks receive mutable page state and typed control data. The UI runtime publishes geometry and drawing into shared layers.</p>
+<h3>Try the behavior</h3><p>Enter 2 + 3 x 4 =. Sequential arithmetic gives 20. Try division by zero, delete, and Clear.</p>
+<p>Drag outside a key before release to cancel its tap. The guide completes presentation synchronously. The device simulator tests delayed refreshes. Input uses the latest committed layers even before presentation.</p>
+<p><a href="/ui-guide/calculator.rs" target="_blank">Read the calculator composition</a></p>
+</div></section>
 <section id="keyboard" class="lesson" aria-label="Text input" hidden>
 <div class="copy"><p class="step">04 / TEXT INPUT</p><h2>Text field and soft keyboard</h2>
 <p>Tap <kbd>123</kbd> for <em>Common symbols</em>. Use <kbd>[]=</kbd> for <em>Additional symbols</em> and <kbd>@#+</kbd> to return. Tap <kbd>ABC</kbd> for <em>Letters</em>. Tap <kbd>Shift</kbd> to change case.</p>
-<p>The two fields show empty and populated examples.</p>
+<p>Tap Message or Label to transfer focus. Key activations edit only the active field. The system owns the keyboard and rejects edits from old focus sessions.</p>
 </div>
-<figure class="preview"><div class="frame interactive"><img id="keyboard-frame" draggable="false" width="540" height="960" src="/ui-guide/keyboard.png" alt="Soft keyboard with empty and populated text fields"></div></figure>
+<figure class="preview"><div class="frame interactive"><img id="keyboard-frame" draggable="false" width="540" height="960" src="/ui-guide/keyboard.png" alt="Interactive system keyboard with two focusable text fields"></div></figure>
 </section>
 <footer aria-label="Further guidance"><a href="/ui-guide/reference/shared" target="_blank">Shared standard · Markdown</a><a href="/ui-guide/reference/application" target="_blank">Application rules · Markdown</a><a href="/ui-guide/reference/toolkit" target="_blank">Platform API · Markdown</a></footer>
 <noscript><p>Enable JavaScript to change guide sections and interact with the example. The preview images and reference links remain available.</p></noscript>
@@ -223,6 +237,9 @@ function createPreview({screenId, stateUrl, eventUrl, frameUrl, calculator = fal
 
 const previews = [
   createPreview({
+    screenId:'#calculator-screen', calculator: true, stateUrl:'/ui-guide/calculator/state', eventUrl:'/ui-guide/calculator/event', frameUrl:'/ui-guide/calculator.png',
+  }),
+  createPreview({
     screenId:'#keyboard-frame', stateUrl:'/ui-guide/keyboard/state', eventUrl:'/ui-guide/keyboard/event', frameUrl:'/ui-guide/keyboard.png',
   }),
   createPreview({
@@ -243,7 +260,7 @@ const previews = [
   })
 ];
 function section() {
-  const id = ['composition','text','controls','keyboard'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'composition';
+  const id = ['composition','text','controls','keyboard','calculator'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'composition';
   document.querySelectorAll('.lesson').forEach(el => el.hidden = el.id !== id);
   document.querySelectorAll('[data-section]').forEach(el => { if (el.dataset.section === id) el.setAttribute('aria-current','page'); else el.removeAttribute('aria-current'); });
   previews.forEach(preview=>preview.cancelActive());

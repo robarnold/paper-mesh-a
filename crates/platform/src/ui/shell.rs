@@ -11,9 +11,7 @@
 
 use embedded_graphics::{pixelcolor::Gray4, prelude::*, primitives::Rectangle};
 
-use crate::{TouchEvent, input::TapGesture};
-
-use super::{Button, Header, PageInfo, PageSet, Presentation, Style};
+use super::{Button, Header, PageInfo, Presentation, Style};
 
 #[derive(Clone, Copy)]
 pub struct ShellLayout {
@@ -26,16 +24,12 @@ pub struct ShellLayout {
 }
 
 pub struct Shell {
-    layout: ShellLayout,
-    gesture: TapGesture<()>,
+    pub(crate) layout: ShellLayout,
 }
 
 impl Shell {
     pub const fn new(layout: ShellLayout) -> Self {
-        Self {
-            layout,
-            gesture: TapGesture::new(),
-        }
+        Self { layout }
     }
 
     pub(crate) fn back_control<Id>(
@@ -51,38 +45,16 @@ impl Shell {
         })
     }
 
-    pub(crate) fn touch<Id>(
-        &mut self,
-        event: TouchEvent,
-        page: PageInfo<Id>,
-        can_return: bool,
-    ) -> bool {
-        let back = self.back_control(page, can_return);
-        self.gesture
-            .update(event, |point| {
-                back.filter(|control| control.hit(point)).map(|_| ())
-            })
-            .is_some()
-    }
-
-    pub(crate) fn cancel(&mut self) {
-        self.gesture.cancel();
-    }
-
-    pub(crate) fn render<P: PageSet, D: DrawTarget<Color = Gray4>>(
+    pub(crate) fn render<Id, D: DrawTarget<Color = Gray4>>(
         &self,
-        pages: &P,
-        info: PageInfo<P::Id>,
+        info: PageInfo<Id>,
         can_return: bool,
         display: &mut D,
         style: &Style,
     ) -> Result<(), D::Error> {
-        let mut display = display.clipped(&self.layout.viewport);
-        display.clear(style.background)?;
         if info.presentation == Presentation::FullScreen {
-            return pages.draw_page(info.id, &mut display);
+            return Ok(());
         }
-        pages.draw_page(info.id, &mut display.clipped(&self.layout.content))?;
         Header {
             context: info.context,
             title: info.title,
@@ -91,6 +63,6 @@ impl Shell {
             divider: self.layout.divider,
             controls: self.back_control(info, can_return).as_slice(),
         }
-        .render(&mut display, style)
+        .render(display, style)
     }
 }

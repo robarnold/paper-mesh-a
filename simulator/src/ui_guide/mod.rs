@@ -31,6 +31,7 @@ pub const SOURCE: &str = include_str!("../../../crates/app/examples/ui_guide/mod
 pub const CONTROLS_SOURCE: &str = include_str!("../../../crates/app/examples/ui_guide/controls.rs");
 pub const TEXT_SOURCE: &str = include_str!("../../../crates/app/examples/ui_guide/text.rs");
 pub const CATALOG_SOURCE: &str = include_str!("../../../crates/app/examples/ui_guide/catalog.rs");
+pub const CALCULATOR_SOURCE: &str = include_str!("../../../crates/app/src/calculator.rs");
 
 #[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
@@ -69,11 +70,29 @@ pub struct State {
     controls: Vec<Control>,
 }
 
-#[derive(Default)]
 struct Session<E> {
     example: E,
     contacts: u16,
     suppressed: bool,
+}
+
+impl<E: Demo> Default for Session<E> {
+    fn default() -> Self {
+        let mut example = E::default();
+        example.present();
+        Self {
+            example,
+            contacts: 0,
+            suppressed: false,
+        }
+    }
+}
+
+fn present<P: paper_mesh_platform::ui::PageSet, const N: usize>(ui: &mut Navigator<P, N>) {
+    ui.prepare();
+    ui.render(&mut Canvas::new(), &STYLE).unwrap();
+    ui.submitted();
+    ui.completed();
 }
 
 impl<E: Demo> Session<E> {
@@ -128,45 +147,48 @@ impl<E: Demo> Session<E> {
             Command::Finish => self.example.finish(),
             Command::Reset => *self = Self::default(),
         }
+        self.example.present();
         Ok(())
     }
 }
 
-use paper_mesh_platform::ui::SoftKeyboard;
-
 struct KeyboardExample {
-    keyboard: SoftKeyboard,
+    ui: Navigator<example::focus::FocusPage, 0>,
     revision: u64,
 }
-
 impl Default for KeyboardExample {
     fn default() -> Self {
         Self {
+            ui: Navigator::launch(0, Shell::new(LAYOUT), example::focus::FocusPage::new()),
             revision: 0,
-            keyboard: example::catalog::keyboard(),
         }
     }
 }
-
 impl Demo for KeyboardExample {
+    fn present(&mut self) {
+        present(&mut self.ui);
+    }
     fn touch(&mut self, event: TouchEvent) {
-        if self.keyboard.handle_touch(event).layout_changed {
+        if self.ui.touch(event).unwrap().changed {
             self.revision += 1;
         }
     }
-
     fn home(&mut self) {
         *self = Self::default();
     }
 }
 
 trait Demo: Default {
+    fn present(&mut self) {}
     fn touch(&mut self, event: TouchEvent);
     fn home(&mut self);
     fn finish(&mut self) {}
 }
 
 impl Demo for Example {
+    fn present(&mut self) {
+        present(&mut self.ui);
+    }
     fn touch(&mut self, event: TouchEvent) {
         Example::touch(self, event);
     }
@@ -179,6 +201,9 @@ impl Demo for Example {
 }
 
 impl Demo for ControlsExample {
+    fn present(&mut self) {
+        present(&mut self.ui);
+    }
     fn touch(&mut self, event: TouchEvent) {
         let _ = self.ui.touch(event);
     }
@@ -191,6 +216,9 @@ impl Demo for ControlsExample {
 }
 
 impl Demo for TextExample {
+    fn present(&mut self) {
+        present(&mut self.ui);
+    }
     fn touch(&mut self, event: TouchEvent) {
         let _ = self.ui.touch(event);
     }
@@ -201,10 +229,58 @@ impl Demo for TextExample {
 
 #[derive(Default)]
 pub struct Guide {
-    keyboard: Session<KeyboardExample>,
-    composition: Session<Example>,
-    controls: Session<ControlsExample>,
-    text: Session<TextExample>,
+    keyboard: Box<Session<KeyboardExample>>,
+    composition: Box<Session<Example>>,
+    controls: Box<Session<ControlsExample>>,
+    text: Box<Session<TextExample>>,
+    calculator: Box<Session<CalculatorExample>>,
+}
+
+struct CalculatorExample {
+    ui: Navigator<paper_mesh_app::calculator::CalculatorPage, 0>,
+}
+
+impl Default for CalculatorExample {
+    fn default() -> Self {
+        let mut example = Self {
+            ui: Navigator::launch(
+                paper_mesh_app::pages::Route::Calculator,
+                Shell::new(LAYOUT),
+                paper_mesh_app::calculator::CalculatorPage::default(),
+            ),
+        };
+        example.present();
+        example
+    }
+}
+
+impl CalculatorExample {
+    fn present(&mut self) {
+        // The guide has synchronous presentation. The device simulator tests delayed refreshes.
+        present(&mut self.ui);
+    }
+}
+
+impl Demo for CalculatorExample {
+    fn present(&mut self) {
+        present(&mut self.ui);
+    }
+    fn touch(&mut self, event: TouchEvent) {
+        let update = self.ui.touch(event).unwrap();
+        if update.changed {
+            self.present();
+        }
+    }
+    fn home(&mut self) {
+        let _ = self.ui.navigate(Navigation::Home);
+    }
+}
+
+#[derive(Serialize)]
+pub struct CalculatorState {
+    value: String,
+    notice: String,
+    controls: Vec<Control>,
 }
 
 #[derive(Serialize)]
@@ -229,12 +305,53 @@ pub struct ControlsState {
 }
 
 impl Guide {
+    pub fn calculator_command(&mut self, command: Command) -> Result<(), &'static str> {
+        self.calculator.command(command)
+    }
+
+    pub fn calculator_state(&self) -> CalculatorState {
+        let page = self.calculator.example.ui.pages();
+        CalculatorState {
+            value: page.value().into(),
+            notice: page.notice().into(),
+            controls: paper_mesh_app::calculator::KEYS
+                .iter()
+                .enumerate()
+                .map(|(i, (_, label))| {
+                    let center = page.key_bounds(i).center();
+                    Control {
+                        label,
+                        x: center.x,
+                        y: center.y,
+                        enabled: page.input_ready(),
+                    }
+                })
+                .collect(),
+        }
+    }
+
+    pub fn calculator_png(&self) -> Result<Vec<u8>, png::EncodingError> {
+        let mut canvas = Canvas::new();
+        self.calculator
+            .example
+            .ui
+            .render(&mut canvas, &STYLE)
+            .unwrap();
+        canvas.png()
+    }
+
     pub fn keyboard_command(&mut self, command: Command) -> Result<(), &'static str> {
         self.keyboard.command(command)
     }
 
     pub fn keyboard_png(&self) -> Result<Vec<u8>, png::EncodingError> {
-        catalog_png(Sheet::Keyboard(&self.keyboard.example.keyboard))
+        let mut canvas = Canvas::new();
+        self.keyboard
+            .example
+            .ui
+            .render(&mut canvas, &STYLE)
+            .unwrap();
+        canvas.png()
     }
 
     pub fn keyboard_state(&self) -> serde_json::Value {
@@ -396,7 +513,7 @@ impl Guide {
 
 pub fn catalog_png(sheet: Sheet<'_>) -> Result<Vec<u8>, png::EncodingError> {
     let mut canvas = Canvas::new();
-    Navigator::<_, 0>::launch(0, Shell::new(LAYOUT), example::catalog::Catalog(sheet))
+    Navigator::<_, 0>::launch(0, Shell::new(LAYOUT), example::catalog::Catalog::new(sheet))
         .render(&mut canvas, &STYLE)
         .unwrap();
     canvas.png()

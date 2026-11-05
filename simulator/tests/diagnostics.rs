@@ -17,6 +17,9 @@ use paper_mesh_platform::TouchEvent;
 use paper_mesh_simulator::{REFRESH_MS, Simulation};
 
 fn tap(sim: &mut Simulation, target: Rectangle) {
+    while !sim.input_ready() {
+        sim.advance(REFRESH_MS);
+    }
     sim.touch_portrait(TouchEvent::touch(0, target.center()));
     sim.touch_portrait(TouchEvent::release(0, target.center()));
 }

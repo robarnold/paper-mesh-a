@@ -10,11 +10,8 @@
 use core::fmt::Write;
 use embedded_graphics::{pixelcolor::Gray4, prelude::*, text::Text};
 use heapless::String;
-use paper_mesh_platform::{
-    TouchEvent,
-    input::TapGesture,
-    ui::{Navigation, Page, PageEvent, PageInfo, TextRole},
-};
+use paper_mesh_platform::ui::EnabledState;
+use paper_mesh_platform::ui::{Navigation, Page, PageEvent, PageInfo, TextRole};
 
 use crate::{
     diagnostics,
@@ -25,14 +22,14 @@ use crate::{
 
 pub struct HomePage {
     pub uptime_seconds: u64,
-    gesture: TapGesture<Route>,
+    elements: paper_mesh_platform::ui::elements::Elements<HomePage, Route, 4, 0>,
 }
 
 impl HomePage {
     pub const fn new() -> Self {
         Self {
             uptime_seconds: 0,
-            gesture: TapGesture::new(),
+            elements: paper_mesh_platform::ui::elements::Elements::new(screen::LAYOUT.viewport),
         }
     }
 }
@@ -42,27 +39,46 @@ impl Page for HomePage {
     fn page_info(&self) -> PageInfo<Route> {
         Route::Home.info()
     }
-    fn enter(&mut self) {
-        self.gesture.cancel();
+    type Elements = paper_mesh_platform::ui::elements::Elements<Self, Route, 4, 0>;
+    fn elements(&self) -> &Self::Elements {
+        &self.elements
     }
-    fn leave(&mut self) {
-        self.gesture.cancel();
+    fn elements_mut(&mut self) -> &mut Self::Elements {
+        &mut self.elements
     }
-    fn handle_touch(&mut self, event: TouchEvent) -> PageEvent<Route> {
-        self.gesture
-            .update(event, |point| {
-                [
-                    (diagnostics::HOME_TARGET, Route::Diagnostics),
-                    (touchpad::TOUCHPAD_TARGET, Route::Touchpad),
-                ]
-                .into_iter()
-                .find_map(|(bounds, route)| bounds.contains(point).then_some(route))
-            })
-            .map_or(PageEvent::None, |route| {
-                PageEvent::Navigate(Navigation::Open(route))
-            })
+    fn sync_elements(&mut self) {
+        self.elements
+            .surface([
+                (
+                    diagnostics::HOME_TARGET,
+                    Route::Diagnostics,
+                    EnabledState::Enabled,
+                ),
+                (
+                    touchpad::TOUCHPAD_TARGET,
+                    Route::Touchpad,
+                    EnabledState::Enabled,
+                ),
+                (
+                    crate::calculator::HOME_TARGET,
+                    Route::Calculator,
+                    EnabledState::Enabled,
+                ),
+            ])
+            .expect("fixed surface fits element capacity");
     }
-    fn render_page<D: DrawTarget<Color = Gray4>>(&self, display: &mut D) -> Result<(), D::Error> {
+    fn configure_handlers(&mut self) {
+        self.elements_mut()
+            .default_callback(|_page, context, route| {
+                let result = PageEvent::Navigate(Navigation::Open(route));
+                context.respond(result);
+            });
+    }
+    fn draw_custom<D: DrawTarget<Color = Gray4>>(
+        &self,
+        _: u16,
+        display: &mut D,
+    ) -> Result<(), D::Error> {
         Text::new(
             "Device tools",
             Point::new(28, 132),
@@ -82,6 +98,12 @@ impl Page for HomePage {
             "Use the device as a USB touchpad",
         )?;
         let mut label = String::<64>::new();
+        screen::card(
+            display,
+            crate::calculator::HOME_TARGET,
+            "Calculator",
+            "Basic decimal arithmetic",
+        )?;
         let _ = write!(label, "Uptime: {} s", self.uptime_seconds);
         Text::new(&label, Point::new(28, 900), STYLE.text(TextRole::Secondary)).draw(display)?;
         Ok(())

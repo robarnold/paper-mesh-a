@@ -1,161 +1,118 @@
-//! Diagnostic page that connects the soft keyboard to a single text field.
+//! Diagnostic page that transfers system keyboard focus between two text fields.
 //!
 //! # Design choices
 //!
 //! - Apply edits on release so typing can continue during a text refresh.
-//! - After a layout change, wait for presentation and a fresh contact so each tap matches
-//!   the visible labels.
+//! - Keep values in the page while the system owns keyboard state and focus sessions.
 //!
 //! See the [text input contract](../../../docs/platform/text-input.md).
 
 use crate::{pages::Route, screen::STYLE};
 use embedded_graphics::{pixelcolor::Gray4, prelude::*, primitives::Rectangle, text::Text};
-use paper_mesh_platform::{
-    TouchEvent,
-    ui::{Page, PageEvent, PageInfo, SoftKeyboard, TextField, TextRole},
-};
+use paper_mesh_platform::ui::EnabledState;
+use paper_mesh_platform::ui::{Page, PageInfo, TextField, TextRole};
 
 const KEYS: Rectangle = Rectangle::new(Point::new(28, 600), Size::new(484, 320));
 const FIELD: Rectangle = Rectangle::new(Point::new(28, 210), Size::new(484, 58));
 
-#[derive(Clone, Copy, PartialEq)]
-enum Layout {
-    Pending,
-    Submitted,
-    Visible,
-}
-
 pub(crate) struct KeyboardScreen {
-    keyboard: SoftKeyboard,
     field: TextField<64>,
-    layout: Layout,
-    blocked_contacts: u16,
+    second: TextField<64>,
+    focused: u16,
+    elements: paper_mesh_platform::ui::elements::Elements<Self, u16, 3, 0>,
 }
-
 impl KeyboardScreen {
     pub const fn new() -> Self {
         Self {
-            keyboard: SoftKeyboard::new(KEYS),
             field: TextField::new(),
-            layout: Layout::Pending,
-            blocked_contacts: 0,
+            second: TextField::new(),
+            focused: 0,
+            elements: paper_mesh_platform::ui::elements::Elements::new(
+                crate::screen::LAYOUT.viewport,
+            ),
         }
-    }
-
-    pub fn submitted(&mut self) {
-        if self.layout == Layout::Pending {
-            self.layout = Layout::Submitted;
-        }
-    }
-
-    pub fn completed(&mut self) {
-        if self.layout == Layout::Submitted {
-            self.layout = Layout::Visible;
-        }
-    }
-
-    pub fn invalidate(&mut self) {
-        self.layout = Layout::Pending;
-        self.keyboard.handle_touch(TouchEvent::Cancel);
     }
 }
-
 impl Page for KeyboardScreen {
     type Id = Route;
+    type Elements = paper_mesh_platform::ui::elements::Elements<Self, u16, 3, 0>;
+    fn elements(&self) -> &Self::Elements {
+        &self.elements
+    }
+    fn elements_mut(&mut self) -> &mut Self::Elements {
+        &mut self.elements
+    }
     fn page_info(&self) -> PageInfo<Route> {
         Route::Keyboard.info()
     }
-    fn enter(&mut self) {
-        *self = Self::new();
+    fn did_enter(&mut self) {
+        self.field = TextField::new();
+        self.second = TextField::new();
+        self.focused = 0;
     }
-    fn leave(&mut self) {}
-    fn handle_touch(&mut self, event: TouchEvent) -> PageEvent<Route> {
-        if self.layout != Layout::Visible || self.blocked_contacts != 0 {
-            match event {
-                TouchEvent::Touch(c) => {
-                    self.blocked_contacts |= 1u16.checked_shl(c.id.into()).unwrap_or(0)
-                }
-                TouchEvent::Release(c) => {
-                    self.blocked_contacts &= !1u16.checked_shl(c.id.into()).unwrap_or(0)
-                }
-                TouchEvent::Cancel => self.blocked_contacts = 0,
-            }
-            return PageEvent::None;
-        }
-        let update = self.keyboard.handle_touch(event);
-        let edited = update.input.is_some_and(|input| self.field.apply(input));
-        if update.layout_changed {
-            self.layout = Layout::Pending;
-        }
-        PageEvent::changed(edited || update.layout_changed)
+    fn sync_elements(&mut self) {
+        self.elements
+            .surface([
+                (FIELD, 0, EnabledState::Enabled),
+                (
+                    Rectangle::new(Point::new(28, 330), Size::new(484, 58)),
+                    1,
+                    EnabledState::Enabled,
+                ),
+            ])
+            .expect("field surface fits");
     }
-
-    fn render_page<D: DrawTarget<Color = Gray4>>(&self, target: &mut D) -> Result<(), D::Error> {
-        Text::new("Message", Point::new(28, 190), STYLE.text(TextRole::Body)).draw(target)?;
+    fn configure_handlers(&mut self) {
+        self.elements.default_callback(|page, context, field| {
+            page.focused = field;
+            context.changed();
+        });
+    }
+    fn text_focus(&self) -> Option<paper_mesh_platform::ui::TextFocus> {
+        Some(paper_mesh_platform::ui::TextFocus {
+            field: self.focused,
+            keyboard: KEYS,
+        })
+    }
+    fn text_input(&mut self, field: u16, input: paper_mesh_platform::ui::TextInput) -> bool {
+        if field == 0 {
+            self.field.apply(input)
+        } else if field == 1 {
+            self.second.apply(input)
+        } else {
+            false
+        }
+    }
+    fn draw_custom<D: DrawTarget<Color = Gray4>>(
+        &self,
+        _: u16,
+        target: &mut D,
+    ) -> Result<(), D::Error> {
+        Text::new(
+            if self.focused == 0 {
+                "Message (active)"
+            } else {
+                "Message"
+            },
+            Point::new(28, 190),
+            STYLE.text(TextRole::Body),
+        )
+        .draw(target)?;
         self.field.render(target, FIELD, &STYLE)?;
-        self.keyboard.render(target, &STYLE)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn tap(screen: &mut KeyboardScreen, point: Point) {
-        screen.handle_touch(TouchEvent::touch(0, point));
-        screen.handle_touch(TouchEvent::release(0, point));
-    }
-
-    #[test]
-    fn layout_changes_require_a_visible_frame_and_fresh_contact() {
-        let mut screen = KeyboardScreen::new();
-        let shift = Point::new(76, 800);
-        let a = Point::new(76, 720);
-        screen.submitted();
-        screen.completed();
-        tap(&mut screen, shift);
-        screen.handle_touch(TouchEvent::touch(0, a));
-        screen.completed(); // Completion of an older frame.
-        screen.submitted();
-        screen.completed();
-        screen.handle_touch(TouchEvent::touch(0, a));
-        screen.handle_touch(TouchEvent::release(0, a));
-        assert!(screen.field.value.is_empty());
-        tap(&mut screen, a);
-        assert_eq!(screen.field.value.as_str(), "A");
-        screen.submitted();
-        screen.completed();
-        screen.handle_touch(TouchEvent::touch(0, a));
-        screen.handle_touch(TouchEvent::touch(0, a));
-        assert_eq!(screen.field.value.as_str(), "A");
-        screen.handle_touch(TouchEvent::release(0, a));
-        tap(&mut screen, a);
-        assert_eq!(screen.field.value.as_str(), "Aaa");
-        screen.handle_touch(TouchEvent::touch(0, a));
-        screen.handle_touch(TouchEvent::touch(0, Point::zero()));
-        screen.handle_touch(TouchEvent::release(0, a));
-        assert_eq!(screen.field.value.as_str(), "Aaa");
-    }
-
-    #[test]
-    fn letter_tap_consumes_shift_at_capacity() {
-        let mut screen = KeyboardScreen::new();
-        screen.submitted();
-        screen.completed();
-        let a = Point::new(76, 720);
-        for _ in 0..64 {
-            tap(&mut screen, a);
-        }
-        tap(&mut screen, Point::new(76, 800));
-        screen.submitted();
-        screen.completed();
-        tap(&mut screen, a);
-        assert_eq!(screen.field.value.len(), 64);
-        screen.submitted();
-        screen.completed();
-        tap(&mut screen, Point::new(463, 800));
-        assert_eq!(screen.field.value.len(), 63);
-        tap(&mut screen, a);
-        assert!(screen.field.value.ends_with('a'));
+        Text::new(
+            if self.focused == 1 {
+                "Label (active)"
+            } else {
+                "Label"
+            },
+            Point::new(28, 310),
+            STYLE.text(TextRole::Body),
+        )
+        .draw(target)?;
+        self.second.render(
+            target,
+            Rectangle::new(Point::new(28, 330), Size::new(484, 58)),
+            &STYLE,
+        )
     }
 }
