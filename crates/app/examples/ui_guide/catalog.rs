@@ -9,12 +9,9 @@
 
 use super::{STYLE, line};
 use embedded_graphics::{pixelcolor::Gray4, prelude::*, primitives::Rectangle, text::Text};
-use paper_mesh_platform::{
-    TouchEvent,
-    ui::{
-        Button, NavigationCard, Page, PageEvent, PageInfo, Presentation, SoftKeyboard, TextField,
-        TextRole, format::measurement,
-    },
+use paper_mesh_platform::ui::{
+    Button, NavigationCard, Page, PageEvent, PageInfo, Presentation, SoftKeyboard, TextField,
+    TextRole, format::measurement,
 };
 
 #[derive(Clone, Copy)]
@@ -24,14 +21,34 @@ pub enum Sheet<'a> {
     Controls,
     Keyboard(&'a SoftKeyboard),
 }
-pub fn keyboard() -> SoftKeyboard {
-    SoftKeyboard::new(Rectangle::new(Point::new(28, 600), Size::new(484, 320)))
-}
 
-pub struct Catalog<'a>(pub Sheet<'a>);
+pub struct Catalog<'a>(
+    pub Sheet<'a>,
+    paper_mesh_platform::ui::elements::Elements<Self, (), 1, 0>,
+);
+impl<'a> Catalog<'a> {
+    pub fn new(sheet: Sheet<'a>) -> Self {
+        Self(
+            sheet,
+            paper_mesh_platform::ui::elements::Elements::new(super::LAYOUT.viewport),
+        )
+    }
+}
 
 impl Page for Catalog<'_> {
     type Id = u8;
+    type Elements = paper_mesh_platform::ui::elements::Elements<Self, (), 1, 0>;
+    fn elements(&self) -> &Self::Elements {
+        &self.1
+    }
+    fn elements_mut(&mut self) -> &mut Self::Elements {
+        &mut self.1
+    }
+    fn sync_elements(&mut self) {
+        self.1
+            .surface([])
+            .expect("fixed surface fits element capacity");
+    }
     fn page_info(&self) -> PageInfo<u8> {
         PageInfo {
             id: 0,
@@ -46,12 +63,17 @@ impl Page for Catalog<'_> {
             navigation_enabled: true,
         }
     }
-    fn enter(&mut self) {}
-    fn leave(&mut self) {}
-    fn handle_touch(&mut self, _: TouchEvent) -> PageEvent<u8> {
-        PageEvent::None
+    fn configure_handlers(&mut self) {
+        self.elements_mut().default_callback(|_page, context, _| {
+            let result = PageEvent::None;
+            context.respond(result);
+        });
     }
-    fn render_page<D: DrawTarget<Color = Gray4>>(&self, display: &mut D) -> Result<(), D::Error> {
+    fn draw_custom<D: DrawTarget<Color = Gray4>>(
+        &self,
+        _: u16,
+        display: &mut D,
+    ) -> Result<(), D::Error> {
         match self.0 {
             Sheet::Keyboard(keyboard) => {
                 let mut field = TextField::<64>::default();

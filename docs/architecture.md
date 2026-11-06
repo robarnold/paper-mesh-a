@@ -67,9 +67,17 @@ Modules group related functions by responsibility.
 The current application is one toolkit consumer.
 Future applications can use the same components without a dependency on its screens.
 
-The platform Navigator owns shell launch, the active destination, return history, and lifecycle dispatch.
-The platform Shell owns the shared Back gesture, header, and content clipping.
-The platform Page contract defines metadata, entry, exit, local input, and rendering.
+[Composition](platform/composition.md) owns a shared layer hierarchy with scoped roots and atomic updates.
+The [UI](platform/ui.md) system supplies elements, layout, and callbacks. Layout writes explicit geometry into layers.
+The calculator owns decimal arithmetic, control policy, and its element composition.
+The current renderer uses complete redraws. Backends retain physical refresh policy.
+
+The platform Navigator owns layers, shell launch, page lifetimes, return history, focus, and the soft keyboard.
+The Shell supplies the shared header and Back region.
+Pages retain elements and models. The system assigns their layer roots.
+Touchscreen recognition emits opaque handler tokens. The UI runtime invokes callbacks after traversal.
+Custom drawing slots preserve application renderers within layer clipping.
+Frame completion acknowledges a submitted revision, independent of the current destination.
 The application supplies concrete page storage, identities, style, geometry, and operation restrictions.
 The navigator owns the supplied page collection. Its callbacks coordinate application service state.
 The shell supports full-screen presentation without changing the reserved Home-key binding.
@@ -78,6 +86,7 @@ The [shared UI standard](ui.md) defines common behavior and visual roles.
 The [application UI rules](application-ui.md) define current application choices.
 
 The [UI guide](simulator/execution.md#ui-guide) runs independent examples from `crates/app/examples/ui_guide/` through the native host.
+Its retained-layout example uses the production calculator page in an independent session.
 These examples use platform components and have no device service connections.
 The simulator supplies their HTTP transport and PNG output. Firmware does not include them.
 

@@ -45,7 +45,7 @@ use paper_mesh_platform::{Clock, Display, location::Location, rotation::Portrait
 use rtc::FirmwareClock;
 use static_cell::{ConstStaticCell, StaticCell};
 
-static APP: StaticCell<App> = StaticCell::new();
+static APP: ConstStaticCell<App> = ConstStaticCell::new(App::unstarted());
 static DISPLAY_STACK: ConstStaticCell<Stack<8192>> = ConstStaticCell::new(Stack::new());
 static DISPLAY_EXECUTOR: StaticCell<esp_rtos::embassy::Executor> = StaticCell::new();
 
@@ -192,7 +192,8 @@ async fn run_app(
 ) -> ! {
     let clock = FirmwareClock;
     // The application and its scan results use static RAM instead of the task stack.
-    let app = APP.init_with(|| App::new_at(0));
+    let app = APP.take();
+    app.start(0);
     app.set_suspend_controls(&buttons::CONTROLS[..2]);
     app.set_power_off_restart_hint("Hold Power for 2 seconds or connect USB.");
     app.set_power_off_control(buttons::BOOT);

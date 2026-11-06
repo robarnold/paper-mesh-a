@@ -21,6 +21,16 @@ It supplies the clock, display, discovery, location, and power services.
 Application state stays on one core.
 The runtime controls executor selection, waits, event delivery, and driver supervision.
 
+Firmware initializes application storage with `App::unstarted` in static RAM.
+It calls `App::start` once to build retained components in place and enter Home.
+This avoids a complete application temporary on the task stack.
+Native callers can use `App::new_at`, which performs both steps.
+
+The UI system uses a bounded [layer store](composition.md) with separate committed and staging buffers.
+It reclaims inactive page layers and hidden keyboard layers to fit internal RAM.
+Pages retain their models and elements across these changes. Returning to a page publishes fresh layer handles.
+The native guide stores its independent sessions on the host heap. Shared UI state does not require a heap.
+
 The runtime has these tasks:
 
 - Process driver completions and input events.

@@ -89,6 +89,8 @@ A completed target does not imply an atomic optical replacement.
 
 Input must use the visible layout's orientation, as the [orientation design](platform/orientation.md) specifies.
 Input stays blocked while presentation is unknown during recovery.
+These recovery and orientation restrictions are separate from ordinary layer updates.
+Ordinary touch input uses the latest committed layers without waiting for display completion.
 
 Reset, transfer failure, or lost driver history can invalidate differential
 updates. Visible content can stay despite that invalidation.
@@ -105,7 +107,8 @@ They must not assume a particular framebuffer count.
 The current `refresh()`/`is_busy()` interface serializes an update.
 The [current interface](platform/display.md#current-interface) also provides an explicit complete refresh.
 The interface does not represent damage, general mode selection, completion identity, or asynchronous failure.
-The demonstration redraws its complete buffer.
+Most demonstration pages redraw the complete buffer.
+The [Composition](platform/composition.md#drawing-invalidation) tracks revisions. It currently redraws the complete viewport through the same backend refresh interface.
 Future consumers will drive extensions to these limits.
 Components must not generate electrical drive commands.
 

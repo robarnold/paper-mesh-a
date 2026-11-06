@@ -11,6 +11,7 @@
 //!
 //! See [Runtime execution](../../../docs/platform/runtime.md).
 
+pub mod calculator;
 pub mod debugger;
 pub mod diagnostics;
 pub mod display_check;
@@ -56,6 +57,7 @@ pub struct App {
     started_at_ms: u64,
     heartbeat: PeriodicTimer,
     dirty: bool,
+    submitted_page: Option<Route>,
 }
 
 impl App {
@@ -65,15 +67,31 @@ impl App {
 
     /// Launch the application at the specified time in the platform epoch.
     pub fn new_at(now: u64) -> Self {
+        let mut app = Self::unstarted();
+        app.start(now);
+        app
+    }
+
+    /// Prepare static application storage without a large temporary stack allocation.
+    pub const fn unstarted() -> Self {
         Self {
-            ui: Navigator::launch(Route::Home, Shell::new(screen::LAYOUT), Pages::new()),
+            ui: Navigator::unlaunched(Route::Home, Shell::new(screen::LAYOUT), Pages::new()),
             full_refresh: false,
             power_off_control: None,
             power_off_deadline: None,
-            started_at_ms: now,
-            heartbeat: PeriodicTimer::new(now, HEARTBEAT_MS),
+            started_at_ms: 0,
+            heartbeat: PeriodicTimer::new(0, HEARTBEAT_MS),
             dirty: true,
+            submitted_page: None,
         }
+    }
+
+    /// Initialize retained components in place, then enter Home exactly once.
+    pub fn start(&mut self, now: u64) {
+        self.ui.pages_mut().calculator.initialize();
+        self.started_at_ms = now;
+        self.heartbeat = PeriodicTimer::new(now, HEARTBEAT_MS);
+        self.ui.launch_in_place();
     }
 
     /// Emits at most one heartbeat per poll.
@@ -96,8 +114,9 @@ impl App {
             return None;
         }
         self.ui.pages_mut().home.uptime_seconds = now.saturating_sub(self.started_at_ms) / 1000;
-        self.dirty |=
-            !self.touchpad_open() && self.ui.pages_mut().display_check.pattern().is_none();
+        self.dirty |= !self.touchpad_open()
+            && self.current_page() != Route::Calculator
+            && self.ui.pages_mut().display_check.pattern().is_none();
         Some(self.ui.pages_mut().home.uptime_seconds)
     }
 
@@ -202,14 +221,13 @@ impl App {
 
     pub fn display_completed(&mut self, at_ms: u64) {
         self.ui.pages_mut().display_check.display_completed(at_ms);
-        self.ui.pages_mut().keyboard.completed();
+        self.ui.completed();
     }
 
     pub fn display_failed(&mut self) {
-        if self.current_page() == Route::Keyboard {
-            self.ui.pages_mut().keyboard.invalidate();
-            self.dirty = true;
-        }
+        self.submitted_page = None;
+        self.ui.invalidate();
+        self.dirty = true;
         self.ui.pages_mut().display_check.display_failed();
         self.dirty |= self.ui.pages_mut().display_check.is_open();
     }
@@ -297,6 +315,14 @@ impl App {
         self.ui.current()
     }
 
+    pub fn input_ready(&self) -> bool {
+        self.ui.input_ready()
+    }
+
+    pub fn calculator(&self) -> &calculator::CalculatorPage {
+        &self.ui.pages().calculator
+    }
+
     fn page_info(&self) -> PageInfo<Route> {
         self.ui.page_info()
     }
@@ -345,6 +371,11 @@ impl App {
     /// Returns true only after successful submission of a new frame.
     /// A drawing or refresh error leaves the frame pending.
     pub fn present<D: Display>(&mut self, display: &mut D) -> Result<bool, D::Error> {
+        if self.dirty {
+            self.ui.invalidate();
+        }
+        self.ui.prepare();
+        self.dirty |= self.ui.layers().needs_display();
         let submitted = if self.full_refresh {
             display::present_full(display, self.dirty, |target| self.render(target))?
         } else {
@@ -353,10 +384,9 @@ impl App {
         if submitted {
             self.dirty = false;
             self.full_refresh = false;
+            self.submitted_page = Some(self.current_page());
+            self.ui.submitted();
             self.ui.pages_mut().display_check.submitted();
-            if self.current_page() == Route::Keyboard {
-                self.ui.pages_mut().keyboard.submitted();
-            }
         }
         Ok(submitted)
     }
@@ -395,6 +425,9 @@ mod tests {
     fn touches_require_a_complete_gesture_inside_the_button() {
         let mut app = App::new(&TestClock(0));
         app.navigate(Navigation::Open(Route::Touch));
+        app.ui.prepare();
+        app.ui.submitted();
+        app.ui.completed();
         let inside = TAP_TARGET.center();
         let outside = Point::new(0, 0);
         app.touch(TouchEvent::release(0, inside));

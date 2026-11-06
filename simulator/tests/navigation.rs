@@ -18,6 +18,9 @@ use paper_mesh_platform::TouchEvent;
 use paper_mesh_simulator::{REFRESH_MS, Simulation, power::PowerScenario};
 
 fn tap(sim: &mut Simulation, target: Rectangle) {
+    while !sim.input_ready() {
+        sim.advance(REFRESH_MS);
+    }
     sim.touch_portrait(TouchEvent::touch(0, target.center()));
     sim.touch_portrait(TouchEvent::release(0, target.center()));
 }
@@ -108,7 +111,33 @@ fn pending_operations_block_navigation_until_completion() {
     use paper_mesh_app::App;
     use paper_mesh_platform::{power_off::PowerOffError, suspend::SuspendError};
 
+    struct Display;
+    impl embedded_graphics::geometry::OriginDimensions for Display {
+        fn size(&self) -> embedded_graphics::geometry::Size {
+            paper_mesh_app::SCREEN_SIZE
+        }
+    }
+    impl embedded_graphics::draw_target::DrawTarget for Display {
+        type Color = embedded_graphics::pixelcolor::Gray4;
+        type Error = core::convert::Infallible;
+        fn draw_iter<I: IntoIterator<Item = embedded_graphics::Pixel<Self::Color>>>(
+            &mut self,
+            _: I,
+        ) -> Result<(), Self::Error> {
+            Ok(())
+        }
+    }
+    impl paper_mesh_platform::Display for Display {
+        fn is_busy(&self) -> bool {
+            false
+        }
+        fn refresh(&mut self) -> Result<(), Self::Error> {
+            Ok(())
+        }
+    }
     fn press(app: &mut App, target: Rectangle) {
+        app.present(&mut Display).unwrap();
+        app.display_completed(0);
         app.touch(TouchEvent::touch(0, target.center()));
         app.touch(TouchEvent::release(0, target.center()));
     }

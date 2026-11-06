@@ -167,3 +167,11 @@ documentation.
 Keep verified conclusions and remaining limits in the applicable topic.
 Keep source revisions and dates that identify a reference review.
 Do not present calculated examples or simulator delays as measured hardware performance.
+
+## Event handler names
+
+Prefer `will_` and `did_` prefixes to `on_` for event handlers and callback registration methods.
+Use `will_` before the named operation. Use `did_` after the named event or transition occurs.
+Select the name from actual dispatch timing, not from the caller's intent.
+A `will_` handler does not imply cancellation support. Document any cancellation contract separately.
+For example, page entry uses `did_enter`, page exit uses `will_leave`, and completed activation uses `did_activate`.

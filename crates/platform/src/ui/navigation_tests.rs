@@ -31,6 +31,7 @@ struct Pages {
 }
 
 impl PageSet for Pages {
+    fn invalidate_page(&mut self, _: u8) {}
     type Id = u8;
 
     fn info(&self, id: u8) -> PageInfo<u8> {
@@ -52,18 +53,41 @@ impl PageSet for Pages {
     fn leave_page(&mut self, id: u8) {
         self.lifecycle.push((id, false)).unwrap();
     }
-    fn touch_page(&mut self, id: u8, event: TouchEvent) -> PageEvent<u8> {
-        self.touches.push((id, event)).unwrap();
-        if matches!(event, TouchEvent::Touch(_)) {
-            return self.open_on_touch.take().map_or(PageEvent::None, |id| {
-                PageEvent::Navigate(Navigation::Open(id))
-            });
-        }
-        PageEvent::None
+    fn publish_page(
+        &mut self,
+        _: u8,
+        tx: &mut crate::composition::Transaction<'_, 64>,
+        root: LayerId,
+    ) -> Result<(), crate::composition::Error> {
+        tx.set(
+            root,
+            Properties {
+                bounds: LAYOUT.viewport,
+                drawing: Drawing::Custom(0),
+                bindings: Bindings {
+                    tap: Some(Handler {
+                        owner: root,
+                        slot: 0,
+                        generation: 0,
+                    }),
+                    pan: None,
+                },
+                ..Properties::default()
+            },
+        )
     }
-    fn draw_page<D: DrawTarget<Color = Gray4>>(
+    fn activate_page(&mut self, id: u8, _: u16, _: Gesture) -> PageEvent<u8> {
+        self.touches
+            .push((id, TouchEvent::release(0, Point::new(2, 30))))
+            .unwrap();
+        self.open_on_touch.take().map_or(PageEvent::None, |id| {
+            PageEvent::Navigate(Navigation::Open(id))
+        })
+    }
+    fn draw_page_custom<D: DrawTarget<Color = Gray4>>(
         &self,
         _: u8,
+        _: u16,
         target: &mut D,
     ) -> Result<(), D::Error> {
         target.clear(Gray4::BLACK)
@@ -82,6 +106,35 @@ fn launch<const N: usize>() -> Navigator<Pages, N> {
             open_on_touch: None,
         },
     )
+}
+
+// Static preparation performs no page entry until the runtime explicitly launches in place.
+#[test]
+fn static_storage_launches_the_root_once() {
+    const PREPARED: Navigator<Pages, 4> = Navigator::unlaunched(
+        0,
+        Shell::new(LAYOUT),
+        Pages {
+            lifecycle: Vec::new(),
+            touches: Vec::new(),
+            pending: false,
+            full_screen: false,
+            open_on_touch: None,
+        },
+    );
+    let mut ui = PREPARED;
+    assert!(ui.pages().lifecycle.is_empty());
+    ui.launch_in_place();
+    assert_eq!(ui.pages().lifecycle.as_slice(), &[(0, true)]);
+    ui.navigate(Navigation::Home).unwrap();
+    assert_eq!(ui.pages().lifecycle.as_slice(), &[(0, true)]);
+}
+
+// A second launch must not repeat root entry or discard retained state.
+#[test]
+#[should_panic(expected = "already launched")]
+fn duplicate_in_place_launch_is_rejected() {
+    launch::<4>().launch_in_place();
 }
 
 // Back must return to the page that opened this destination. Home must clear that path.
@@ -209,25 +262,19 @@ fn pending_and_transitions_cannot_complete_an_old_back_tap() {
 #[test]
 fn page_requests_run_callbacks_and_suppress_contacts_until_release() {
     let mut ui = launch::<4>();
-    let point = Point::new(10, 30);
+    let p = Point::new(2, 30);
     ui.pages_mut().open_on_touch = Some(1);
-    assert_eq!(
-        ui.touch(TouchEvent::touch(0, point)).unwrap().transition,
-        Some(Transition { from: 0, to: 1 })
-    );
-    ui.touch(TouchEvent::touch(1, point)).unwrap();
-    ui.touch(TouchEvent::release(0, point)).unwrap();
-    ui.touch(TouchEvent::release(1, point)).unwrap();
-    assert!(!ui.pages().touches.iter().any(|(id, _)| *id == 1));
-    ui.touch(TouchEvent::touch(0, point)).unwrap();
-    assert_eq!(
-        ui.pages().touches.last(),
-        Some(&(1, TouchEvent::touch(0, point)))
-    );
+    ui.touch(TouchEvent::touch(0, p)).unwrap();
+    assert_eq!(ui.current(), 0);
+    ui.touch(TouchEvent::release(0, p)).unwrap();
+    assert_eq!(ui.current(), 1);
+    ui.touch(TouchEvent::touch(0, p)).unwrap();
     ui.navigate(Navigation::Home).unwrap();
-    ui.touch(TouchEvent::Cancel).unwrap();
     ui.pages_mut().open_on_touch = Some(2);
-    ui.touch(TouchEvent::touch(0, point)).unwrap();
+    ui.touch(TouchEvent::release(0, p)).unwrap();
+    assert_eq!(ui.current(), 0);
+    ui.touch(TouchEvent::touch(0, p)).unwrap();
+    ui.touch(TouchEvent::release(0, p)).unwrap();
     assert_eq!(ui.current(), 2);
 }
 
@@ -268,35 +315,69 @@ fn shell_clips_content_and_full_screen_keeps_home_navigation() {
     ui.render(&mut canvas, &Style::GRAYSCALE).unwrap();
     assert_eq!(canvas.0[64 + 41], Style::GRAYSCALE.control_fill);
     ui.pages_mut().full_screen = true;
+    ui.prepare();
     assert!(ui.back_control().is_none());
     ui.render(&mut canvas, &Style::GRAYSCALE).unwrap();
     assert!(canvas.0.iter().all(|color| *color == Gray4::BLACK));
     assert!(ui.navigate(Navigation::Home).unwrap().is_some());
 }
 
-struct SinglePage(u8);
+struct SinglePage {
+    count: u8,
+    elements: crate::ui::elements::Elements<Self, (), 1, 0>,
+}
 impl Page for SinglePage {
     type Id = u8;
+    type Elements = crate::ui::elements::Elements<Self, (), 1, 0>;
+    fn elements(&self) -> &Self::Elements {
+        &self.elements
+    }
+    fn elements_mut(&mut self) -> &mut Self::Elements {
+        &mut self.elements
+    }
     fn page_info(&self) -> PageInfo<u8> {
-        launch::<0>().page_info()
+        PageInfo {
+            id: 0,
+            title: "Single",
+            context: "Test",
+            presentation: Presentation::Standard,
+            navigation_enabled: true,
+        }
     }
-    fn enter(&mut self) {
-        self.0 += 1;
-    }
-    fn leave(&mut self) {
-        panic!("a root-only page cannot leave");
-    }
-    fn handle_touch(&mut self, _: TouchEvent) -> PageEvent<u8> {
-        PageEvent::None
-    }
-    fn render_page<D: DrawTarget<Color = Gray4>>(&self, _: &mut D) -> Result<(), D::Error> {
-        Ok(())
+    fn did_enter(&mut self) {
+        self.count += 1;
     }
 }
-
-// A root-only application must enter its single page once without an adapter.
+// A root-only client receives its lifecycle callback once without a collection adapter.
 #[test]
 fn a_single_page_can_launch_without_a_collection_adapter() {
-    let ui = Navigator::<_, 0>::launch(0, Shell::new(LAYOUT), SinglePage(0));
-    assert_eq!(ui.pages().0, 1);
+    let ui = Navigator::<_, 0>::launch(
+        0,
+        Shell::new(LAYOUT),
+        SinglePage {
+            count: 0,
+            elements: crate::ui::elements::Elements::new(LAYOUT.content),
+        },
+    );
+    assert_eq!(ui.pages().count, 1);
+}
+
+// Page replacement uses one publication and revokes old layers without losing page lifecycle state.
+#[test]
+fn repeated_navigation_reclaims_layer_storage() {
+    let mut ui = launch::<4>();
+    for _ in 0..100 {
+        let old = ui.roots[0].1;
+        let revision = ui.layers().revision();
+        ui.navigate(Navigation::Open(1)).unwrap();
+        assert_eq!(ui.layers().revision(), revision + 1);
+        assert_eq!(
+            ui.layers().properties(old),
+            Err(crate::composition::Error::StaleHandle)
+        );
+        ui.navigate(Navigation::Home).unwrap();
+        // The mock lifecycle log has a separate, deliberately small test capacity.
+        ui.pages_mut().lifecycle.clear();
+    }
+    assert_eq!(ui.current(), 0);
 }

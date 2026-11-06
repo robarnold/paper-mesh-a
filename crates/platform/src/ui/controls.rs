@@ -17,6 +17,27 @@ use embedded_graphics::{
 
 use super::Style;
 
+/// Whether a control can accept activation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EnabledState {
+    Enabled,
+    Disabled,
+}
+impl EnabledState {
+    pub const fn is_enabled(self) -> bool {
+        matches!(self, Self::Enabled)
+    }
+}
+impl From<bool> for EnabledState {
+    fn from(enabled: bool) -> Self {
+        if enabled {
+            Self::Enabled
+        } else {
+            Self::Disabled
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 pub struct Button<'a> {
     pub bounds: Rectangle,

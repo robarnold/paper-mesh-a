@@ -20,6 +20,12 @@ use paper_mesh_platform::{
 use paper_mesh_simulator::{REFRESH_MS, Simulation, power::PowerScenario};
 
 fn press(sim: &mut Simulation, target: Rectangle) {
+    for _ in 0..4 {
+        if sim.input_ready() {
+            break;
+        }
+        sim.advance(REFRESH_MS);
+    }
     sim.touch_portrait(TouchEvent::touch(0, target.center()));
     sim.touch_portrait(TouchEvent::release(0, target.center()));
 }
@@ -106,8 +112,8 @@ fn expiry_and_frames_do_not_depend_on_time_step_size() {
     let mut small = Simulation::default();
     press(&mut small, HOME_TARGET);
     for sim in [&mut large, &mut small] {
-        sim.set_power_scenario(PowerScenario::Stale);
         press(sim, Component::Power.target());
+        sim.set_power_scenario(PowerScenario::Stale);
     }
     large.advance(POWER_MAX_AGE_MS - 1);
     assert_eq!(large.power().view().battery_status, ReadingStatus::Fresh);

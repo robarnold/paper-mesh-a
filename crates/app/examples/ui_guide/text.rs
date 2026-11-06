@@ -13,13 +13,10 @@ use embedded_graphics::{
     primitives::{PrimitiveStyle, Rectangle},
     text::{Baseline, Text},
 };
-use paper_mesh_platform::{
-    TouchEvent,
-    input::TapGesture,
-    ui::{
-        Button, Navigator, Page, PageEvent, PageInfo, Presentation, Shell, TextBadge, TextRole,
-        format::measurement,
-    },
+use paper_mesh_platform::ui::EnabledState;
+use paper_mesh_platform::ui::{
+    Button, Navigator, Page, PageEvent, PageInfo, Presentation, Shell, TextBadge, TextRole,
+    format::measurement,
 };
 
 use super::{LAYOUT, STYLE, line};
@@ -55,7 +52,7 @@ pub struct TextPage {
     pub bubbled: bool,
     pub spacing: usize,
     pub color: usize,
-    gesture: TapGesture<usize>,
+    elements: paper_mesh_platform::ui::elements::Elements<TextPage, usize, 17, 0>,
 }
 
 impl Default for TextPage {
@@ -66,7 +63,7 @@ impl Default for TextPage {
             bubbled: false,
             spacing: 0,
             color: 0,
-            gesture: TapGesture::new(),
+            elements: paper_mesh_platform::ui::elements::Elements::new(super::LAYOUT.viewport),
         }
     }
 }
@@ -166,38 +163,55 @@ impl Page for TextPage {
             navigation_enabled: true,
         }
     }
-    fn enter(&mut self) {
-        self.gesture.cancel();
+    fn did_enter(&mut self) {}
+    fn will_leave(&mut self) {}
+    type Elements = paper_mesh_platform::ui::elements::Elements<Self, usize, 17, 0>;
+    fn elements(&self) -> &Self::Elements {
+        &self.elements
     }
-    fn leave(&mut self) {
-        self.gesture.cancel();
+    fn elements_mut(&mut self) -> &mut Self::Elements {
+        &mut self.elements
     }
-    fn handle_touch(&mut self, event: TouchEvent) -> PageEvent<u8> {
+    fn sync_elements(&mut self) {
         let roles = self.role_buttons();
-        let underline = [self.underline_button()];
-        let bubble = [self.bubble_button()];
         let spacing = self.spacing_buttons();
         let swatches = self.swatches();
-        let selected = self.gesture.update(event, |point| {
-            roles
-                .iter()
-                .chain(&underline)
-                .chain(&bubble)
-                .chain(&spacing)
-                .chain(&swatches)
-                .position(|button| button.hit(point))
-        });
-        match selected {
-            Some(index @ 0..=3) => self.role = index,
-            Some(4) => self.underlined = !self.underlined,
-            Some(5) => self.bubbled = !self.bubbled,
-            Some(index @ 6..=7) => self.spacing = index - 6,
-            Some(index @ 8..=15) => self.color = index - 8,
-            _ => return PageEvent::None,
-        }
-        PageEvent::Changed
+        let underline = self.underline_button();
+        let bubble = self.bubble_button();
+        self.elements
+            .surface(
+                roles
+                    .into_iter()
+                    .chain([underline, bubble])
+                    .chain(spacing)
+                    .chain(swatches)
+                    .enumerate()
+                    .map(|(i, b)| (b.bounds, i, EnabledState::from(b.enabled))),
+            )
+            .expect("fixed surface fits element capacity");
     }
-    fn render_page<D: DrawTarget<Color = Gray4>>(&self, display: &mut D) -> Result<(), D::Error> {
+    fn configure_handlers(&mut self) {
+        self.elements_mut()
+            .default_callback(|page, context, action| {
+                let result = (|| {
+                    match Some(action) {
+                        Some(index @ 0..=3) => page.role = index,
+                        Some(4) => page.underlined = !page.underlined,
+                        Some(5) => page.bubbled = !page.bubbled,
+                        Some(index @ 6..=7) => page.spacing = index - 6,
+                        Some(index @ 8..=15) => page.color = index - 8,
+                        _ => return PageEvent::None,
+                    }
+                    PageEvent::Changed
+                })();
+                context.respond(result);
+            });
+    }
+    fn draw_custom<D: DrawTarget<Color = Gray4>>(
+        &self,
+        _: u16,
+        display: &mut D,
+    ) -> Result<(), D::Error> {
         line(display, "TEXT ROLES", 130, TextRole::Caption)?;
         for button in self.role_buttons() {
             button.render(display, &STYLE)?;

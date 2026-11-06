@@ -17,7 +17,7 @@ use embedded_graphics::{
     text::DecorationColor,
 };
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TextRole {
     Title,
     Body,

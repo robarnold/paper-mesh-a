@@ -8,13 +8,10 @@
 //! See [Pages and shells](../../../../docs/platform/toolkit.md#pages-and-shells).
 
 use embedded_graphics::{pixelcolor::Gray4, prelude::*, primitives::Rectangle, text::Text};
-use paper_mesh_platform::{
-    TouchEvent,
-    input::TapGesture,
-    ui::{
-        Button, Navigation, NavigationCard, Navigator, Page, PageEvent, PageInfo, Presentation,
-        Shell, TextRole, format::measurement,
-    },
+use paper_mesh_platform::ui::EnabledState;
+use paper_mesh_platform::ui::{
+    Button, Navigation, NavigationCard, Navigator, Page, PageEvent, PageInfo, PageRuntime,
+    Presentation, Shell, TextRole, format::measurement,
 };
 
 use super::{LAYOUT, STYLE, line};
@@ -37,9 +34,10 @@ impl Route {
 pub struct ControlsPage {
     route: Route,
     pub count: u32,
+    pub pan_distance: i32,
     pub selected: bool,
     pub pending: bool,
-    gesture: TapGesture<usize>,
+    elements: paper_mesh_platform::ui::elements::Elements<ControlsPage, usize, 7, 0>,
 }
 
 impl ControlsPage {
@@ -47,9 +45,10 @@ impl ControlsPage {
         Self {
             route,
             count: 0,
+            pan_distance: 0,
             selected: true,
             pending: false,
-            gesture: TapGesture::new(),
+            elements: paper_mesh_platform::ui::elements::Elements::new(super::LAYOUT.viewport),
         }
     }
 
@@ -123,39 +122,71 @@ impl Page for ControlsPage {
         }
     }
 
-    fn enter(&mut self) {
-        self.gesture.cancel();
-    }
-    fn leave(&mut self) {
-        self.gesture.cancel();
-    }
+    fn did_enter(&mut self) {}
+    fn will_leave(&mut self) {}
 
-    fn handle_touch(&mut self, event: TouchEvent) -> PageEvent<Route> {
-        if self.route != Route::Controls {
-            return PageEvent::None;
-        }
+    type Elements = paper_mesh_platform::ui::elements::Elements<Self, usize, 7, 0>;
+    fn elements(&self) -> &Self::Elements {
+        &self.elements
+    }
+    fn elements_mut(&mut self) -> &mut Self::Elements {
+        &mut self.elements
+    }
+    fn sync_elements(&mut self) {
         let buttons = self.buttons();
         let card = self.card();
         let finish = self.finish_button();
-        let action = self.gesture.update(event, |point| {
-            buttons
-                .iter()
-                .position(|button| button.hit(point))
-                .or_else(|| card.hit(point).then_some(4))
-                .or_else(|| finish.hit(point).then_some(5))
-        });
-        match action {
-            Some(0) => self.count = self.count.saturating_add(1),
-            Some(1) => self.selected = !self.selected,
-            Some(3) => self.pending = true,
-            Some(4) => return PageEvent::Navigate(Navigation::Open(Route::Detail)),
-            Some(5) => self.pending = false,
-            _ => return PageEvent::None,
-        }
-        PageEvent::Changed
+        let enabled = self.route == Route::Controls;
+        self.elements
+            .surface(
+                buttons
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, b)| (b.bounds, i, EnabledState::from(enabled && b.enabled)))
+                    .chain([
+                        (card.bounds, 4, EnabledState::from(enabled && card.enabled)),
+                        (
+                            finish.bounds,
+                            5,
+                            EnabledState::from(enabled && finish.enabled),
+                        ),
+                    ]),
+            )
+            .expect("fixed surface fits element capacity");
+        let root = self.elements.root_element().unwrap();
+        self.elements
+            .did_pan(root, 0, |page, context, _, gesture| {
+                if let paper_mesh_platform::composition::Gesture::Pan { displacement, .. } = gesture
+                {
+                    page.pan_distance = displacement.x;
+                    context.changed();
+                }
+            })
+            .unwrap();
+    }
+    fn configure_handlers(&mut self) {
+        self.elements_mut()
+            .default_callback(|page, context, action| {
+                let result = (|| {
+                    match Some(action) {
+                        Some(0) => page.count = page.count.saturating_add(1),
+                        Some(1) => page.selected = !page.selected,
+                        Some(3) => page.pending = true,
+                        Some(4) => return PageEvent::Navigate(Navigation::Open(Route::Detail)),
+                        Some(5) => page.pending = false,
+                        _ => return PageEvent::None,
+                    }
+                    PageEvent::Changed
+                })();
+                context.respond(result);
+            });
     }
 
-    fn render_page<D: DrawTarget<Color = Gray4>>(&self, display: &mut D) -> Result<(), D::Error> {
+    fn draw_custom<D: DrawTarget<Color = Gray4>>(
+        &self,
+        _: u16,
+        display: &mut D,
+    ) -> Result<(), D::Error> {
         if self.route == Route::Detail {
             line(display, "The card opened this page.", 144, TextRole::Body)?;
             line(
@@ -171,6 +202,14 @@ impl Page for ControlsPage {
                 TextRole::Body,
             );
         }
+        line(
+            display,
+            "Drag a button to pan; release without dragging to tap.",
+            820,
+            TextRole::Secondary,
+        )?;
+        let distance = measurement(Some(self.pan_distance), "px pan");
+        line(display, &distance, 856, TextRole::Body)?;
         line(display, "CONTROL STATES", 130, TextRole::Caption)?;
         for button in self.buttons() {
             button.render(display, &STYLE)?;
@@ -238,6 +277,9 @@ impl ControlsPages {
 
 impl paper_mesh_platform::ui::PageSet for ControlsPages {
     type Id = Route;
+    fn invalidate_page(&mut self, id: Route) {
+        self.page_mut(id).invalidate();
+    }
     fn info(&self, id: Route) -> PageInfo<Route> {
         self.page(id).page_info()
     }
@@ -247,15 +289,29 @@ impl paper_mesh_platform::ui::PageSet for ControlsPages {
     fn leave_page(&mut self, id: Route) {
         self.page_mut(id).leave();
     }
-    fn touch_page(&mut self, id: Route, event: TouchEvent) -> PageEvent<Route> {
-        self.page_mut(id).handle_touch(event)
+    fn publish_page(
+        &mut self,
+        id: Route,
+        tx: &mut paper_mesh_platform::composition::Transaction<'_, 64>,
+        root: paper_mesh_platform::composition::LayerId,
+    ) -> Result<(), paper_mesh_platform::composition::Error> {
+        self.page_mut(id).publish(tx, root)
     }
-    fn draw_page<D: DrawTarget<Color = Gray4>>(
+    fn activate_page(
+        &mut self,
+        id: Route,
+        slot: u16,
+        gesture: paper_mesh_platform::composition::Gesture,
+    ) -> PageEvent<Route> {
+        self.page_mut(id).activate(slot, gesture)
+    }
+    fn draw_page_custom<D: DrawTarget<Color = Gray4>>(
         &self,
         id: Route,
+        slot: u16,
         display: &mut D,
     ) -> Result<(), D::Error> {
-        self.page(id).render_page(display)
+        self.page(id).draw_custom(slot, display)
     }
 }
 

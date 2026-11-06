@@ -22,6 +22,12 @@ use paper_mesh_platform::{
 use paper_mesh_simulator::{REFRESH_MS, Simulation, power::PowerScenario};
 
 fn press(sim: &mut Simulation, target: Rectangle) {
+    for _ in 0..4 {
+        if sim.input_ready() {
+            break;
+        }
+        sim.advance(REFRESH_MS);
+    }
     sim.touch_portrait(TouchEvent::touch(0, target.center()));
     sim.touch_portrait(TouchEvent::release(0, target.center()));
 }

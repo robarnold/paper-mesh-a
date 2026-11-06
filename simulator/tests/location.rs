@@ -20,6 +20,12 @@ use paper_mesh_simulator::{
 };
 
 fn press(sim: &mut Simulation, target: Rectangle) {
+    for _ in 0..4 {
+        if sim.input_ready() {
+            break;
+        }
+        sim.advance(REFRESH_MS);
+    }
     sim.touch_portrait(TouchEvent::touch(0, target.center()));
     sim.touch_portrait(TouchEvent::release(0, target.center()));
 }
@@ -36,7 +42,7 @@ fn location_screen_acquires_a_fix_and_keeps_other_screens_available() {
     assert_eq!(sim.location().view().status, FixStatus::Acquiring);
     assert_eq!(sim.location().view().coordinates, None);
     assert_eq!(sim.location().view().elevation_mm, None);
-    sim.advance(ACQUISITION_MS - 2 * REFRESH_MS - 1);
+    sim.advance(ACQUISITION_MS - sim.snapshot().now_ms - 1);
     assert_eq!(sim.location().view().status, FixStatus::Acquiring);
     sim.advance(1 + REFRESH_MS);
     assert_eq!(sim.location().view().status, FixStatus::Valid);
@@ -150,7 +156,8 @@ fn new_observations_combine_while_display_refresh_is_pending() {
     let mut sim = Simulation::default();
     press(&mut sim, HOME_TARGET);
     press(&mut sim, Component::Location.target());
-    // The startup frame still owns the panel.
+    // The location entry frame still owns the panel.
+    let baseline = sim.snapshot().completed_refreshes;
     sim.set_location_scenario(LocationScenario::ZeroCoordinates);
     sim.advance(REFRESH_MS);
     assert!(sim.snapshot().display_busy);
@@ -158,7 +165,7 @@ fn new_observations_combine_while_display_refresh_is_pending() {
     sim.advance(2 * REFRESH_MS);
     assert_eq!(sim.location().view().status, FixStatus::Fault);
     assert!(!sim.snapshot().display_busy);
-    assert_eq!(sim.snapshot().completed_refreshes, 3);
+    assert_eq!(sim.snapshot().completed_refreshes, baseline + 3);
 }
 
 // Receiver activity and satellite signal levels can remain visible before a position fix.
@@ -198,8 +205,8 @@ fn active_receiver_and_signal_levels_do_not_require_a_fix() {
 fn response_fix_and_satellite_expiry_are_independent() {
     let mut sim = Simulation::default();
     press(&mut sim, HOME_TARGET);
-    sim.set_location_scenario(LocationScenario::StaleSatellites);
     press(&mut sim, Component::Location.target());
+    sim.set_location_scenario(LocationScenario::StaleSatellites);
     sim.advance(4_999);
     assert!(sim.location().view().satellites.is_some());
     sim.advance(1);
@@ -297,8 +304,8 @@ fn motion_and_utc_expire_independently_while_position_and_receiver_stay_current(
     for scenario in [LocationScenario::StaleMotion, LocationScenario::StaleUtc] {
         let mut sim = Simulation::default();
         press(&mut sim, HOME_TARGET);
-        sim.set_location_scenario(scenario);
         press(&mut sim, Component::Location.target());
+        sim.set_location_scenario(scenario);
         sim.advance(4_999);
         assert!(sim.snapshot().speed_mm_s.is_some());
         assert!(sim.snapshot().utc_time.is_some());

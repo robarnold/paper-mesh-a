@@ -50,6 +50,9 @@ The platform overview does not imply that all services are implemented.
 | Topic | Contents |
 | --- | --- |
 | [Application toolkit](platform/toolkit.md) | Current components, caller choices, and API behavior |
+| [Composition](platform/composition.md) | Layers, drawing, touchscreen input, and atomic publication |
+| [UI](platform/ui.md) | Elements, layout, controls, callbacks, and system integration |
+| [UI requirements](platform/ui-requirements.md) | Proposed controls, consuming flows, and ordered acceptance criteria |
 | [Shared UI standard](ui.md) | Visual language, page behavior, navigation, and validation |
 | [Runtime execution](platform/runtime.md) | Implementation boundaries and the current application loop |
 | [Orientation state and coordinate spaces](platform/orientation.md) | Coordinate transforms, orientation policy, and frame state |

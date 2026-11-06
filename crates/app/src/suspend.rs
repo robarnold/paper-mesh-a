@@ -8,14 +8,14 @@
 //! See the [suspend experiment](../../../docs/application.md#suspend-experiment).
 
 use crate::screen::{STYLE, button};
+use paper_mesh_platform::ui::EnabledState;
 use paper_mesh_platform::ui::TextRole;
 
 use core::fmt::Write;
 use embedded_graphics::{pixelcolor::Gray4, prelude::*, primitives::Rectangle, text::Text};
 use heapless::String;
 use paper_mesh_platform::{
-    TouchEvent,
-    input::{TapGesture, buttons::ButtonDescriptor},
+    input::buttons::ButtonDescriptor,
     suspend::{SuspendError, SuspendReport, SuspendRequest, WakeReason},
     ui::format::measurement,
 };
@@ -27,7 +27,7 @@ pub const START: Rectangle = Rectangle::new(Point::new(28, 250), Size::new(484, 
 pub const TOUCH_WAKE: Rectangle = Rectangle::new(Point::new(28, 326), Size::new(484, 56));
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Action {
+pub enum Action {
     Duration(u64),
     Start,
     TouchWake,
@@ -41,7 +41,7 @@ pub struct SuspendScreen {
     result: Option<Result<SuspendReport, SuspendError>>,
     wake_controls: &'static [ButtonDescriptor],
     touch_wake: bool,
-    gesture: TapGesture<Action>,
+    pub(crate) elements: paper_mesh_platform::ui::elements::Elements<SuspendScreen, Action, 8, 0>,
 }
 
 impl SuspendScreen {
@@ -54,7 +54,9 @@ impl SuspendScreen {
             result: None,
             wake_controls: &[],
             touch_wake: false,
-            gesture: TapGesture::new(),
+            elements: paper_mesh_platform::ui::elements::Elements::new(
+                crate::screen::LAYOUT.viewport,
+            ),
         }
     }
     pub fn pending(&self) -> bool {
@@ -63,12 +65,10 @@ impl SuspendScreen {
 
     pub fn open(&mut self) {
         self.open = true;
-        self.gesture.cancel();
     }
 
     pub fn close(&mut self) {
         self.open = false;
-        self.gesture.cancel();
     }
 
     pub fn set_controls(&mut self, controls: &'static [ButtonDescriptor]) {
@@ -95,27 +95,39 @@ impl SuspendScreen {
     pub fn finish(&mut self, result: Result<SuspendReport, SuspendError>) {
         self.pending = false;
         self.result = Some(result);
-        self.gesture.cancel();
     }
     pub fn result(&self) -> Option<Result<SuspendReport, SuspendError>> {
         self.result
     }
-    pub fn touch(&mut self, event: TouchEvent) -> bool {
-        if self.pending {
-            return false;
-        }
-        let action = self.gesture.update(event, |point| {
-            [
-                (ONE_MINUTE, Action::Duration(60_000)),
-                (TEN_MINUTES, Action::Duration(600_000)),
-                (ONE_HOUR, Action::Duration(3_600_000)),
-                (START, Action::Start),
-                (TOUCH_WAKE, Action::TouchWake),
-            ]
-            .into_iter()
-            .find_map(|(target, action)| target.contains(point).then_some(action))
-        });
-        match action {
+    pub(crate) fn sync_nodes(&mut self) {
+        self.elements
+            .surface([
+                (
+                    ONE_MINUTE,
+                    Action::Duration(60_000),
+                    EnabledState::from(!self.pending),
+                ),
+                (
+                    TEN_MINUTES,
+                    Action::Duration(600_000),
+                    EnabledState::from(!self.pending),
+                ),
+                (
+                    ONE_HOUR,
+                    Action::Duration(3_600_000),
+                    EnabledState::from(!self.pending),
+                ),
+                (START, Action::Start, EnabledState::from(!self.pending)),
+                (
+                    TOUCH_WAKE,
+                    Action::TouchWake,
+                    EnabledState::from(!self.pending),
+                ),
+            ])
+            .expect("fixed surface fits element capacity");
+    }
+    pub(crate) fn activate(&mut self, action: Action) -> bool {
+        match Some(action) {
             Some(Action::Duration(value)) => self.duration_ms = value,
             Some(Action::TouchWake) => self.touch_wake = !self.touch_wake,
             Some(Action::Start) => {

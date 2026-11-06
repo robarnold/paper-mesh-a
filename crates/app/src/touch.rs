@@ -8,24 +8,24 @@
 //! See the [touch check](../../../docs/application.md#touch-check).
 
 use crate::screen::{STYLE, button};
+use paper_mesh_platform::ui::EnabledState;
 use paper_mesh_platform::ui::TextRole;
 
 use core::fmt::Write;
 use embedded_graphics::{pixelcolor::Gray4, prelude::*, primitives::Rectangle, text::Text};
 use heapless::String;
-use paper_mesh_platform::{TouchEvent, input::TapGesture};
 
 pub const TAP_TARGET: Rectangle = Rectangle::new(Point::new(48, 380), Size::new(444, 200));
 
-#[derive(PartialEq)]
-enum Action {
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Action {
     Count,
 }
 
 pub struct TouchScreen {
     open: bool,
     taps: u32,
-    gesture: TapGesture<Action>,
+    pub(crate) elements: paper_mesh_platform::ui::elements::Elements<TouchScreen, Action, 8, 0>,
 }
 
 impl Default for TouchScreen {
@@ -39,16 +39,16 @@ impl TouchScreen {
         Self {
             open: false,
             taps: 0,
-            gesture: TapGesture::new(),
+            elements: paper_mesh_platform::ui::elements::Elements::new(
+                crate::screen::LAYOUT.viewport,
+            ),
         }
     }
     pub fn open(&mut self) {
         self.open = true;
-        self.gesture.cancel();
     }
     pub fn close(&mut self) {
         self.open = false;
-        self.gesture.cancel();
     }
     pub fn is_open(&self) -> bool {
         self.open
@@ -57,20 +57,15 @@ impl TouchScreen {
         self.taps
     }
 
-    pub fn touch(&mut self, event: TouchEvent) -> bool {
-        match self.gesture.update(event, |point| {
-            if TAP_TARGET.contains(point) {
-                Some(Action::Count)
-            } else {
-                None
-            }
-        }) {
-            Some(Action::Count) => self.taps = self.taps.saturating_add(1),
-            None => return false,
-        }
+    pub(crate) fn sync_nodes(&mut self) {
+        self.elements
+            .surface([(TAP_TARGET, Action::Count, EnabledState::Enabled)])
+            .expect("fixed surface fits element capacity");
+    }
+    pub(crate) fn activate(&mut self, _: Action) -> bool {
+        self.taps = self.taps.saturating_add(1);
         true
     }
-
     pub fn render<D: DrawTarget<Color = Gray4>>(&self, display: &mut D) -> Result<(), D::Error> {
         display.clear(STYLE.background)?;
         let style = STYLE.text(TextRole::Body);

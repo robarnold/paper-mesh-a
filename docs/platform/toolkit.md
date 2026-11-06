@@ -12,7 +12,7 @@ It has no application dependency or screen layout.
 ## User interface components
 
 Buttons and navigation cards use the same bounds and enabled state for drawing and hit testing.
-Pass their hit results to the tap recognizer. The caller supplies the action or destination.
+Retained controls publish input bindings to shared layers. The caller supplies callbacks and control data.
 Badges annotate content and have no input behavior.
 The [text input contract](text-input.md) defines how the field receives edits from the soft keyboard.
 
@@ -24,23 +24,34 @@ See the [toolkit API](../../crates/platform/src/ui/mod.rs) for available compone
 
 The [UI guide](../simulator/execution.md#ui-guide) demonstrates these contracts with a complete example application.
 
-`Page` defines one destination's metadata, entry, exit, local touch handling, and rendering.
-Its associated `Id` type belongs to the application.
+`Page` supplies retained elements, metadata, lifecycle hooks, and callback bindings.
+Its associated `Id` and control data types belong to the application.
+`PageRuntime` prepares layout, publishes elements, and dispatches callbacks after layer traversal.
+Pages provide `did_enter`, `will_leave`, `sync_elements`, and `configure_handlers` hooks.
+Callbacks receive mutable page state, a `UiContext`, and typed control data.
+Custom graphics use `draw_custom` within the layer clip.
+See [UI](ui.md) for ownership, publication, and input rules.
 `PageInfo` supplies the destination, title, context, presentation, and navigation availability.
 It contains no parent or return destination.
 `PageEvent` reports no change, a visible change, or a navigation request.
 
 `PageSet` dispatches by identity to application-defined page storage.
-Its `info`, `enter_page`, `leave_page`, `touch_page`, and `draw_page` methods delegate to the corresponding Page methods.
+Its dispatch methods delegate to page metadata and the common `PageRuntime` operations.
+The collection routes layout preparation, invalidation, focus, and callbacks to the selected page.
 The collection can retain shared service state across related destinations.
 A single Page also implements PageSet without an adapter.
 
-`Navigator<Pages, CAPACITY>` owns one shell, the supplied page collection, and a bounded return stack.
+`Navigator<Pages, CAPACITY>` owns the shared layers, shell, page collection, system keyboard, focus, and bounded return stack.
 `Navigator::launch(home, shell, pages)` enters the root exactly once before input or rendering.
 It does not require a heap, global state, an executor, or trait objects.
 The application selects the history capacity through the const parameter.
 
-`Shell` supplies the shared frame and Back gesture.
+For static storage, `Navigator::unlaunched` supplies a constant initializer without page entry.
+The runtime then calls `launch_in_place` once before input, navigation, or rendering.
+This avoids a large temporary return value on an embedded stack.
+Ordinary callers can continue to use `Navigator::launch`.
+
+`Shell` supplies the shared frame and Back region. The layer stack recognizes its tap.
 `ShellLayout` supplies viewport, content, header, divider, and Back regions in logical coordinates.
 It contains no backend dimensions or resource controls.
 The caller must supply non-overlapping regions within the viewport and sufficient space for readable text.
@@ -54,9 +65,16 @@ The application integrates these contracts in this order:
 4. Give logical touch input to `Navigator::touch`.
 5. Pass external navigation requests to `Navigator::navigate`.
 6. Mark visible updates and returned transitions for display submission.
-7. Render through `Navigator::render` with the application style.
+7. Call `Navigator::prepare` after service updates and before drawing.
+8. Render through `Navigator::render` with the application style.
+9. Call `Navigator::submitted` after successful refresh acceptance, then `completed` after presentation.
 
-The navigator processes the Back gesture before page input.
+The layer store records the submitted revision. Completion acknowledges that revision even after navigation.
+Only one frame can await completion. The display backend enforces this limit.
+Call `invalidate` after display failure or recovery before a replacement frame.
+Entry invalidates the destination elements. Input uses committed layers immediately, including before the first completed frame.
+
+The layer stack routes Back and page input through the same hierarchy.
 It handles page navigation requests and completes exit and entry callbacks before returning an update.
 The application does not apply those callbacks separately.
 `pages` and `pages_mut` provide access for service polling and retained page state.
@@ -81,11 +99,13 @@ The runtime also suppresses held contacts across system navigation through the i
 When the runtime suppresses physical releases, it must deliver `TouchEvent::Cancel` before the navigation request.
 
 The navigator renders the active page through its shell.
-The shell clears the viewport, clips standard content, and draws the header after the content.
+System layers clear the viewport and clip standard content. The shell draws the header above the content.
 Full-screen pages receive the complete viewport without a header.
 The application and display service still control dirty state, refresh submission, and physical completion.
 
-Overlay composition, modal input capture, automatic layout, and scrolling remain planned work.
+The [UI layout engine](layout.md) supplies rows, columns, grids, separate input regions, and logical drawing damage.
+Overlay composition, modal input capture, and scrolling remain planned work.
+The [UI requirements](ui-requirements.md) define their consumers, boundaries, and implementation priorities.
 
 ## Time and display helpers
 

@@ -8,10 +8,10 @@
 //! See the [diagnostics overview](../../../docs/application.md#diagnostics).
 
 use crate::screen::STYLE;
+use paper_mesh_platform::ui::EnabledState;
 use paper_mesh_platform::ui::TextRole;
 
 use embedded_graphics::{pixelcolor::Gray4, prelude::*, primitives::Rectangle, text::Text};
-use paper_mesh_platform::{TouchEvent, input::TapGesture, ui::NavigationCard};
 
 pub const HOME_TARGET: Rectangle = Rectangle::new(Point::new(28, 206), Size::new(484, 112));
 
@@ -62,14 +62,14 @@ impl Component {
     }
 }
 
-#[derive(PartialEq)]
-enum Action {
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Action {
     Open(Component),
 }
 
 pub struct Menu {
     open: bool,
-    gesture: TapGesture<Action>,
+    pub(crate) elements: paper_mesh_platform::ui::elements::Elements<Menu, Action, 8, 0>,
 }
 
 impl Default for Menu {
@@ -82,43 +82,37 @@ impl Menu {
     pub const fn new() -> Self {
         Self {
             open: false,
-            gesture: TapGesture::new(),
+            elements: paper_mesh_platform::ui::elements::Elements::new(
+                crate::screen::LAYOUT.viewport,
+            ),
         }
     }
 
     pub fn open(&mut self) {
         self.open = true;
-        self.gesture.cancel();
     }
 
     pub fn close(&mut self) {
         self.open = false;
-        self.gesture.cancel();
     }
 
     pub fn is_open(&self) -> bool {
         self.open
     }
 
-    pub fn touch(&mut self, event: TouchEvent) -> Option<Component> {
-        self.gesture
-            .update(event, |point| {
+    pub(crate) fn sync_nodes(&mut self) {
+        self.elements
+            .surface(
                 Component::ALL
                     .into_iter()
-                    .find(|component| {
-                        NavigationCard {
-                            bounds: component.target(),
-                            title: component.label(),
-                            description: component.description(),
-                            enabled: true,
-                        }
-                        .hit(point)
-                    })
-                    .map(Action::Open)
-            })
-            .map(|Action::Open(component)| component)
+                    .map(|c| (c.target(), Action::Open(c), EnabledState::Enabled)),
+            )
+            .expect("fixed surface fits element capacity");
     }
-
+    pub(crate) fn activate(&mut self, action: Action) -> Option<Component> {
+        let Action::Open(component) = action;
+        Some(component)
+    }
     pub fn render<D: DrawTarget<Color = Gray4>>(&self, display: &mut D) -> Result<(), D::Error> {
         display.clear(STYLE.background)?;
         Text::new(
