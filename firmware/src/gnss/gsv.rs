@@ -66,9 +66,7 @@ impl Gsv {
     };
 
     pub fn clear(&mut self) {
-        for stream in &mut self.streams {
-            *stream = Stream::EMPTY;
-        }
+        self.streams.fill(Stream::EMPTY);
         self.overflow_at_ms = None;
     }
 
