@@ -40,6 +40,7 @@ The [snapshot recipe](../../justfile) specifies the output paths.
 The Retained layout section includes the production calculator in an independent session.
 It demonstrates separate layout, graphics, and input properties with keyboard input and a reset shortcut on the focused preview.
 The guide completes presentation synchronously. The device simulator retains its delayed display behavior.
+Use application controls on the simulated display. The browser UI does not duplicate these controls.
 
 Use the [interactive guide](http://localhost:8080/ui-guide) to try platform controls and inspect the Rust examples that draw them.
 Each example has its own state. Browser tabs on the same server share that state, so an action in one tab can affect another.
