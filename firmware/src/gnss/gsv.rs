@@ -279,7 +279,7 @@ fn parse(fields: &[&str]) -> Option<Parsed> {
         return None;
     }
     let mut entries = [None; 4];
-    for (index, block) in blocks.chunks_exact(4).enumerate() {
+    for (index, block) in blocks.as_chunks::<4>().0.iter().enumerate() {
         if index >= expected {
             if block.iter().any(|field| !field.is_empty()) {
                 return None;
