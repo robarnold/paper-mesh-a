@@ -14,6 +14,12 @@ pub mod synchronization;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InvalidTimeReason {
+    /// The device reports voltage loss that invalidates retained time.
+    PowerLost,
+    ClockStopped,
+    TestMode,
+    /// The stored calendar convention is outside the adapter's supported range.
+    UnsupportedCalendar,
     InvalidCalendar,
 }
 

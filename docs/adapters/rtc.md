@@ -19,6 +19,12 @@ The adapter assigns century bit `C=0` to years 2000 through 2099.
 It rejects `C=1` and dates outside that range.
 Retained values require this century convention.
 
+The driver functions and the `Rtc` implementation return the same `RtcError` operation errors.
+A successful read returns usable UTC. Invalid retained time returns `InvalidTime` with a reason.
+Overlapping conditions report voltage loss first, then test mode, STOP, unsupported century, and invalid calendar fields.
+An I2C failure returns `Access` without an inference about calendar state.
+Unsupported input years return `UnsupportedDate` before any bus access.
+
 The driver sets STOP, writes the complete calendar, and clears STOP.
 It leaves alarm, timer, and clock-output registers unchanged.
 A failed calendar write leaves STOP set to prevent use of a partial date.

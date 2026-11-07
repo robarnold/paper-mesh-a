@@ -16,26 +16,33 @@ use paper_mesh_platform::time::{Date, Time, UtcDateTime};
 const ADDRESS: u8 = 0x51;
 const STOP: u8 = 0x20;
 
-#[derive(Debug, PartialEq, Eq)]
-pub enum Error<E> {
-    Bus(E),
-    UnsupportedYear,
-}
-
 /// Read all calendar fields in one transaction to prevent mixed rollover values.
-pub fn read<I: I2c>(bus: &mut I) -> Result<Option<UtcDateTime>, Error<I::Error>> {
+pub fn read<I: I2c>(bus: &mut I) -> Result<UtcDateTime, RtcError<I::Error>> {
     let mut registers = [0; 9];
     bus.write_read(ADDRESS, &[0], &mut registers)
-        .map_err(Error::Bus)?;
-    Ok(decode(registers))
+        .map_err(RtcError::Access)?;
+    decode(registers).map_err(RtcError::InvalidTime)
 }
 
-fn decode(registers: [u8; 9]) -> Option<UtcDateTime> {
-    // Test mode, STOP, or voltage loss invalidates the calendar.
-    // C=0 selects 2000..2099. C=1 is outside this backend's supported range.
-    if registers[0] & 0xa8 != 0 || registers[2] & 0x80 != 0 || registers[7] & 0x80 != 0 {
-        return None;
+fn decode(registers: [u8; 9]) -> Result<UtcDateTime, InvalidTimeReason> {
+    // Report the first applicable cause in this order when flags overlap.
+    if registers[2] & 0x80 != 0 {
+        return Err(InvalidTimeReason::PowerLost);
     }
+    if registers[0] & 0x88 != 0 {
+        return Err(InvalidTimeReason::TestMode);
+    }
+    if registers[0] & STOP != 0 {
+        return Err(InvalidTimeReason::ClockStopped);
+    }
+    // C=0 selects 2000..2099. Other centuries need a separate adapter convention.
+    if registers[7] & 0x80 != 0 {
+        return Err(InvalidTimeReason::UnsupportedCalendar);
+    }
+    decode_calendar(registers).ok_or(InvalidTimeReason::InvalidCalendar)
+}
+
+fn decode_calendar(registers: [u8; 9]) -> Option<UtcDateTime> {
     if registers[6] & 7 > 6 {
         return None;
     }
@@ -56,11 +63,11 @@ fn decode(registers: [u8; 9]) -> Option<UtcDateTime> {
 
 /// Stop the counter, replace the complete calendar, then start normal operation.
 /// A failed calendar write keeps STOP set until a later complete correction.
-pub fn set<I: I2c>(bus: &mut I, datetime: UtcDateTime) -> Result<(), Error<I::Error>> {
+pub fn set<I: I2c>(bus: &mut I, datetime: UtcDateTime) -> Result<(), RtcError<I::Error>> {
     if !(2000..=2099).contains(&datetime.year()) {
-        return Err(Error::UnsupportedYear);
+        return Err(RtcError::UnsupportedDate);
     }
-    bus.write(ADDRESS, &[0, STOP]).map_err(Error::Bus)?;
+    bus.write(ADDRESS, &[0, STOP]).map_err(RtcError::Access)?;
     bus.write(
         ADDRESS,
         &[
@@ -74,8 +81,8 @@ pub fn set<I: I2c>(bus: &mut I, datetime: UtcDateTime) -> Result<(), Error<I::Er
             encode((datetime.year() - 2000) as u8),
         ],
     )
-    .map_err(Error::Bus)?;
-    bus.write(ADDRESS, &[0, 0]).map_err(Error::Bus)
+    .map_err(RtcError::Access)?;
+    bus.write(ADDRESS, &[0, 0]).map_err(RtcError::Access)
 }
 
 fn bcd(value: u8) -> Option<u8> {
@@ -105,18 +112,9 @@ impl<I: I2c> Rtc for Pcf8563<I> {
 
     fn read_utc(&mut self) -> Result<UtcDateTime, RtcError<Self::AccessError>> {
         read(&mut self.bus)
-            .map_err(map_error)?
-            .ok_or(RtcError::InvalidTime(InvalidTimeReason::InvalidCalendar))
     }
 
     fn set_utc(&mut self, utc: UtcDateTime) -> Result<(), RtcError<Self::AccessError>> {
-        set(&mut self.bus, utc).map_err(map_error)
-    }
-}
-
-fn map_error<E>(error: Error<E>) -> RtcError<E> {
-    match error {
-        Error::Bus(error) => RtcError::Access(error),
-        Error::UnsupportedYear => RtcError::UnsupportedDate,
+        set(&mut self.bus, utc)
     }
 }

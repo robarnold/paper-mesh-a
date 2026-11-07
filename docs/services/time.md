@@ -46,8 +46,8 @@ Persistent alarms, sleep accounting, drift calibration, and source uncertainty r
 The platform [synchronization service](../../crates/platform/src/rtc/synchronization.rs) uses the [`Rtc` contract](../../crates/platform/src/rtc.rs).
 The contract separates retained calendar operations from cached `Clock` reads.
 It reports access failures, invalid calendar state, and unsupported dates as operation errors.
-The current PCF8563 implementation maps unusable calendar state to `InvalidCalendar`.
-More detailed invalidity reasons and stricter write verification remain separate work.
+Invalid time distinguishes voltage loss, a stopped clock, test mode, an unsupported calendar convention, and invalid calendar fields.
+Stricter write verification remains separate work.
 
 The service preserves valid retained time at startup without a location fix.
 It advances cached UTC between polls and limits extrapolation after communication stops.

@@ -12,8 +12,8 @@ use std::cell::RefCell;
 use paper_mesh_pcf8563 as device;
 use paper_mesh_platform::rtc::synchronization as service;
 
-use device::Error;
 use embedded_hal::i2c::{ErrorKind, ErrorType, I2c, Operation};
+use paper_mesh_platform::rtc::{InvalidTimeReason, Rtc as RtcContract, RtcError as Error};
 use paper_mesh_platform::{
     location::{LocationAvailability, LocationSnapshot, UtcObservation, UtcTime},
     time::{Date, Month, Time, UtcDateTime},
@@ -149,28 +149,28 @@ fn retained_calendar_requires_no_write_or_gps_fix() {
 
 #[test]
 fn invalid_flags_bcd_and_calendar_values_cannot_supply_utc() {
-    for (register, value) in [
-        (0, 0x20),
-        (0, 0x80),
-        (0, 0x08),
-        (2, 0xd8),
-        (2, 0x5a),
-        (2, 0x60),
-        (3, 0x60),
-        (4, 0x24),
-        (5, 0),
-        (5, 0x32),
-        (6, 7),
-        (7, 0x90),
-        (7, 0),
-        (7, 0x13),
-        (8, 0xfa),
+    for (register, value, reason) in [
+        (0, 0x20, InvalidTimeReason::ClockStopped),
+        (0, 0x80, InvalidTimeReason::TestMode),
+        (0, 0x08, InvalidTimeReason::TestMode),
+        (2, 0xd8, InvalidTimeReason::PowerLost),
+        (2, 0x5a, InvalidTimeReason::InvalidCalendar),
+        (2, 0x60, InvalidTimeReason::InvalidCalendar),
+        (3, 0x60, InvalidTimeReason::InvalidCalendar),
+        (4, 0x24, InvalidTimeReason::InvalidCalendar),
+        (5, 0, InvalidTimeReason::InvalidCalendar),
+        (5, 0x32, InvalidTimeReason::InvalidCalendar),
+        (6, 7, InvalidTimeReason::InvalidCalendar),
+        (7, 0x90, InvalidTimeReason::UnsupportedCalendar),
+        (7, 0, InvalidTimeReason::InvalidCalendar),
+        (7, 0x13, InvalidTimeReason::InvalidCalendar),
+        (8, 0xfa, InvalidTimeReason::InvalidCalendar),
     ] {
         let mut rtc = Rtc::retained();
         rtc.registers[register] = value;
         assert_eq!(
-            device::read(&mut rtc).unwrap(),
-            None,
+            device::read(&mut rtc),
+            Err(Error::InvalidTime(reason)),
             "register {register}: {value:x}"
         );
         assert!(rtc.writes.is_empty());
@@ -179,9 +179,12 @@ fn invalid_flags_bcd_and_calendar_values_cannot_supply_utc() {
     rtc.registers[5] = 0x29;
     rtc.registers[7] = 0x02;
     rtc.registers[8] = 0x26;
-    assert_eq!(device::read(&mut rtc).unwrap(), None);
+    assert_eq!(
+        device::read(&mut rtc),
+        Err(Error::InvalidTime(InvalidTimeReason::InvalidCalendar))
+    );
     rtc.registers[8] = 0x24;
-    assert_eq!(device::read(&mut rtc).unwrap().unwrap().day(), 29);
+    assert_eq!(device::read(&mut rtc).unwrap().day(), 29);
 }
 
 #[test]
@@ -200,11 +203,11 @@ fn complete_calendar_write_preserves_other_registers_and_sets_weekday() {
     );
     assert_eq!(rtc.registers[1], original[1]);
     assert_eq!(rtc.registers[9..], original[9..]);
-    assert_eq!(device::read(&mut rtc).unwrap(), Some(time));
+    assert_eq!(device::read(&mut rtc).unwrap(), time);
     for year in [1999, 2100] {
         assert_eq!(
             device::set(&mut rtc, datetime(year, Month::January, 1, 0, 0, 0)),
-            Err(Error::UnsupportedYear)
+            Err(Error::UnsupportedDate)
         );
     }
     assert_eq!(rtc.writes.len(), 3);
@@ -300,7 +303,10 @@ fn each_bus_failure_invalidates_the_clock_and_allows_a_complete_retry() {
         assert_eq!(service.now_utc(100), None);
         rtc.borrow_mut().fail_at = None;
         if fail_at == 2 || fail_at == 3 {
-            assert_eq!(device::read(&mut *rtc.borrow_mut()).unwrap(), None);
+            assert_eq!(
+                device::read(&mut *rtc.borrow_mut()),
+                Err(Error::InvalidTime(InvalidTimeReason::ClockStopped))
+            );
         }
         service.poll(&mut driver, report, 101).unwrap();
         assert_eq!(service.now_utc(101), Some(correction));
@@ -325,4 +331,89 @@ fn rtc_loss_after_synchronization_requires_a_new_report() {
         )
         .unwrap();
     assert!(service.now_utc(1_000).is_some());
+}
+
+// Access failures must retain the transport error even when calendar flags are invalid.
+#[test]
+fn failed_reads_do_not_report_calendar_state() {
+    let mut bus = Rtc::retained();
+    bus.registers[2] |= 0x80;
+    bus.fail_at = Some(1);
+    let mut driver = device::Pcf8563::new(bus);
+    assert_eq!(driver.read_utc(), Err(Error::Access(ErrorKind::Other)));
+}
+
+// Invalid retained time must remain recoverable without changing RTC read transactions.
+#[test]
+fn every_invalid_time_reason_can_recover_from_a_fresh_source() {
+    for (register, value, reason) in [
+        (2, 0x80, InvalidTimeReason::PowerLost),
+        (0, 0x20, InvalidTimeReason::ClockStopped),
+        (0, 0x80, InvalidTimeReason::TestMode),
+        (7, 0x90, InvalidTimeReason::UnsupportedCalendar),
+        (5, 0, InvalidTimeReason::InvalidCalendar),
+    ] {
+        let bus = RefCell::new(Rtc::retained());
+        bus.borrow_mut().registers[register] = value;
+        let mut driver = device::Pcf8563::new(SharedBus(&bus));
+        assert_eq!(driver.read_utc(), Err(Error::InvalidTime(reason)));
+        let mut service = Service::new(POLICY);
+        service
+            .poll(&mut driver, LocationSnapshot::new(), 0)
+            .unwrap();
+        assert_eq!(service.now_utc(0), None);
+        assert!(bus.borrow().writes.is_empty());
+        let expected = datetime(2026, Month::November, 7, 12, 0, 0);
+        service.poll(&mut driver, gps(expected, 100), 100).unwrap();
+        assert_eq!(service.now_utc(100), Some(expected));
+        assert_eq!(bus.borrow().writes.len(), 3);
+    }
+}
+
+// Unsupported input must fail before any I2C transaction or partial write.
+#[test]
+fn unsupported_dates_fail_without_bus_access() {
+    let bus = RefCell::new(Rtc::retained());
+    let mut driver = device::Pcf8563::new(SharedBus(&bus));
+    assert_eq!(
+        driver.set_utc(datetime(2100, Month::January, 1, 0, 0, 0)),
+        Err(Error::UnsupportedDate)
+    );
+    assert_eq!(bus.borrow().transactions, 0);
+    assert!(bus.borrow().writes.is_empty());
+}
+
+// Multiple invalid flags must have a deterministic reported cause.
+#[test]
+fn invalid_time_reason_precedence_is_stable() {
+    let bus = RefCell::new(Rtc::retained());
+    let mut driver = device::Pcf8563::new(SharedBus(&bus));
+    bus.borrow_mut().registers[2] |= 0x80;
+    bus.borrow_mut().registers[0] = 0xa8;
+    bus.borrow_mut().registers[7] = 0x90;
+    bus.borrow_mut().registers[5] = 0;
+    assert_eq!(
+        driver.read_utc(),
+        Err(Error::InvalidTime(InvalidTimeReason::PowerLost))
+    );
+    bus.borrow_mut().registers[2] &= 0x7f;
+    assert_eq!(
+        driver.read_utc(),
+        Err(Error::InvalidTime(InvalidTimeReason::TestMode))
+    );
+    bus.borrow_mut().registers[0] = 0x20;
+    assert_eq!(
+        driver.read_utc(),
+        Err(Error::InvalidTime(InvalidTimeReason::ClockStopped))
+    );
+    bus.borrow_mut().registers[0] = 0;
+    assert_eq!(
+        driver.read_utc(),
+        Err(Error::InvalidTime(InvalidTimeReason::UnsupportedCalendar))
+    );
+    bus.borrow_mut().registers[7] = 0x10;
+    assert_eq!(
+        driver.read_utc(),
+        Err(Error::InvalidTime(InvalidTimeReason::InvalidCalendar))
+    );
 }
