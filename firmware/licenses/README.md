@@ -8,5 +8,6 @@ The [firmware lockfile](https://github.com/robarnold/paper-mesh-a/blob/main/firm
 | Dependency source | License notice |
 | --- | --- |
 | [log](https://github.com/rust-lang/log) | [MIT](LICENSE-log-MIT) |
+| [bt-hci and bt-hci-transport](https://github.com/embassy-rs/bt-hci) | [MIT](LICENSE-bt-hci-MIT) |
 
 This directory records the dependencies reviewed during updates. It is not a complete dependency inventory.
