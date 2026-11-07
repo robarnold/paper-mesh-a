@@ -23,4 +23,6 @@ espflash save-image \
 
 # Keep symbols with the bootloader, partition table, and application image.
 cp "$firmware_elf" "$artifact_dir/paper-mesh-firmware.elf"
+# Keep dependency notices with distributed firmware images.
+cp -R firmware/licenses "$artifact_dir/"
 (cd "$artifact_dir" && sha256sum paper-mesh-firmware.bin paper-mesh-firmware.elf > SHA256SUMS)
