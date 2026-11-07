@@ -24,19 +24,17 @@ RUN groupadd vscode \
     && usermod -aG dialout vscode \
     && echo 'vscode ALL=(root) NOPASSWD:ALL' > /etc/sudoers.d/vscode \
     && chmod 0440 /etc/sudoers.d/vscode \
-    && mkdir -p /opt/esp \
-    && chown -R vscode:vscode /opt/esp "$CARGO_HOME" "$RUSTUP_HOME"
+    && mkdir -p /opt/esp
 
-USER vscode
-RUN --mount=type=cache,id=paper-mesh-cargo-registry,target=/usr/local/cargo/registry,mode=0777 \
-    --mount=type=cache,id=paper-mesh-cargo-git,target=/usr/local/cargo/git,mode=0777 \
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
     rustup component add rustfmt clippy \
     && cargo install --locked espup --version "$ESPUP_VERSION" \
     && espup install --targets esp32s3 --toolchain-version "$ESP_TOOLCHAIN_VERSION" \
         --export-file "$ESPUP_EXPORT_FILE"
 
-RUN --mount=type=cache,id=paper-mesh-cargo-registry,target=/usr/local/cargo/registry,mode=0777 \
-    --mount=type=cache,id=paper-mesh-cargo-git,target=/usr/local/cargo/git,mode=0777 \
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
     cargo install --locked espflash --version "$ESPFLASH_VERSION" \
     && cargo install --locked esp-generate --version "$ESP_GENERATE_VERSION" \
     && cargo install --locked just --version "$JUST_VERSION"
@@ -52,12 +50,13 @@ ENV PATH="/opt/esp/bin:/usr/local/cargo/bin:${PATH}" \
 COPY --from=rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 /usr/local/bin/actionlint /usr/local/bin/actionlint
 
 ARG NEXTEST_VERSION=0.9.151
-RUN --mount=type=cache,id=paper-mesh-cargo-registry,target=/usr/local/cargo/registry,mode=0777 \
-    --mount=type=cache,id=paper-mesh-cargo-git,target=/usr/local/cargo/git,mode=0777 \
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
     cargo install --locked cargo-nextest --version "$NEXTEST_VERSION"
 
 # Devcontainers override this path with a cache in the mounted workspace.
 ENV CARGO_HOME=/home/vscode/.cargo \
     RUSTUP_AUTO_INSTALL=0
 
+USER vscode
 WORKDIR /workspaces/paper-mesh-a
