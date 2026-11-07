@@ -13,6 +13,7 @@ A backend can omit services from this catalog.
 | --- | --- | --- |
 | `Clock::now_ms()` | Monotonic milliseconds from a stable epoch | Keep the epoch across waits. Include elapsed sleep time. |
 | `Clock::now_utc()` | Optional current UTC date and time | Validate calendar sources. Preserve monotonic deadlines during corrections. |
+| `ReplyTransport` | Session-bound control replies with completion and cancellation | Reject stale sessions, bound writes, and confirm transport completion. |
 | `TouchEvent` | `Down`, `Up`, or `Cancel`, with logical viewport coordinates | Decode contacts. Calibrate axes. Transform coordinates. Deliver events in order. |
 | `Display` | `DrawTarget<Color = Gray4>`, `is_busy()`, and `refresh()` | Control storage, pixel packing, submission, completion, and errors. |
 | `Discovery` | Identified scans, bounded results, source, receipt time, cancellation, and errors | Supply observations. Control radio resources. Report unsupported operations. |

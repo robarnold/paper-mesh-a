@@ -9,6 +9,11 @@
 
 mod control;
 
+use paper_mesh_platform::transport::{ReplyTransport, SessionId};
+
+/// Runtime-selected dispatch for one complete request and its connection session.
+pub type CommandHandler = fn(&[u8], SessionId) -> Option<alloc::string::String>;
+
 use core::{
     cell::RefCell,
     fmt::Write,
@@ -61,7 +66,7 @@ static FRAMES: Channel<CriticalSectionRawMutex, (u32, HostFrame), 16> = Channel:
 static LOGS: Channel<CriticalSectionRawMutex, heapless::String<192>, 32> = Channel::new();
 struct Reply {
     generation: u32,
-    owner: Option<u32>,
+    session: Option<SessionId>,
     line: alloc::string::String,
     acknowledgement: Option<control::Ticket>,
 }
@@ -163,6 +168,7 @@ pub fn start(
     peripheral: USB_FS<'static>,
     dp: GPIO20<'static>,
     dm: GPIO19<'static>,
+    handler: CommandHandler,
 ) {
     log::set_logger(&LOGGER).unwrap();
     log::set_max_level(log::LevelFilter::Info);
@@ -201,7 +207,7 @@ pub fn start(
         },
     );
     let (sender, receiver, control) = cdc.split_with_control();
-    spawner.spawn(command_worker(receiver, control).unwrap());
+    spawner.spawn(command_worker(receiver, control, handler).unwrap());
     spawner.spawn(bus_worker(builder.build()).unwrap());
     spawner.spawn(hid_worker(hid).unwrap());
     spawner.spawn(log_worker(sender).unwrap());
@@ -340,7 +346,7 @@ async fn write_logs(sender: &mut cdc_acm::Sender<'static, Driver<'static>>) {
             }
             continue;
         }
-        let (line, owner, acknowledgement) = match select(
+        let (line, session, acknowledgement) = match select(
             REPLIES.receive(),
             select(LOGS.receive(), Timer::after_millis(250)),
         )
@@ -348,7 +354,7 @@ async fn write_logs(sender: &mut cdc_acm::Sender<'static, Driver<'static>>) {
         {
             Either::First(reply) => {
                 if reply.generation != generation
-                    || !reply_session_live(generation, reply.owner)
+                    || !reply_session_live(generation, reply.session)
                     || reply
                         .acknowledgement
                         .is_some_and(|ticket| !control_reply_live(ticket))
@@ -358,14 +364,14 @@ async fn write_logs(sender: &mut cdc_acm::Sender<'static, Driver<'static>>) {
                     }
                     continue;
                 }
-                (reply.line, reply.owner, reply.acknowledgement)
+                (reply.line, reply.session, reply.acknowledgement)
             }
             Either::Second(Either::First(line)) => {
                 (alloc::string::String::from(line.as_str()), None, None)
             }
             _ => continue,
         };
-        let sent = send_line(sender, &line, generation, owner, acknowledgement).await;
+        let sent = send_line(sender, &line, generation, session, acknowledgement).await;
         if let Some(ticket) = acknowledgement {
             REPLY_SENT.signal((ticket, sent && control_reply_live(ticket)));
         }
@@ -397,25 +403,26 @@ fn send_connection_info<'a>(
 async fn command_worker(
     mut receiver: cdc_acm::Receiver<'static, Driver<'static>>,
     control: cdc_acm::ControlChanged<'static>,
+    handler: CommandHandler,
 ) {
     use crate::usb_protocol as protocol;
     crate::suspend::register(crate::suspend::Service::Commands);
     let mut frame = protocol::Framer::default();
-    let mut owner = None;
-    let mut control_owner = None;
+    let mut observed_generation = None;
+    let mut control_session = None;
     let mut packet = [0; 64];
     loop {
         crate::suspend::checkpoint(crate::suspend::Service::Commands).await;
         let generation = GENERATION.load(Ordering::Acquire);
         let connected = STATUS.load(Ordering::Acquire) == 1 && receiver.dtr();
         CONTROL.lock(|state| state.borrow_mut().observe(generation, connected));
-        let observed_owner = CONTROL.lock(|state| state.borrow().owner(generation));
-        if control_owner != observed_owner {
+        let observed_session = CONTROL.lock(|state| state.borrow().session(generation));
+        if control_session != observed_session {
             frame.clear();
-            control_owner = observed_owner;
+            control_session = observed_session;
         }
-        if owner != Some(generation) || !connected {
-            if let Some(previous) = owner.take() {
+        if observed_generation != Some(generation) || !connected {
+            if let Some(previous) = observed_generation.take() {
                 command_disconnected(previous);
                 REPLIES.clear();
             }
@@ -424,7 +431,7 @@ async fn command_worker(
                 Timer::after_millis(50).await;
                 continue;
             }
-            owner = Some(generation);
+            observed_generation = Some(generation);
         }
         let length = match with_timeout(
             Duration::from_millis(100),
@@ -433,7 +440,7 @@ async fn command_worker(
         .await
         {
             Ok(Either::First(())) => {
-                // Notifications can combine a close and reopen. Invalidate the old owner
+                // Notifications can combine a close and reopen. Invalidate the old session
                 // even when DTR is already high when the worker receives the event.
                 CONTROL.lock(|state| state.borrow_mut().disconnect(generation));
                 if !control.dtr() {
@@ -461,12 +468,12 @@ async fn command_worker(
             frame.clear();
             continue;
         }
-        let Some(packet_owner) = control_owner else {
+        let Some(packet_session) = control_session else {
             frame.clear();
             continue;
         };
         for byte in &packet[..length] {
-            if !control_connected(packet_owner) || crate::suspend::requested() {
+            if !is_session_active(packet_session) || crate::suspend::requested() {
                 frame.clear();
                 break;
             }
@@ -474,7 +481,7 @@ async fn command_worker(
                 continue;
             };
             let reply = match message {
-                Ok(bytes) => handle_command(&bytes, packet_owner),
+                Ok(bytes) => handler(&bytes, packet_session),
                 Err(()) => Some(protocol::error(
                     serde_json::Value::Null,
                     -32600,
@@ -487,7 +494,7 @@ async fn command_worker(
                     REPLIES.send(Reply {
                         generation,
                         // Errors belong to the same CDC session as their requests.
-                        owner: Some(packet_owner),
+                        session: Some(packet_session),
                         line: reply,
                         acknowledgement: None,
                     }),
@@ -507,37 +514,35 @@ fn command_disconnected(generation: u32) {
     CONTROL.lock(|state| state.borrow_mut().disconnect(generation));
 }
 
-fn handle_command(bytes: &[u8], owner: u32) -> Option<alloc::string::String> {
-    use crate::usb_protocol::{self, Route};
-    match usb_protocol::route(bytes) {
-        Ok(Route::Ignore) => None,
-        Ok(Route::Bootloader(id)) => {
-            if control_connected(owner) {
-                crate::device_control::queue(id, owner)
-            } else {
-                Some(usb_protocol::error(id, -32000, "USB connection changed"))
-            }
-        }
-        Ok(Route::Diagnostic(_)) => crate::display_inspection::handle(bytes, owner),
-        Err(reply) => Some(reply),
+pub struct UsbControl;
+
+impl ReplyTransport for UsbControl {
+    type Reply = alloc::string::String;
+
+    fn is_session_active(&self, session: SessionId) -> bool {
+        is_session_active(session)
+    }
+
+    async fn send_reply(&self, session: SessionId, reply: Self::Reply) -> bool {
+        send_control_reply(session, reply).await
     }
 }
 
-pub fn control_connected(owner: u32) -> bool {
+pub fn is_session_active(session: SessionId) -> bool {
     let generation = GENERATION.load(Ordering::Acquire);
     STATUS.load(Ordering::Acquire) == 1
-        && CONTROL.lock(|state| state.borrow().connected(owner, generation))
+        && CONTROL.lock(|state| state.borrow().is_session_active(session, generation))
 }
 
 fn control_reply_live(ticket: control::Ticket) -> bool {
-    control_connected(ticket.owner)
+    is_session_active(ticket.session)
         && GENERATION.load(Ordering::Acquire) == ticket.generation
         && CONTROL.lock(|state| state.borrow().reply_live(ticket))
 }
 
-fn reply_session_live(generation: u32, owner: Option<u32>) -> bool {
+fn reply_session_live(generation: u32, session: Option<SessionId>) -> bool {
     GENERATION.load(Ordering::Acquire) == generation
-        && CONTROL.lock(|state| state.borrow().reply_session_live(generation, owner))
+        && CONTROL.lock(|state| state.borrow().reply_session_live(generation, session))
 }
 
 struct ReplyLease(control::Ticket);
@@ -549,12 +554,12 @@ impl Drop for ReplyLease {
 }
 
 /// Return success only after the CDC writer has sent the complete response.
-pub async fn send_control_reply(owner: u32, line: alloc::string::String) -> bool {
-    if !control_connected(owner) {
+pub async fn send_control_reply(session: SessionId, line: alloc::string::String) -> bool {
+    if !is_session_active(session) {
         return false;
     }
     let generation = GENERATION.load(Ordering::Acquire);
-    let Some(ticket) = CONTROL.lock(|state| state.borrow_mut().begin_reply(owner, generation))
+    let Some(ticket) = CONTROL.lock(|state| state.borrow_mut().begin_reply(session, generation))
     else {
         return false;
     };
@@ -568,7 +573,7 @@ pub async fn send_control_reply(owner: u32, line: alloc::string::String) -> bool
             REPLIES
                 .send(Reply {
                     generation,
-                    owner: Some(owner),
+                    session: Some(session),
                     line,
                     acknowledgement: Some(ticket),
                 })
@@ -609,7 +614,7 @@ async fn send_line(
     sender: &mut cdc_acm::Sender<'static, Driver<'static>>,
     line: &str,
     generation: u32,
-    owner: Option<u32>,
+    session: Option<SessionId>,
     acknowledgement: Option<control::Ticket>,
 ) -> bool {
     if line.is_empty() {
@@ -621,7 +626,7 @@ async fn send_line(
         .chain(line.len().is_multiple_of(64).then_some(&[][..]));
     for packet in packets {
         if !log_connection(sender, generation)
-            || !reply_session_live(generation, owner)
+            || !reply_session_live(generation, session)
             || acknowledgement.is_some_and(|ticket| !control_reply_live(ticket))
             || !matches!(
                 with_timeout(Duration::from_millis(250), sender.write_packet(packet)).await,
@@ -632,6 +637,6 @@ async fn send_line(
         }
     }
     log_connection(sender, generation)
-        && reply_session_live(generation, owner)
+        && reply_session_live(generation, session)
         && acknowledgement.is_none_or(control_reply_live)
 }

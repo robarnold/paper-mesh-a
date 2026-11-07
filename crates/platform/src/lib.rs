@@ -23,6 +23,7 @@ pub mod rtc;
 pub mod suspend;
 pub mod time;
 pub mod touchpad;
+pub mod transport;
 pub mod ui;
 
 /// Monotonic time and optional UTC calendar time.

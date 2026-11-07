@@ -19,12 +19,13 @@ use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channe
 use embassy_time::Instant;
 use serde_json::json;
 
-use crate::{display_recovery, display_worker::Client, usb, usb_protocol};
+use crate::{display_recovery, display_worker::Client, usb_protocol};
+use paper_mesh_platform::transport::{ReplyTransport, SessionId};
 use protocol::{Command, Request};
 
 pub struct Pending {
     request: Request,
-    owner: u32,
+    session: SessionId,
     hold_id: u32,
 }
 
@@ -49,18 +50,24 @@ impl Hold {
         &'a self,
         display: Option<&'a Client>,
         pending: Pending,
+        transport: &'a impl ReplyTransport<Reply = String>,
     ) -> Pin<Box<dyn Future<Output = ()> + 'a>> {
         Box::pin(async move {
-            let owner = pending.owner;
-            if let Some(reply) = self.reply(display, pending) {
+            let session = pending.session;
+            if let Some(reply) = self.reply(display, pending, transport) {
                 // The application retains frame ownership until the bounded reply finishes.
-                let _ = usb::send_control_reply(owner, reply).await;
+                let _ = transport.send_reply(session, reply).await;
             }
         })
     }
 
-    fn reply(&self, display: Option<&Client>, pending: Pending) -> Option<String> {
-        if !usb::control_connected(pending.owner) {
+    fn reply(
+        &self,
+        display: Option<&Client>,
+        pending: Pending,
+        transport: &impl ReplyTransport<Reply = String>,
+    ) -> Option<String> {
+        if !transport.is_session_active(pending.session) {
             return None;
         }
         let id = pending.request.id;
@@ -109,11 +116,14 @@ impl Hold {
     }
 }
 
-pub fn reject(pending: Pending) -> Pin<Box<dyn Future<Output = ()>>> {
+pub fn reject(
+    pending: Pending,
+    transport: &impl ReplyTransport<Reply = String>,
+) -> Pin<Box<dyn Future<Output = ()> + '_>> {
     Box::pin(async move {
-        if usb::control_connected(pending.owner) {
+        if transport.is_session_active(pending.session) {
             let reply = usb_protocol::error(pending.request.id, -32000, "Display hold ended");
-            let _ = usb::send_control_reply(pending.owner, reply).await;
+            let _ = transport.send_reply(pending.session, reply).await;
         }
     })
 }
@@ -130,14 +140,18 @@ impl Drop for Hold {
     }
 }
 
-pub fn handle(bytes: &[u8], owner: u32) -> Option<String> {
+pub fn handle(
+    bytes: &[u8],
+    session: SessionId,
+    transport: &impl ReplyTransport<Reply = String>,
+) -> Option<String> {
     let request = match protocol::parse(bytes) {
         Ok(Some(request)) => request,
         Ok(None) => return None,
         Err(reply) => return Some(reply),
     };
     let hold_id = ACTIVE_HOLD.load(Ordering::Acquire);
-    if hold_id == 0 || display_recovery::blocked() || !usb::control_connected(owner) {
+    if hold_id == 0 || display_recovery::blocked() || !transport.is_session_active(session) {
         return Some(usb_protocol::error(
             request.id,
             -32000,
@@ -148,7 +162,7 @@ pub fn handle(bytes: &[u8], owner: u32) -> Option<String> {
     // request can then wait while the previous response completes its local ACK.
     match REQUESTS.try_send(Pending {
         request,
-        owner,
+        session,
         hold_id,
     }) {
         Ok(()) => None,

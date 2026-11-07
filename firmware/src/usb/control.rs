@@ -7,10 +7,12 @@
 //!
 //! See [Enter ROM download mode](../../../docs/boards/lilygo-t5-s3-pro-usb.md#enter-rom-download-mode).
 
+use paper_mesh_platform::transport::SessionId;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Ticket {
     pub generation: u32,
-    pub owner: u32,
+    pub session: SessionId,
     sequence: u32,
 }
 
@@ -56,27 +58,28 @@ impl State {
         }
     }
 
-    pub fn owner(&self, generation: u32) -> Option<u32> {
-        (self.connected && self.generation == Some(generation)).then_some(self.epoch)
+    pub fn session(&self, generation: u32) -> Option<SessionId> {
+        (self.connected && self.generation == Some(generation))
+            .then_some(SessionId::new(self.epoch))
     }
 
-    pub fn connected(&self, owner: u32, generation: u32) -> bool {
-        self.owner(generation) == Some(owner)
+    pub fn is_session_active(&self, session: SessionId, generation: u32) -> bool {
+        self.session(generation) == Some(session)
     }
 
-    pub fn reply_session_live(&self, generation: u32, owner: Option<u32>) -> bool {
+    pub fn reply_session_live(&self, generation: u32, session: Option<SessionId>) -> bool {
         self.generation == Some(generation)
-            && owner.is_none_or(|owner| self.connected(owner, generation))
+            && session.is_none_or(|session| self.is_session_active(session, generation))
     }
 
-    pub fn begin_reply(&mut self, owner: u32, generation: u32) -> Option<Ticket> {
-        if !self.connected(owner, generation) || self.live.is_some() {
+    pub fn begin_reply(&mut self, session: SessionId, generation: u32) -> Option<Ticket> {
+        if !self.is_session_active(session, generation) || self.live.is_some() {
             return None;
         }
         self.sequence = self.sequence.wrapping_add(1);
         let ticket = Ticket {
             generation,
-            owner,
+            session,
             sequence: self.sequence,
         };
         self.live = Some(ticket);
@@ -84,7 +87,7 @@ impl State {
     }
 
     pub fn reply_live(&self, ticket: Ticket) -> bool {
-        self.live == Some(ticket) && self.connected(ticket.owner, ticket.generation)
+        self.live == Some(ticket) && self.is_session_active(ticket.session, ticket.generation)
     }
 
     pub fn accepts_ack(&self, expected: Ticket, completed: Ticket, sent: bool) -> bool {

@@ -43,9 +43,35 @@ Busy, unsupported, failure, and timeout results are separate errors.
 An empty successful scan is not an error.
 Connection, pairing, and application data transfer stay outside this operation.
 
+## Reply transport
+
+The platform [`ReplyTransport`](../../crates/platform/src/transport.rs) contract separates command handlers from their reply transport.
+It exposes `is_session_active(session)` and an asynchronous reply operation.
+The named `SessionId` type identifies the connection that supplied the request.
+The backend assigns identities, which callers treat as opaque and scoped to that transport.
+A connection check does not reserve the session. The send operation must also reject stale sessions.
+Replies must not continue into a replacement session after disconnect or reconnect.
+
+Successful send completion means that the transport sent the complete reply, rather than only accepting it into a queue.
+It does not establish that the remote application processed the reply.
+The backend bounds the wait and invalidates pending writes when the send future is dropped.
+Cancellation cannot recall bytes already transmitted.
+The associated `Reply` type lets the backend select storage without a platform allocation requirement.
+Replies expose bytes so the protocol can select text or binary encoding.
+
+The firmware USB backend implements the contract with owned strings and its existing CDC session tracking.
+The runtime supplies command dispatch to the USB worker.
+ROM download and display inspection handlers receive the reply transport instead of calling USB directly.
+The runtime retains application pause and display hold ownership until the response completes.
+The [board USB profile](../boards/lilygo-t5-s3-pro-usb.md) defines hardware behavior, protocol details, and timeout values.
+
+Native tests cover connection changes, stale replies, canceled sends, acknowledgement ownership, and command parsing.
+Firmware compilation checks the connection between the platform interface, handlers, and USB backend.
+Hardware transport behavior requires device validation.
+
 ## Planned communications services
 
-Packet radio, connections, file transfers, and update transport stay planned work.
+Packet radio, general connection management, file transfers, and update transport stay planned work.
 
 `PacketRadio` reports supported PHY settings and payload limits.
 Received packets include supported signal metadata.

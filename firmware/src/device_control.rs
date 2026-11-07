@@ -7,6 +7,8 @@
 //!
 //! See [Enter ROM download mode](../../docs/boards/lilygo-t5-s3-pro-usb.md#enter-rom-download-mode).
 
+use paper_mesh_platform::transport::{ReplyTransport, SessionId};
+
 mod rom;
 mod safety;
 
@@ -16,19 +18,17 @@ use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channe
 use embassy_time::{Duration, with_timeout};
 use serde_json::{Value, json};
 
-use crate::{
-    bus::Bus, display, display_recovery, display_worker, recovery, suspend, usb, usb_protocol,
-};
+use crate::{bus::Bus, display, display_recovery, display_worker, recovery, suspend, usb_protocol};
 
 pub struct Request {
     id: Value,
-    owner: u32,
+    session: SessionId,
 }
 
 static REQUESTS: Channel<CriticalSectionRawMutex, Request, 1> = Channel::new();
 static PENDING: AtomicBool = AtomicBool::new(false);
 
-pub fn queue(id: Value, owner: u32) -> Option<String> {
+pub fn queue(id: Value, session: SessionId) -> Option<String> {
     if PENDING
         .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
         .is_err()
@@ -40,7 +40,7 @@ pub fn queue(id: Value, owner: u32) -> Option<String> {
         ));
     }
     // Only the caller that acquired PENDING can insert a request.
-    assert!(REQUESTS.try_send(Request { id, owner }).is_ok());
+    assert!(REQUESTS.try_send(Request { id, session }).is_ok());
     None
 }
 
@@ -48,9 +48,13 @@ pub async fn request() -> Request {
     REQUESTS.receive().await
 }
 
-fn check(bus: Option<&Bus>, owner: u32) -> Result<(), &'static str> {
+fn check(
+    bus: Option<&Bus>,
+    session: SessionId,
+    transport: &impl ReplyTransport<Reply = String>,
+) -> Result<(), &'static str> {
     safety::Check {
-        connected: usb::control_connected(owner),
+        connected: transport.is_session_active(session),
         bus_available: bus.is_some(),
         display_in_flight: display_worker::in_flight(),
         display_blocked: display_recovery::blocked(),
@@ -61,16 +65,20 @@ fn check(bus: Option<&Bus>, owner: u32) -> Result<(), &'static str> {
 }
 
 /// The caller must retain, but not poll, the sole application future until this returns.
-pub async fn execute(request: Request, bus: Option<&Bus>) {
-    let result = prepare(bus, request.owner).await;
+pub async fn execute(
+    request: Request,
+    bus: Option<&Bus>,
+    transport: &impl ReplyTransport<Reply = String>,
+) {
+    let result = prepare(bus, request.session, transport).await;
     match result {
         Ok(_parked) => {
             let mut reply = json!({"jsonrpc":"2.0", "id":request.id,
                 "result":{"accepted":true,"mode":"rom-download"}})
             .to_string();
             reply.push('\n');
-            if usb::send_control_reply(request.owner, reply).await
-                && check(bus, request.owner).is_ok()
+            if transport.send_reply(request.session, reply).await
+                && check(bus, request.session, transport).is_ok()
             {
                 // No application poll or display submission can occur between this check and reset.
                 rom::enter();
@@ -79,7 +87,7 @@ pub async fn execute(request: Request, bus: Option<&Bus>) {
         }
         Err(reason) => {
             let reply = usb_protocol::error(request.id, -32000, reason);
-            let _ = usb::send_control_reply(request.owner, reply).await;
+            let _ = transport.send_reply(request.session, reply).await;
             log::info!("download: refused; {}", reason);
         }
     }
@@ -94,8 +102,12 @@ impl Drop for Parked {
     }
 }
 
-async fn prepare(bus: Option<&Bus>, owner: u32) -> Result<Parked, &'static str> {
-    check(bus, owner)?;
+async fn prepare(
+    bus: Option<&Bus>,
+    session: SessionId,
+    transport: &impl ReplyTransport<Reply = String>,
+) -> Result<Parked, &'static str> {
+    check(bus, session, transport)?;
     if !rom::supported() {
         return Err("ROM USB download is unavailable on this chip configuration");
     }
@@ -111,6 +123,6 @@ async fn prepare(bus: Option<&Bus>, owner: u32) -> Result<Parked, &'static str> 
     let parked = Parked;
     // These reads preserve the existing idle state and do not touch the PMIC or its EEPROM.
     display::verify_controls_off(bus).map_err(|_| "Display controls are not confirmed off")?;
-    check(Some(bus), owner)?;
+    check(Some(bus), session, transport)?;
     Ok(parked)
 }

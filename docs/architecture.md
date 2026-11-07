@@ -31,6 +31,11 @@ Firmware retains the RTC worker, shared bus ownership, scheduling, and suspend c
 It supplies observation age limits, correction thresholds, and calendar range to the synchronization service.
 Startup supplies location observations through a callback, so the RTC worker does not depend on the GNSS adapter.
 
+The platform defines the [reply transport contract](services/connectivity.md#reply-transport).
+USB owns transport state and implements acknowledged replies. The runtime supplies command dispatch.
+ROM download and display inspection handlers depend on the platform contract instead of the USB module.
+USB hardware, session tracking, and lifecycle coordination remain in firmware.
+
 ```mermaid
 flowchart TD
     Firmware[Firmware runtime] --> App[Application]

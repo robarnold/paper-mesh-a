@@ -60,7 +60,9 @@ async fn main(spawner: Spawner) -> ! {
     loop {
         match select(application.as_mut(), device_control::request()).await {
             Either::First(never) => match never {},
-            Either::Second(request) => device_control::execute(request, bus).await,
+            Either::Second(request) => {
+                device_control::execute(request, bus, &usb::UsbControl).await
+            }
         }
     }
 }
@@ -113,6 +115,7 @@ fn initialize(
         peripherals.USB_FS,
         peripherals.GPIO20,
         peripherals.GPIO19,
+        handle_command,
     );
     diagnostics::report_previous_panic();
     display_recovery::report_previous();
@@ -291,9 +294,9 @@ async fn run_app(
         .await
         {
             if let Some(hold) = &inspection_hold {
-                hold.serve(panel.as_ref(), pending).await;
+                hold.serve(panel.as_ref(), pending, &usb::UsbControl).await;
             } else {
-                display_inspection::reject(pending).await;
+                display_inspection::reject(pending, &usb::UsbControl).await;
             }
         }
         if let Some(uptime) = app.tick(&clock) {
@@ -458,4 +461,25 @@ async fn suspend_app(
         Err(error) => error!("suspend: failed: {:?}", error),
     }
     app.finish_suspend(result);
+}
+
+fn handle_command(
+    bytes: &[u8],
+    session: paper_mesh_platform::transport::SessionId,
+) -> Option<alloc::string::String> {
+    use crate::usb_protocol::{self, Route};
+    match usb_protocol::route(bytes) {
+        Ok(Route::Ignore) => None,
+        Ok(Route::Bootloader(id)) => {
+            if usb::is_session_active(session) {
+                crate::device_control::queue(id, session)
+            } else {
+                Some(usb_protocol::error(id, -32000, "USB connection changed"))
+            }
+        }
+        Ok(Route::Diagnostic(_)) => {
+            crate::display_inspection::handle(bytes, session, &usb::UsbControl)
+        }
+        Err(reply) => Some(reply),
+    }
 }
