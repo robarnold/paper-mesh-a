@@ -13,6 +13,8 @@ This avoids copying unchanged toolchain files from image layers into the contain
 CI keeps the image's user IDs to avoid changing tool ownership at startup.
 After cache restoration, workspace access control lists give the runner and container user write access to existing and new outputs.
 CI also gives the container user ownership of restored targets because build scripts can change output permissions.
+After the build, CI refreshes runner access to target files before artifact uploads and cache saves.
+This includes private lock files whose modes can restrict inherited access control lists.
 Git trusts only the mounted checkout path inside the CI container because its owner differs from the container user.
 
 ## Simulator access

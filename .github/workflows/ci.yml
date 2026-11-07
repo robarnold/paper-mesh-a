@@ -72,6 +72,15 @@ jobs:
             test "$(id -u)" -eq 1000
             git config --global --add safe.directory "$PWD"
             CARGO_LOG=cargo::core::compiler::fingerprint=info,cargo::compiler::fingerprint=info just ci
+      - name: Restore runner access to build outputs
+        if: always()
+        run: |
+          # Private Rust lock files can restrict inherited ACL permissions.
+          for target in "$GITHUB_WORKSPACE/target" "$GITHUB_WORKSPACE/firmware/target"; do
+            if [[ -d "$target" ]]; then
+              sudo setfacl -R -P -m "u:$(id -u):rwX" "$target"
+            fi
+          done
       - name: Upload firmware and debug symbols
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
