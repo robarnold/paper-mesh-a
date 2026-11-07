@@ -96,8 +96,8 @@ async fn receive_events(
     controller: &BleController<'_>,
     request: ScanRequest,
 ) -> Result<(), ScanError> {
-    // The transport includes one indicator byte, two header bytes, and up to 255 payload bytes.
-    let mut buffer = [0; 258];
+    // Use the controller's buffer contract for all supported HCI packet types.
+    let mut buffer = controller.alloc_buf().map_err(failed)?;
     loop {
         if let ControllerToHostPacket::Event(event) =
             controller.read(&mut buffer).await.map_err(failed)?
