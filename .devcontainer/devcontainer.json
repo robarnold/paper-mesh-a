@@ -2,7 +2,8 @@
   "name": "paper-mesh-a",
   "build": {
     "dockerfile": "Dockerfile",
-    "context": ".."
+    "context": "..",
+    "cacheFrom": "ghcr.io/robarnold/paper-mesh-a-devcontainer:latest"
   },
   "remoteUser": "vscode",
   "containerUser": "vscode",
