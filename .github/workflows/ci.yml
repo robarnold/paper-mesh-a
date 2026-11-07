@@ -64,27 +64,6 @@ jobs:
           refFilterForPush: refs/heads/main
           eventFilterForPush: push
           runCmd: just ci
-      - name: Compare devcontainer image sizes
-        if: github.event_name == 'pull_request'
-        continue-on-error: true
-        env:
-          IMAGE: ghcr.io/${{ github.repository }}-devcontainer:latest
-        run: |
-          read -r current_id current_size < <(docker image inspect --format '{{.Id}} {{.Size}}' "$IMAGE")
-          docker pull "$IMAGE"
-          read -r published_id published_size < <(docker image inspect --format '{{.Id}} {{.Size}}' "$IMAGE")
-          {
-            echo '### Devcontainer image sizes'
-            echo
-            echo 'Docker-reported image sizes in bytes. The published image is the main baseline.'
-            echo
-            echo '| Image | ID | Bytes |'
-            echo '| --- | --- | ---: |'
-            echo "| Published main | $published_id | $published_size |"
-            echo "| Pull request | $current_id | $current_size |"
-            echo
-            echo "Change in bytes: $((current_size - published_size))"
-          } | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Upload firmware and debug symbols
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
