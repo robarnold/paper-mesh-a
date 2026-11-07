@@ -19,7 +19,9 @@ ENV CARGO_HOME=/usr/local/cargo \
     ESPUP_EXPORT_FILE=/opt/esp/export.sh \
     PAPER_MESH_DEVCONTAINER=1
 
-RUN useradd --create-home --shell /bin/bash vscode \
+# Match the GitHub runner so CI can reuse tool ownership from the image.
+RUN groupadd --gid 1001 vscode \
+    && useradd --uid 1001 --gid 1001 --create-home --shell /bin/bash vscode \
     && usermod -aG dialout vscode \
     && echo 'vscode ALL=(root) NOPASSWD:ALL' > /etc/sudoers.d/vscode \
     && chmod 0440 /etc/sudoers.d/vscode \

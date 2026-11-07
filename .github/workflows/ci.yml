@@ -44,43 +44,16 @@ jobs:
           key: firmware-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.devcontainer/**', '.dockerignore', 'firmware/Cargo.lock', 'firmware/Cargo.toml', 'crates/**/Cargo.toml', 'firmware/rust-toolchain*', 'firmware/.cargo/**', '.cargo/**') }}-${{ github.sha }}
           restore-keys: |
             firmware-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.devcontainer/**', '.dockerignore', 'firmware/Cargo.lock', 'firmware/Cargo.toml', 'crates/**/Cargo.toml', 'firmware/rust-toolchain*', 'firmware/.cargo/**', '.cargo/**') }}-
-      - name: Share workspace access with the container user
-        run: |
-          # The image uses UID 1000. Keep runner access to new build outputs too.
-          runner_uid=$(id -u)
-          # Build scripts must own restored outputs to change their permissions.
-          for target in "$GITHUB_WORKSPACE/target" "$GITHUB_WORKSPACE/firmware/target"; do
-            if [[ -d "$target" ]]; then
-              sudo chown -R -P --no-dereference 1000 "$target"
-            fi
-          done
-          sudo setfacl -R -P -m "u:1000:rwX,u:${runner_uid}:rwX" "$GITHUB_WORKSPACE"
-          sudo find "$GITHUB_WORKSPACE" -type d -exec \
-            setfacl -m "d:u:1000:rwx,d:u:${runner_uid}:rwx" {} +
       - name: Build devcontainer and run checks
         uses: devcontainers/ci@513af61f4de4f75d37e4438f184ba4358f0fc1ca # v0.3
         with:
           imageName: ghcr.io/${{ github.repository }}-devcontainer
           cacheFrom: ghcr.io/${{ github.repository }}-devcontainer:latest
-          skipContainerUserIdUpdate: true
           push: filter
           refFilterForPush: refs/heads/main
           eventFilterForPush: push
           # Record why Cargo rebuilds outputs after a cache restore.
-          runCmd: |
-            set -euo pipefail
-            test "$(id -u)" -eq 1000
-            git config --global --add safe.directory "$PWD"
-            CARGO_LOG=cargo::core::compiler::fingerprint=info,cargo::compiler::fingerprint=info just ci
-      - name: Restore runner access to build outputs
-        if: always()
-        run: |
-          # Private Rust lock files can restrict inherited ACL permissions.
-          for target in "$GITHUB_WORKSPACE/target" "$GITHUB_WORKSPACE/firmware/target"; do
-            if [[ -d "$target" ]]; then
-              sudo setfacl -R -P -m "u:$(id -u):rwX" "$target"
-            fi
-          done
+          runCmd: CARGO_LOG=cargo::core::compiler::fingerprint=info,cargo::compiler::fingerprint=info just ci
       - name: Upload firmware and debug symbols
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
