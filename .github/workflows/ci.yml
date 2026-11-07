@@ -76,7 +76,7 @@ jobs:
           {
             echo '### Devcontainer image sizes'
             echo
-            echo 'Uncompressed image sizes in bytes. The published image is the main baseline.'
+            echo 'Docker-reported image sizes in bytes. The published image is the main baseline.'
             echo
             echo '| Image | ID | Bytes |'
             echo '| --- | --- | ---: |'
