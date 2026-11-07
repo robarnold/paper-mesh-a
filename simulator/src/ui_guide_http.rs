@@ -7,10 +7,9 @@
 //!
 //! See [UI guide](../../docs/simulator/api.md#ui-guide).
 
-use crate::{HttpResponse, response};
+use crate::{HttpRequest, HttpResponse, response};
+use axum::http::{Method, header};
 use paper_mesh_simulator::ui_guide::{self, Guide, Sheet};
-use std::io::Read;
-use tiny_http::{Method, Request};
 
 fn guide_build() -> String {
     std::env::var("PAPER_MESH_GUIDE_BUILD")
@@ -20,63 +19,63 @@ fn guide_build() -> String {
         .unwrap_or_default()
 }
 
-pub fn handle(request: &mut Request, guide: &mut Guide) -> HttpResponse {
-    let path = request.url().split('?').next().unwrap_or("");
+pub fn handle(request: &HttpRequest, guide: &mut Guide) -> HttpResponse {
+    let path = request.uri().path().split('?').next().unwrap_or("");
     match (request.method(), path) {
-        (&Method::Get, "/ui-guide" | "/ui-guide/") => response(
+        (&Method::GET, "/ui-guide" | "/ui-guide/") => response(
             200,
             "text/html; charset=utf-8",
             include_str!("ui_guide/index.html").replace("{{guide_build}}", &guide_build()),
         ),
-        (&Method::Get, "/ui-guide/build") => response(200, "text/plain", guide_build()),
-        (&Method::Get, "/ui-guide/keyboard/state") => keyboard_state(guide),
-        (&Method::Get, "/ui-guide/state") => state(guide),
-        (&Method::Get, "/ui-guide/controls/state") => controls_state(guide),
-        (&Method::Get, "/ui-guide/text/state") => text_state(guide),
-        (&Method::Get, "/ui-guide/calculator/state") => calculator_state(guide),
-        (&Method::Get, "/ui-guide/calculator.rs") => response(
+        (&Method::GET, "/ui-guide/build") => response(200, "text/plain", guide_build()),
+        (&Method::GET, "/ui-guide/keyboard/state") => keyboard_state(guide),
+        (&Method::GET, "/ui-guide/state") => state(guide),
+        (&Method::GET, "/ui-guide/controls/state") => controls_state(guide),
+        (&Method::GET, "/ui-guide/text/state") => text_state(guide),
+        (&Method::GET, "/ui-guide/calculator/state") => calculator_state(guide),
+        (&Method::GET, "/ui-guide/calculator.rs") => response(
             200,
             "text/plain; charset=utf-8",
             ui_guide::CALCULATOR_SOURCE,
         ),
-        (&Method::Get, "/ui-guide/calculator.png") => match guide.calculator_png() {
+        (&Method::GET, "/ui-guide/calculator.png") => match guide.calculator_png() {
             Ok(bytes) => response(200, "image/png", bytes),
             Err(_) => response(500, "text/plain", "Guide render failed."),
         },
-        (&Method::Get, "/ui-guide/snippets") => response(
+        (&Method::GET, "/ui-guide/snippets") => response(
             200,
             "application/json",
             serde_json::to_vec(&ui_guide::snippets()).unwrap(),
         ),
-        (&Method::Get, "/ui-guide/source.rs") => {
+        (&Method::GET, "/ui-guide/source.rs") => {
             response(200, "text/plain; charset=utf-8", ui_guide::SOURCE)
         }
-        (&Method::Get, "/ui-guide/catalog.rs") => {
+        (&Method::GET, "/ui-guide/catalog.rs") => {
             response(200, "text/plain; charset=utf-8", ui_guide::CATALOG_SOURCE)
         }
-        (&Method::Get, "/ui-guide/controls.rs") => {
+        (&Method::GET, "/ui-guide/controls.rs") => {
             response(200, "text/plain; charset=utf-8", ui_guide::CONTROLS_SOURCE)
         }
-        (&Method::Get, "/ui-guide/text.rs") => {
+        (&Method::GET, "/ui-guide/text.rs") => {
             response(200, "text/plain; charset=utf-8", ui_guide::TEXT_SOURCE)
         }
-        (&Method::Get, "/ui-guide/reference/shared") => response(
+        (&Method::GET, "/ui-guide/reference/shared") => response(
             200,
             "text/plain; charset=utf-8",
             include_str!("../../docs/ui.md"),
         ),
-        (&Method::Get, "/ui-guide/reference/application") => response(
+        (&Method::GET, "/ui-guide/reference/application") => response(
             200,
             "text/plain; charset=utf-8",
             include_str!("../../docs/application-ui.md"),
         ),
-        (&Method::Get, "/ui-guide/reference/toolkit") => response(
+        (&Method::GET, "/ui-guide/reference/toolkit") => response(
             200,
             "text/plain; charset=utf-8",
             include_str!("../../docs/platform/toolkit.md"),
         ),
         (
-            &Method::Get,
+            &Method::GET,
             path @ ("/ui-guide/frame.png"
             | "/ui-guide/keyboard.png"
             | "/ui-guide/catalog.png"
@@ -99,7 +98,7 @@ pub fn handle(request: &mut Request, guide: &mut Guide) -> HttpResponse {
             }
         }
         (
-            &Method::Post,
+            &Method::POST,
             path @ ("/ui-guide/event"
             | "/ui-guide/keyboard/event"
             | "/ui-guide/controls/event"
@@ -110,22 +109,15 @@ pub fn handle(request: &mut Request, guide: &mut Guide) -> HttpResponse {
             let controls = path == "/ui-guide/controls/event";
             let text = path == "/ui-guide/text/event";
             let calculator = path == "/ui-guide/calculator/event";
-            if !request.headers().iter().any(|header| {
-                header.field.equiv("Content-Type") && header.value.as_str() == "application/json"
-            }) {
+            if request
+                .headers()
+                .get(header::CONTENT_TYPE)
+                .is_none_or(|value| value != "application/json")
+            {
                 return response(415, "text/plain", "Expected application/json.");
             }
-            let mut body = Vec::new();
-            if request
-                .as_reader()
-                .take(1025)
-                .read_to_end(&mut body)
-                .is_err()
-                || body.len() > 1024
-            {
-                return response(400, "text/plain", "Invalid or oversized event.");
-            }
-            match serde_json::from_slice::<ui_guide::Command>(&body) {
+            let body = request.body();
+            match serde_json::from_slice::<ui_guide::Command>(body) {
                 Ok(command) => match if calculator {
                     guide.calculator_command(command)
                 } else if keyboard {

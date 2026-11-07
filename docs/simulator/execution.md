@@ -8,6 +8,17 @@ Use the portrait frame to review the layout as the user sees it.
 Use the native frame to investigate rotation errors. An asymmetric image distinguishes a rotation error from a rendering error.
 Drawing and touch use the same [orientation contract](../platform/orientation.md).
 
+## HTTP execution
+
+The native binary uses Axum on a single-thread Tokio runtime.
+A timer advances the simulation. HTTP handlers access the same simulation and guide state through a mutex.
+Handlers read request bodies before they acquire the mutex and release it before network response writes.
+Application updates and PNG encoding remain synchronous, so they can delay other work on this runtime.
+
+[The simulator manifest](../../simulator/Cargo.toml) pins Axum and Tokio.
+[Axum](https://github.com/tokio-rs/axum) and [Tokio](https://github.com/tokio-rs/tokio) use the MIT license, which permits simulator distribution.
+Include their [Axum notice](../../simulator/licenses/LICENSE-axum.txt) and [Tokio notice](../../simulator/licenses/LICENSE-tokio.txt) with distributed simulator binaries.
+
 ## Virtual time and display
 
 Interactive sessions use wall time to pace a virtual clock. Pause a session to control when the next deadline occurs.

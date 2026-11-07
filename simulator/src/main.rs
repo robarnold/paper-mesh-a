@@ -9,11 +9,18 @@
 
 use std::{
     env, fs,
-    io::{Cursor, Read},
     path::Path,
+    sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
+use axum::{
+    Router,
+    body::{Bytes, to_bytes},
+    extract::{Request, State as HttpState},
+    http::{Method, header},
+    response::Response,
+};
 use embedded_graphics::prelude::*;
 use paper_mesh_platform::{TouchEvent, touchpad::HostState};
 use paper_mesh_simulator::SCREEN_SIZE;
@@ -22,10 +29,10 @@ use paper_mesh_simulator::location::LocationScenario;
 use paper_mesh_simulator::power::PowerScenario;
 use paper_mesh_simulator::{REFRESH_MS, Simulation, Snapshot};
 use serde::{Deserialize, Serialize};
-use tiny_http::{Header, Method, Request, Response, Server};
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
-type HttpResponse = Response<Cursor<Vec<u8>>>;
+type HttpResponse = Response;
+type HttpRequest = axum::http::Request<Bytes>;
 
 mod ui_guide_http;
 
@@ -163,34 +170,40 @@ impl Session {
 }
 
 fn response(status: u16, content_type: &str, body: impl Into<Vec<u8>>) -> HttpResponse {
-    Response::from_data(body)
-        .with_status_code(status)
-        .with_header(Header::from_bytes("Content-Type", content_type).unwrap())
-        .with_header(Header::from_bytes("Cache-Control", "no-store").unwrap())
-        .with_header(Header::from_bytes("X-Content-Type-Options", "nosniff").unwrap())
+    Response::builder()
+        .status(status)
+        .header(header::CONTENT_TYPE, content_type)
+        .header(header::CACHE_CONTROL, "no-store")
+        .header(header::X_CONTENT_TYPE_OPTIONS, "nosniff")
+        .body(axum::body::Body::from(body.into()))
+        .unwrap()
 }
 
 fn handle(
-    request: &mut Request,
+    request: &HttpRequest,
     session: &mut Session,
     guide: &mut paper_mesh_simulator::ui_guide::Guide,
 ) -> HttpResponse {
-    if request.url() == "/ui-guide" || request.url().starts_with("/ui-guide/") {
+    let url = request
+        .uri()
+        .path_and_query()
+        .map_or("/", |value| value.as_str());
+    if url == "/ui-guide" || url.starts_with("/ui-guide/") {
         return ui_guide_http::handle(request, guide);
     }
-    match (request.method(), request.url()) {
-        (&Method::Get, "/") => response(
+    match (request.method(), url) {
+        (&Method::GET, "/") => response(
             200,
             "text/html; charset=utf-8",
             include_bytes!("index.html").to_vec(),
         ),
-        (&Method::Get, "/api/state") => response(
+        (&Method::GET, "/api/state") => response(
             200,
             "application/json",
             serde_json::to_vec(&session.state())
                 .expect("state contains only JSON-compatible values"),
         ),
-        (&Method::Get, path @ ("/frame.png" | "/frame-native.png")) => {
+        (&Method::GET, path @ ("/frame.png" | "/frame-native.png")) => {
             match if path == "/frame.png" {
                 session.simulation.portrait_png()
             } else {
@@ -203,23 +216,16 @@ fn handle(
                 }
             }
         }
-        (&Method::Post, "/api/event") => {
-            if !request.headers().iter().any(|header| {
-                header.field.equiv("Content-Type") && header.value.as_str() == "application/json"
-            }) {
+        (&Method::POST, "/api/event") => {
+            if request
+                .headers()
+                .get(header::CONTENT_TYPE)
+                .is_none_or(|value| value != "application/json")
+            {
                 return response(415, "text/plain", "Expected application/json.");
             }
-            let mut body = Vec::new();
-            if request
-                .as_reader()
-                .take(1025)
-                .read_to_end(&mut body)
-                .is_err()
-                || body.len() > 1024
-            {
-                return response(400, "text/plain", "Invalid or oversized event.");
-            }
-            let command = match serde_json::from_slice::<Command>(&body) {
+            let body = request.body();
+            let command = match serde_json::from_slice::<Command>(body) {
                 Ok(command) => command,
                 Err(_) => return response(400, "text/plain", "Invalid event."),
             };
@@ -232,7 +238,8 @@ fn handle(
     }
 }
 
-fn main() -> Result<(), Error> {
+#[tokio::main(flavor = "current_thread")]
+async fn main() -> Result<(), Error> {
     let args: Vec<String> = env::args().skip(1).collect();
     if let [flag, destination] = args.as_slice()
         && matches!(flag.as_str(), "--snapshot" | "--snapshot-native")
@@ -260,46 +267,167 @@ fn main() -> Result<(), Error> {
     }
 
     // Docker publishes this port only on the host loopback interface.
-    let server = Server::http("0.0.0.0:8080")?;
-    let mut session = Session {
-        simulation: Simulation::default(),
-        running: true,
-        generation: 0,
-    };
-    let mut last_wall = Instant::now();
-    let mut guide = paper_mesh_simulator::ui_guide::Guide::default();
-    let mut remainder = Duration::ZERO;
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await?;
+    let host = Arc::new(Mutex::new(Host {
+        session: Session {
+            simulation: Simulation::default(),
+            running: true,
+            generation: 0,
+        },
+        guide: paper_mesh_simulator::ui_guide::Guide::default(),
+        last_wall: Instant::now(),
+        remainder: Duration::ZERO,
+    }));
+    let app = Router::new()
+        .fallback(serve_request)
+        .with_state(host.clone());
     println!("Paper Mesh simulator: http://localhost:8080");
     println!("The device application, rendering, and virtual hardware run in this Rust process.");
-    loop {
-        let wall = Instant::now();
-        if session.running {
-            remainder += wall.duration_since(last_wall);
-            let milliseconds = remainder.as_millis().min(u64::MAX as u128) as u64;
-            remainder -= Duration::from_millis(milliseconds);
-            session.simulation.advance(milliseconds);
-        } else {
-            remainder = Duration::ZERO;
+    let pacing = async {
+        let mut timer = tokio::time::interval(Duration::from_millis(10));
+        loop {
+            timer.tick().await;
+            host.lock().unwrap().advance();
         }
-        last_wall = wall;
-        if let Some(mut request) = server.recv_timeout(Duration::from_millis(10))? {
-            let was_running = session.running;
-            let generation = session.generation;
-            let result = handle(&mut request, &mut session, &mut guide);
-            if let Err(error) = request.respond(result) {
-                eprintln!("Client disconnected: {error}");
-            }
-            if was_running != session.running || generation != session.generation {
-                last_wall = Instant::now();
-                remainder = Duration::ZERO;
-            }
-        }
+    };
+    tokio::select! {
+        result = axum::serve(listener, app) => result?,
+        () = pacing => {},
     }
+    Ok(())
+}
+
+struct Host {
+    session: Session,
+    guide: paper_mesh_simulator::ui_guide::Guide,
+    last_wall: Instant,
+    remainder: Duration,
+}
+
+impl Host {
+    fn advance(&mut self) {
+        let wall = Instant::now();
+        if self.session.running {
+            self.remainder += wall.duration_since(self.last_wall);
+            let milliseconds = self.remainder.as_millis().min(u64::MAX as u128) as u64;
+            self.remainder -= Duration::from_millis(milliseconds);
+            self.session.simulation.advance(milliseconds);
+        } else {
+            self.remainder = Duration::ZERO;
+        }
+        self.last_wall = wall;
+    }
+
+    fn handle(&mut self, request: &HttpRequest) -> HttpResponse {
+        self.advance();
+        let was_running = self.session.running;
+        let generation = self.session.generation;
+        let result = handle(request, &mut self.session, &mut self.guide);
+        if was_running != self.session.running || generation != self.session.generation {
+            self.last_wall = Instant::now();
+            self.remainder = Duration::ZERO;
+        }
+        result
+    }
+}
+
+async fn serve_request(
+    HttpState(host): HttpState<Arc<Mutex<Host>>>,
+    request: Request,
+) -> HttpResponse {
+    let (parts, body) = request.into_parts();
+    // Read network data before borrowing simulation state so a slow client cannot hold the lock.
+    let body = match to_bytes(body, 1024).await {
+        Ok(body) => body,
+        Err(_) => return response(400, "text/plain", "Invalid or oversized event."),
+    };
+    host.lock()
+        .unwrap()
+        .handle(&HttpRequest::from_parts(parts, body))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // HTTP commands must preserve paused time, frame responses, and event validation.
+    #[tokio::test(flavor = "current_thread")]
+    async fn http_preserves_commands_frames_and_limits() {
+        let host = Arc::new(Mutex::new(Host {
+            session: Session {
+                simulation: Simulation::default(),
+                running: false,
+                generation: 0,
+            },
+            guide: paper_mesh_simulator::ui_guide::Guide::default(),
+            last_wall: Instant::now(),
+            remainder: Duration::ZERO,
+        }));
+        for (method, path, content_type, body, status) in [
+            (
+                "POST",
+                "/api/event",
+                "application/json",
+                r#"{"type":"advance","ms":123}"#.to_owned(),
+                200,
+            ),
+            ("POST", "/api/event", "text/plain", "{}".to_owned(), 415),
+            (
+                "POST",
+                "/api/event",
+                "application/json",
+                "{".to_owned(),
+                400,
+            ),
+            (
+                "POST",
+                "/api/event",
+                "application/json",
+                " ".repeat(1025),
+                400,
+            ),
+            (
+                "POST",
+                "/ui-guide/event",
+                "application/json",
+                " ".repeat(1025),
+                400,
+            ),
+            ("GET", "/missing", "", String::new(), 404),
+            ("GET", "/ui-guide", "", String::new(), 200),
+            ("GET", "/ui-guide/state", "", String::new(), 200),
+        ] {
+            let request = Request::builder()
+                .method(method)
+                .uri(path)
+                .header(header::CONTENT_TYPE, content_type)
+                .body(axum::body::Body::from(body))
+                .unwrap();
+            let result = serve_request(HttpState(host.clone()), request).await;
+            assert_eq!(result.status().as_u16(), status, "{method} {path}");
+            assert_eq!(result.headers()[header::CACHE_CONTROL], "no-store");
+        }
+        let request = Request::builder()
+            .uri("/api/state")
+            .body(axum::body::Body::empty())
+            .unwrap();
+        let result = serve_request(HttpState(host.clone()), request).await;
+        let body = to_bytes(result.into_body(), usize::MAX).await.unwrap();
+        let state: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(state["now_ms"], 123);
+        assert_eq!(state["running"], false);
+        for path in ["/frame.png", "/frame-native.png", "/ui-guide/keyboard.png"] {
+            let request = Request::builder()
+                .uri(path)
+                .body(axum::body::Body::empty())
+                .unwrap();
+            let result = serve_request(HttpState(host.clone()), request).await;
+            assert_eq!(result.status(), 200);
+            assert_eq!(result.headers()[header::CONTENT_TYPE], "image/png");
+            let body = to_bytes(result.into_body(), usize::MAX).await.unwrap();
+            assert!(body.starts_with(b"\x89PNG\r\n\x1a\n"));
+        }
+    }
 
     #[test]
     fn stepping_requires_pause_and_rejects_invalid_time_or_coordinates() {
