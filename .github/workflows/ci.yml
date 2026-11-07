@@ -48,6 +48,12 @@ jobs:
         run: |
           # The image uses UID 1000. Keep runner access to new build outputs too.
           runner_uid=$(id -u)
+          # Build scripts must own restored outputs to change their permissions.
+          for target in "$GITHUB_WORKSPACE/target" "$GITHUB_WORKSPACE/firmware/target"; do
+            if [[ -d "$target" ]]; then
+              sudo chown -R -P --no-dereference 1000 "$target"
+            fi
+          done
           sudo setfacl -R -P -m "u:1000:rwX,u:${runner_uid}:rwX" "$GITHUB_WORKSPACE"
           sudo find "$GITHUB_WORKSPACE" -type d -exec \
             setfacl -m "d:u:1000:rwx,d:u:${runner_uid}:rwx" {} +

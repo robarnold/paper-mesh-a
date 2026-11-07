@@ -12,6 +12,7 @@ It skips ownership changes when the directory owner and group already match the 
 This avoids copying unchanged toolchain files from image layers into the container.
 CI keeps the image's user IDs to avoid changing tool ownership at startup.
 After cache restoration, workspace access control lists give the runner and container user write access to existing and new outputs.
+CI also gives the container user ownership of restored targets because build scripts can change output permissions.
 Git trusts only the mounted checkout path inside the CI container because its owner differs from the container user.
 
 ## Simulator access
