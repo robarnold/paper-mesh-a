@@ -179,7 +179,9 @@ impl<'a> Framebuffer<'a> {
         let threshold = 15 - phase as u8;
         let start = row * WIDTH / 2;
         for (source, destination) in self.bytes[start..start + WIDTH / 2]
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .zip(output)
         {
             let shades = [

@@ -153,7 +153,7 @@ impl Gt911 {
         let mut next = [None; MAX_CONTACTS];
         let mut ids = 0_u16;
         let mut invalid = count > MAX_CONTACTS || status[0] & 0x40 != 0;
-        for (slot, bytes) in next.iter_mut().zip(bytes.chunks_exact(8)).take(count) {
+        for (slot, bytes) in next.iter_mut().zip(bytes.as_chunks::<8>().0).take(count) {
             let contact = Contact {
                 id: bytes[0],
                 x: u16::from_le_bytes([bytes[1], bytes[2]]),

@@ -42,13 +42,22 @@ impl Park {
     }
 
     pub fn release(&self) {
-        let _ = self
-            .0
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |state| match state {
-                REQUESTED => Some(IDLE),
-                PARKED => Some(RELEASING),
-                _ => None,
-            });
+        let mut state = self.0.load(Ordering::Acquire);
+        // Retry if the other core claims the request while cancellation is in progress.
+        loop {
+            let next = match state {
+                REQUESTED => IDLE,
+                PARKED => RELEASING,
+                _ => return,
+            };
+            match self
+                .0
+                .compare_exchange_weak(state, next, Ordering::AcqRel, Ordering::Acquire)
+            {
+                Ok(_) => return,
+                Err(observed) => state = observed,
+            }
+        }
     }
 
     pub fn finish(&self) {
@@ -63,6 +72,7 @@ impl Park {
 mod tests {
     use super::Park;
 
+    // Cancellation before the other core claims the request permits another request.
     #[test]
     fn cancellation_before_acknowledgement_does_not_stop_the_core() {
         let park = Park::new();
@@ -74,6 +84,7 @@ mod tests {
         assert!(park.request());
     }
 
+    // Each completed cycle permits another request only after release acknowledgment.
     #[test]
     fn repeated_cycles_wait_for_release_acknowledgement() {
         let park = Park::new();
@@ -89,6 +100,7 @@ mod tests {
         }
     }
 
+    // Concurrent cancellation and acknowledgment must leave the handshake ready for another request.
     #[test]
     fn cancellation_racing_with_acknowledgement_always_releases() {
         for _ in 0..100 {
@@ -107,5 +119,20 @@ mod tests {
             });
             assert!(park.request());
         }
+    }
+
+    // Repeated release preserves idle state and cannot bypass the stopped core's acknowledgment.
+    #[test]
+    fn repeated_release_preserves_acknowledgement_requirement() {
+        let park = Park::new();
+        park.release();
+        park.release();
+        assert!(park.request());
+        assert!(park.claim());
+        park.release();
+        park.release();
+        assert!(!park.request());
+        park.finish();
+        assert!(park.request());
     }
 }
