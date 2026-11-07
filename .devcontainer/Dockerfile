@@ -19,9 +19,8 @@ ENV CARGO_HOME=/usr/local/cargo \
     ESPUP_EXPORT_FILE=/opt/esp/export.sh \
     PAPER_MESH_DEVCONTAINER=1
 
-# Match the GitHub runner so CI can reuse tool ownership from the image.
-RUN groupadd --gid 1001 vscode \
-    && useradd --uid 1001 --gid 1001 --create-home --shell /bin/bash vscode \
+RUN groupadd vscode \
+    && useradd --gid vscode --create-home --shell /bin/bash vscode \
     && usermod -aG dialout vscode \
     && echo 'vscode ALL=(root) NOPASSWD:ALL' > /etc/sudoers.d/vscode \
     && chmod 0440 /etc/sudoers.d/vscode \
@@ -29,15 +28,15 @@ RUN groupadd --gid 1001 vscode \
     && chown -R vscode:vscode /opt/esp "$CARGO_HOME" "$RUSTUP_HOME"
 
 USER vscode
-RUN --mount=type=cache,target=/usr/local/cargo/registry,uid=1001,gid=1001 \
-    --mount=type=cache,target=/usr/local/cargo/git,uid=1001,gid=1001 \
+RUN --mount=type=cache,id=paper-mesh-cargo-registry,target=/usr/local/cargo/registry,mode=0777 \
+    --mount=type=cache,id=paper-mesh-cargo-git,target=/usr/local/cargo/git,mode=0777 \
     rustup component add rustfmt clippy \
     && cargo install --locked espup --version "$ESPUP_VERSION" \
     && espup install --targets esp32s3 --toolchain-version "$ESP_TOOLCHAIN_VERSION" \
         --export-file "$ESPUP_EXPORT_FILE"
 
-RUN --mount=type=cache,target=/usr/local/cargo/registry,uid=1001,gid=1001 \
-    --mount=type=cache,target=/usr/local/cargo/git,uid=1001,gid=1001 \
+RUN --mount=type=cache,id=paper-mesh-cargo-registry,target=/usr/local/cargo/registry,mode=0777 \
+    --mount=type=cache,id=paper-mesh-cargo-git,target=/usr/local/cargo/git,mode=0777 \
     cargo install --locked espflash --version "$ESPFLASH_VERSION" \
     && cargo install --locked esp-generate --version "$ESP_GENERATE_VERSION" \
     && cargo install --locked just --version "$JUST_VERSION"
@@ -53,8 +52,8 @@ ENV PATH="/opt/esp/bin:/usr/local/cargo/bin:${PATH}" \
 COPY --from=rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 /usr/local/bin/actionlint /usr/local/bin/actionlint
 
 ARG NEXTEST_VERSION=0.9.151
-RUN --mount=type=cache,target=/usr/local/cargo/registry,uid=1001,gid=1001 \
-    --mount=type=cache,target=/usr/local/cargo/git,uid=1001,gid=1001 \
+RUN --mount=type=cache,id=paper-mesh-cargo-registry,target=/usr/local/cargo/registry,mode=0777 \
+    --mount=type=cache,id=paper-mesh-cargo-git,target=/usr/local/cargo/git,mode=0777 \
     cargo install --locked cargo-nextest --version "$NEXTEST_VERSION"
 
 # Devcontainers override this path with a cache in the mounted workspace.
