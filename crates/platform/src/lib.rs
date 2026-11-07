@@ -19,6 +19,7 @@ pub mod location;
 pub mod power;
 pub mod power_off;
 pub mod rotation;
+pub mod rtc;
 pub mod suspend;
 pub mod time;
 pub mod touchpad;

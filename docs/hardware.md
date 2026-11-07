@@ -12,6 +12,7 @@ They do not select behavior by board name or chip model.
 | [LILYGO T5 S3 E-Paper Pro](boards/lilygo-t5-s3-pro.md) | Board inventory, resource mapping, adapter topics, and conformance cases |
 
 Each profile records implementation status and links to detailed adapter documents.
+The [retained calendar adapter](adapters/rtc.md) documents reusable PCF8563 access independently of board integration.
 
 The [native simulator](simulator.md) implements the same service contracts.
 Its current display preset uses the first board's geometry.

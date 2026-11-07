@@ -15,6 +15,7 @@ bench = false
 radio-scan-demo = []
 
 [dependencies]
+paper-mesh-pcf8563 = { path = "../crates/pcf8563" }
 paper-mesh-platform = { path = "../crates/platform" }
 paper-mesh-app = { path = "../crates/app" }
 paper-mesh-ed047tc1 = { path = "../crates/ed047tc1" }

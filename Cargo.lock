@@ -514,6 +514,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "paper-mesh-pcf8563"
+version = "0.1.0"
+dependencies = [
+ "embedded-hal",
+ "paper-mesh-platform",
+]
+
+[[package]]
 name = "paper-mesh-platform"
 version = "0.1.0"
 dependencies = [

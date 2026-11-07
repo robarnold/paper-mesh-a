@@ -1,0 +1,13 @@
+[package]
+name = "paper-mesh-pcf8563"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+paper-mesh-platform = { path = "../platform" }
+embedded-hal = "=1.0.0"

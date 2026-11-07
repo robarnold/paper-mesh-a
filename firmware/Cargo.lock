@@ -1679,6 +1679,7 @@ dependencies = [
  "paper-mesh-ed047tc1",
  "paper-mesh-gt911",
  "paper-mesh-hid-touchpad",
+ "paper-mesh-pcf8563",
  "paper-mesh-platform",
  "serde_json",
  "static_cell",
@@ -1696,6 +1697,14 @@ dependencies = [
 name = "paper-mesh-hid-touchpad"
 version = "0.1.0"
 dependencies = [
+ "paper-mesh-platform",
+]
+
+[[package]]
+name = "paper-mesh-pcf8563"
+version = "0.1.0"
+dependencies = [
+ "embedded-hal 1.0.0",
  "paper-mesh-platform",
 ]
 

@@ -11,6 +11,7 @@ The toolkit has no dependency on a particular application.
 | --- | --- | --- |
 | [`crates/app`](../crates/app/src/lib.rs) | Application state, screens, layout, actions, and policy choices | `paper-mesh-platform` |
 | [`crates/platform`](../crates/platform/src/lib.rs) | Application toolkit and portable contracts | None |
+| [`crates/pcf8563`](../crates/pcf8563/src/lib.rs) | PCF8563 calendar access through I2C | Platform calendar contract |
 | [`firmware/src/main.rs`](../firmware/src/main.rs) | Hardware startup and connection of the application to services | Application, platform, and hardware adapters |
 | [`firmware/src`](../firmware/src/main.rs) adapters | Hardware services, drivers, buffers, and resource control | Platform and chip drivers |
 | [`simulator/src/lib.rs`](../simulator/src/lib.rs) | Native services and deterministic application execution | Application and platform |
@@ -21,7 +22,14 @@ The toolkit has no dependency on a particular application.
 Both shared crates use `no_std` without heap allocation.
 The root workspace also builds the simulator and tests the chip and host protocols.
 Firmware stays outside that workspace to isolate Xtensa settings and ESP dependency features.
-Its manifest uses path dependencies for both shared crates.
+Its manifest uses path dependencies for the application, platform, and adapter crates.
+
+The platform owns calendar synchronization through its `Rtc` contract.
+The PCF8563 crate implements that contract without ESP peripherals or executor dependencies.
+The platform has no dependency on the PCF8563 crate.
+Firmware retains the RTC worker, shared bus ownership, scheduling, and suspend coordination.
+It supplies observation age limits, correction thresholds, and calendar range to the synchronization service.
+Startup supplies location observations through a callback, so the RTC worker does not depend on the GNSS adapter.
 
 ```mermaid
 flowchart TD

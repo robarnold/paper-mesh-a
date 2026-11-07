@@ -5,9 +5,12 @@
 //! - Read the complete calendar together and reject voltage-loss indications so a
 //!   partial or invalid date cannot become UTC.
 //!
-//! See [Hardware adapter](../../../docs/boards/lilygo-t5-s3-pro-rtc.md#hardware-adapter).
+//! See [Calendar access](../../../docs/adapters/rtc.md#calendar-access).
+
+#![no_std]
 
 use embedded_hal::i2c::I2c;
+use paper_mesh_platform::rtc::{InvalidTimeReason, Rtc, RtcError};
 use paper_mesh_platform::time::{Date, Time, UtcDateTime};
 
 const ADDRESS: u8 = 0x51;
@@ -83,4 +86,37 @@ fn bcd(value: u8) -> Option<u8> {
 
 fn encode(value: u8) -> u8 {
     (value / 10) << 4 | (value % 10)
+}
+
+/// A PCF8563 RTC with an owned I2C handle or a borrowed bus.
+pub struct Pcf8563<I> {
+    bus: I,
+}
+
+impl<I: I2c> Pcf8563<I> {
+    /// Store the bus handle without I/O or device initialization.
+    pub fn new(bus: I) -> Self {
+        Self { bus }
+    }
+}
+
+impl<I: I2c> Rtc for Pcf8563<I> {
+    type AccessError = I::Error;
+
+    fn read_utc(&mut self) -> Result<UtcDateTime, RtcError<Self::AccessError>> {
+        read(&mut self.bus)
+            .map_err(map_error)?
+            .ok_or(RtcError::InvalidTime(InvalidTimeReason::InvalidCalendar))
+    }
+
+    fn set_utc(&mut self, utc: UtcDateTime) -> Result<(), RtcError<Self::AccessError>> {
+        set(&mut self.bus, utc).map_err(map_error)
+    }
+}
+
+fn map_error<E>(error: Error<E>) -> RtcError<E> {
+    match error {
+        Error::Bus(error) => RtcError::Access(error),
+        Error::UnsupportedYear => RtcError::UnsupportedDate,
+    }
 }

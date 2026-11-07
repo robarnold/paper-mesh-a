@@ -142,7 +142,7 @@ fn initialize(
         peripherals.GPIO43,
         peripherals.FROM_CPU_INTR3,
     );
-    spawner.spawn(rtc::worker(bus).unwrap());
+    spawner.spawn(rtc::worker(bus, |now_ms| gnss::FirmwareLocation.snapshot(now_ms)).unwrap());
     spawner.spawn(power::worker(bus).unwrap());
     let panel = if display_safe.is_some_and(|result| {
         if let Err(error) = &result {

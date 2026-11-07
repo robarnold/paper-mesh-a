@@ -74,6 +74,7 @@ Do not create a document for each source file or small feature.
 | `docs/services/` | Detailed portable service contracts and their status |
 | [Display contract](docs/display-constraints.md) | Portable display and lighting requirements |
 | [Hardware backends](docs/hardware.md) | Profile index and requirements for new backends |
+| `docs/adapters/` | Reusable device adapters, implementation choices, and limits independent of board integration |
 | `docs/boards/` | Board inventories, chip behavior, wiring, and conformance cases |
 | [Simulator](docs/simulator.md) | Simulator purpose, boundaries, and topic navigation |
 | `docs/simulator/` | Execution, API, controls, and scenarios |
