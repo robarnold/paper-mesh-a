@@ -25,11 +25,16 @@ Overlapping conditions report voltage loss first, then test mode, STOP, unsuppor
 An I2C failure returns `Access` without an inference about calendar state.
 Unsupported input years return `UnsupportedDate` before any bus access.
 
-The driver sets STOP, writes the complete calendar, and clears STOP.
+The driver sets STOP, writes the complete calendar, clears STOP, and reads the result.
 It leaves alarm, timer, and clock-output registers unchanged.
 A failed calendar write leaves STOP set to prevent use of a partial date.
-The synchronization service reads the calendar after a correction.
-This read checks calendar validity but does not compare the result with the requested time.
+Readback must contain valid calendar time equal to the request or one second later.
+This tolerance permits one counter tick during immediate verification, including date rollover.
+Older time, a larger difference, or invalid calendar state produces `VerificationFailed`.
+A failed verification read preserves the `Access` error.
+An error does not imply that the write left the device unchanged.
+The synchronization service then reads a fresh sample for cached UTC.
+Verification does not establish power-loss retention or oscillator accuracy.
 
 ## Evidence and limits
 

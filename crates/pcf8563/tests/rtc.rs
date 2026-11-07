@@ -34,6 +34,7 @@ struct Rtc {
     transactions: usize,
     writes: Vec<Vec<u8>>,
     fail_at: Option<usize>,
+    readback: Option<[u8; 9]>,
 }
 
 impl Rtc {
@@ -46,6 +47,7 @@ impl Rtc {
             transactions: 0,
             writes: Vec::new(),
             fail_at: None,
+            readback: None,
         }
     }
 }
@@ -70,6 +72,11 @@ impl I2c for Rtc {
                 assert_eq!(bytes.len(), 9);
                 if !fail {
                     bytes.copy_from_slice(&self.registers[..9]);
+                    if self.writes.len() >= 3
+                        && let Some(readback) = self.readback
+                    {
+                        bytes.copy_from_slice(&readback);
+                    }
                 }
             }
             [Operation::Write(bytes)] => {
@@ -287,8 +294,8 @@ fn repeated_reports_do_not_reset_the_counter_and_new_reports_correct_drift() {
 
 #[test]
 fn each_bus_failure_invalidates_the_clock_and_allows_a_complete_retry() {
-    // Poll has a read, STOP, calendar write, start, and verification read.
-    for fail_at in 1..=5 {
+    // Poll reads, writes STOP and the calendar, restarts, verifies, then samples UTC.
+    for fail_at in 1..=6 {
         let rtc = RefCell::new(Rtc::retained());
         let mut driver = device::Pcf8563::new(SharedBus(&rtc));
         let mut service = Service::new(POLICY);
@@ -299,7 +306,10 @@ fn each_bus_failure_invalidates_the_clock_and_allows_a_complete_retry() {
         rtc.borrow_mut().fail_at = Some(fail_at);
         let correction = datetime(2024, Month::February, 29, 12, 34, 56);
         let report = gps(correction, 100);
-        assert!(service.poll(&mut driver, report, 100).is_err());
+        assert_eq!(
+            service.poll(&mut driver, report, 100),
+            Err(Error::Access(ErrorKind::Other))
+        );
         assert_eq!(service.now_utc(100), None);
         rtc.borrow_mut().fail_at = None;
         if fail_at == 2 || fail_at == 3 {
@@ -416,4 +426,76 @@ fn invalid_time_reason_precedence_is_stable() {
         driver.read_utc(),
         Err(Error::InvalidTime(InvalidTimeReason::InvalidCalendar))
     );
+}
+
+// Readback must match the requested calendar or one later second, including date rollover.
+#[test]
+fn write_verification_allows_one_tick_but_rejects_other_valid_time() {
+    let requested = datetime(2026, Month::October, 18, 23, 59, 58);
+    for (seconds, expected) in [
+        (0x57, Err(Error::VerificationFailed)),
+        (0x58, Ok(())),
+        (0x59, Ok(())),
+    ] {
+        let bus = RefCell::new(Rtc::retained());
+        let mut readback: [u8; 9] = bus.borrow().registers[..9].try_into().unwrap();
+        readback[2] = seconds;
+        bus.borrow_mut().readback = Some(readback);
+        let mut driver = device::Pcf8563::new(SharedBus(&bus));
+        assert_eq!(driver.set_utc(requested), expected);
+        assert_eq!(bus.borrow().transactions, 4);
+    }
+    let bus = RefCell::new(Rtc::retained());
+    bus.borrow_mut().readback = Some([0, 0, 0, 0, 0, 1, 5, 1, 0x27]);
+    let mut driver = device::Pcf8563::new(SharedBus(&bus));
+    assert_eq!(
+        driver.set_utc(datetime(2026, Month::December, 31, 23, 59, 59)),
+        Ok(())
+    );
+    assert_eq!(
+        driver.set_utc(datetime(2026, Month::December, 31, 23, 59, 58)),
+        Err(Error::VerificationFailed)
+    );
+}
+
+// Invalid readback is a failed write verification, even when all writes were acknowledged.
+#[test]
+fn invalid_readback_cannot_confirm_a_calendar_write() {
+    for (register, value) in [(2, 0x80), (0, 0x20), (0, 0x80), (7, 0x90), (5, 0)] {
+        let bus = RefCell::new(Rtc::retained());
+        let mut readback: [u8; 9] = bus.borrow().registers[..9].try_into().unwrap();
+        readback[register] = value;
+        bus.borrow_mut().readback = Some(readback);
+        let mut driver = device::Pcf8563::new(SharedBus(&bus));
+        assert_eq!(
+            driver.set_utc(datetime(2026, Month::October, 18, 23, 59, 58)),
+            Err(Error::VerificationFailed)
+        );
+        assert_eq!(bus.borrow().writes.len(), 3);
+    }
+}
+
+// A verification failure must clear cached UTC and leave the correction available for retry.
+#[test]
+fn failed_verification_does_not_publish_time_or_consume_the_source() {
+    let bus = RefCell::new(Rtc::retained());
+    let mut driver = device::Pcf8563::new(SharedBus(&bus));
+    let mut service = Service::new(POLICY);
+    service
+        .poll(&mut driver, LocationSnapshot::new(), 0)
+        .unwrap();
+    assert!(service.now_utc(0).is_some());
+    let stale: [u8; 9] = bus.borrow().registers[..9].try_into().unwrap();
+    bus.borrow_mut().readback = Some(stale);
+    let expected = datetime(2026, Month::November, 7, 12, 0, 0);
+    let report = gps(expected, 100);
+    assert_eq!(
+        service.poll(&mut driver, report, 100),
+        Err(Error::VerificationFailed)
+    );
+    assert_eq!(service.now_utc(100), None);
+    bus.borrow_mut().readback = None;
+    service.poll(&mut driver, report, 101).unwrap();
+    assert_eq!(service.now_utc(101), Some(expected));
+    assert_eq!(bus.borrow().writes.len(), 6);
 }

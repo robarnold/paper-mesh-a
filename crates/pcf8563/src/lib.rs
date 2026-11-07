@@ -61,7 +61,7 @@ fn decode_calendar(registers: [u8; 9]) -> Option<UtcDateTime> {
     Some(UtcDateTime::new(date, time))
 }
 
-/// Stop the counter, replace the complete calendar, then start normal operation.
+/// Stop the counter, replace the calendar, restart, and verify through readback.
 /// A failed calendar write keeps STOP set until a later complete correction.
 pub fn set<I: I2c>(bus: &mut I, datetime: UtcDateTime) -> Result<(), RtcError<I::Error>> {
     if !(2000..=2099).contains(&datetime.year()) {
@@ -82,7 +82,18 @@ pub fn set<I: I2c>(bus: &mut I, datetime: UtcDateTime) -> Result<(), RtcError<I:
         ],
     )
     .map_err(RtcError::Access)?;
-    bus.write(ADDRESS, &[0, 0]).map_err(RtcError::Access)
+    bus.write(ADDRESS, &[0, 0]).map_err(RtcError::Access)?;
+    let observed = match read(bus) {
+        Ok(observed) => observed,
+        Err(RtcError::InvalidTime(_)) => return Err(RtcError::VerificationFailed),
+        Err(error) => return Err(error),
+    };
+    // Accept one counter tick during the immediate readback, but never older time.
+    let elapsed = observed.unix_timestamp() - datetime.unix_timestamp();
+    if !(0..=1).contains(&elapsed) {
+        return Err(RtcError::VerificationFailed);
+    }
+    Ok(())
 }
 
 fn bcd(value: u8) -> Option<u8> {

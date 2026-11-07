@@ -45,9 +45,8 @@ Persistent alarms, sleep accounting, drift calibration, and source uncertainty r
 
 The platform [synchronization service](../../crates/platform/src/rtc/synchronization.rs) uses the [`Rtc` contract](../../crates/platform/src/rtc.rs).
 The contract separates retained calendar operations from cached `Clock` reads.
-It reports access failures, invalid calendar state, and unsupported dates as operation errors.
+It reports access failures, invalid calendar state, unsupported dates, and write verification failures as operation errors.
 Invalid time distinguishes voltage loss, a stopped clock, test mode, an unsupported calendar convention, and invalid calendar fields.
-Stricter write verification remains separate work.
 
 The service preserves valid retained time at startup without a location fix.
 It advances cached UTC between polls and limits extrapolation after communication stops.
@@ -57,8 +56,9 @@ The first correction sets the calendar. Later corrections use the caller's drift
 
 Invalid retained time can recover from a fresh source in the same poll.
 An access failure immediately invalidates cached UTC and leaves the source observation available for a later retry.
-After a write, the service reads calendar time again to check validity.
-It does not yet compare that result with the requested time.
+The RTC implementation verifies writes using device readback and documents its tolerance for counter advancement.
+A failed verification invalidates cached UTC and leaves the source observation available for retry.
+After a verified write, the service reads calendar time again for its cached sample.
 
 The caller supplies the polling interval, observation age limits, correction threshold, and supported years through `Policy`.
 The service supplies the next monotonic polling deadline, including after access failures.

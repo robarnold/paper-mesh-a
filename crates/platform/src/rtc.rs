@@ -28,6 +28,7 @@ pub enum RtcError<E> {
     Access(E),
     InvalidTime(InvalidTimeReason),
     UnsupportedDate,
+    VerificationFailed,
 }
 
 /// Retained calendar access. Operations can perform I/O and partially change hardware.
@@ -36,7 +37,8 @@ pub trait Rtc {
 
     fn read_utc(&mut self) -> Result<UtcDateTime, RtcError<Self::AccessError>>;
 
-    /// Write calendar time. The caller reads again to check calendar validity.
-    /// Success does not establish retention or equality with the requested time.
+    /// Write calendar time and verify the result through device readback.
+    /// Adapters document their tolerance for elapsed time during verification.
+    /// Success does not establish retention across power loss or oscillator accuracy.
     fn set_utc(&mut self, utc: UtcDateTime) -> Result<(), RtcError<Self::AccessError>>;
 }
