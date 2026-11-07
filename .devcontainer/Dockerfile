@@ -13,7 +13,7 @@ RUN apt-get update \
         libudev-dev libssl-dev pkg-config python3 python3-yaml shellcheck sudo watchman \
     && rm -rf /var/lib/apt/lists/*
 
-# Rust, Cargo, and espup write only to the container filesystem.
+# Install tools in the image. Runtime Cargo data uses a separate directory.
 ENV CARGO_HOME=/usr/local/cargo \
     RUSTUP_HOME=/usr/local/rustup \
     ESPUP_EXPORT_FILE=/opt/esp/export.sh \
@@ -29,12 +29,16 @@ RUN groupadd --gid 1001 vscode \
     && chown -R vscode:vscode /opt/esp "$CARGO_HOME" "$RUSTUP_HOME"
 
 USER vscode
-RUN rustup component add rustfmt clippy \
+RUN --mount=type=cache,target=/usr/local/cargo/registry,uid=1001,gid=1001 \
+    --mount=type=cache,target=/usr/local/cargo/git,uid=1001,gid=1001 \
+    rustup component add rustfmt clippy \
     && cargo install --locked espup --version "$ESPUP_VERSION" \
     && espup install --targets esp32s3 --toolchain-version "$ESP_TOOLCHAIN_VERSION" \
         --export-file "$ESPUP_EXPORT_FILE"
 
-RUN cargo install --locked espflash --version "$ESPFLASH_VERSION" \
+RUN --mount=type=cache,target=/usr/local/cargo/registry,uid=1001,gid=1001 \
+    --mount=type=cache,target=/usr/local/cargo/git,uid=1001,gid=1001 \
+    cargo install --locked espflash --version "$ESPFLASH_VERSION" \
     && cargo install --locked esp-generate --version "$ESP_GENERATE_VERSION" \
     && cargo install --locked just --version "$JUST_VERSION"
 
@@ -49,6 +53,12 @@ ENV PATH="/opt/esp/bin:/usr/local/cargo/bin:${PATH}" \
 COPY --from=rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 /usr/local/bin/actionlint /usr/local/bin/actionlint
 
 ARG NEXTEST_VERSION=0.9.151
-RUN cargo install --locked cargo-nextest --version "$NEXTEST_VERSION"
+RUN --mount=type=cache,target=/usr/local/cargo/registry,uid=1001,gid=1001 \
+    --mount=type=cache,target=/usr/local/cargo/git,uid=1001,gid=1001 \
+    cargo install --locked cargo-nextest --version "$NEXTEST_VERSION"
+
+# Devcontainers override this path with a cache in the mounted workspace.
+ENV CARGO_HOME=/home/vscode/.cargo \
+    RUSTUP_AUTO_INSTALL=0
 
 WORKDIR /workspaces/paper-mesh-a

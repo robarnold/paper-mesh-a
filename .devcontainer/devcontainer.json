@@ -7,8 +7,13 @@
   "remoteUser": "vscode",
   "containerUser": "vscode",
   "userEnvProbe": "none",
+  "containerEnv": {
+    "CARGO_HOME": "${containerWorkspaceFolder}/target/cargo-home"
+  },
+  "remoteEnv": {
+    "PATH": "${containerWorkspaceFolder}/target/cargo-home/bin:${containerEnv:PATH}"
+  },
   "appPort": ["127.0.0.1:8080:8080"],
-  "postCreateCommand": "bash scripts/prepare-tool-permissions.sh",
   "customizations": {
     "vscode": {
       "extensions": [

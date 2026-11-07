@@ -7,11 +7,12 @@ Follow the [README quick start](../README.md#start-development) to run the check
 
 Local development and CI use the same [container image](../.devcontainer/Dockerfile) so both build with the same toolchains.
 The tools stay inside the container, which avoids changes to the host shell.
-The [container configuration](../.devcontainer/devcontainer.json) restores write access to the tool directories when the container user's numeric ID changes.
-It skips ownership changes when the directory owner and group already match the container user.
-This avoids copying unchanged toolchain files from image layers into the container.
-The image creates `vscode` with UID/GID `1001:1001` to match the GitHub runner and avoid tool ownership changes in CI.
-Local devcontainers still adapt the user IDs to the host and repair tool ownership when those IDs differ.
+Installed Rust and ESP toolchains stay in the image. Normal builds do not need to write to their installation directories.
+The [container configuration](../.devcontainer/devcontainer.json) sets `CARGO_HOME` to `target/cargo-home` in the mounted workspace.
+Cargo writes downloads, registry metadata, locks, and user-installed commands there. This data survives local container recreation with the checkout.
+Installed image commands remain available through `PATH`. User-installed commands in the writable Cargo home take precedence.
+Toolchain changes require an image rebuild. Automatic installation of missing Rust toolchains is disabled.
+Local devcontainers still adapt the user IDs to the host without changing ownership of installed tools.
 
 ## Simulator access
 
@@ -39,6 +40,11 @@ See the [devcontainer action documentation](https://github.com/devcontainers/ci/
 Separate GitHub Actions caches retain native and firmware build outputs in the mounted checkout.
 The cache keys include container inputs, Cargo configuration, manifests, and lockfiles because these inputs can change compiled dependencies.
 Each revision can save a new cache. A compatible earlier revision supplies build outputs when the exact key is absent.
+
+A separate cache retains Cargo registry indexes, downloaded crate archives, and Git repository data.
+It excludes credentials, user-installed commands, and extracted registry sources. Cargo reconstructs extracted sources from the cached archives.
+See the [Cargo home documentation](https://doc.rust-lang.org/cargo/guide/cargo-home.html) for cache contents.
+Tool installation uses BuildKit cache mounts so its downloaded sources do not become image layers.
 
 The native cache stores the debug profile used by CI. The firmware cache stores both host and Xtensa build outputs.
 Generated simulator snapshots and merged firmware images stay outside these caches. CI generates the published artifacts on each run.
