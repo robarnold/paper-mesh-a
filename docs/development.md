@@ -8,6 +8,8 @@ Follow the [README quick start](../README.md#start-development) to run the check
 Local development and CI use the same [container image](../.devcontainer/Dockerfile) so both build with the same toolchains.
 The tools stay inside the container, which avoids changes to the host shell.
 The [container configuration](../.devcontainer/devcontainer.json) restores write access to the tool directories when the container user's numeric ID changes.
+It skips ownership changes when the directory owner and group already match the container user.
+This avoids copying unchanged toolchain files from image layers into the container.
 
 ## Simulator access
 
@@ -35,6 +37,8 @@ See the [devcontainer action documentation](https://github.com/devcontainers/ci/
 Separate GitHub Actions caches retain native and firmware build outputs in the mounted checkout.
 The cache keys include container inputs, Cargo configuration, manifests, and lockfiles because these inputs can change compiled dependencies.
 Each revision can save a new cache. A compatible earlier revision supplies build outputs when the exact key is absent.
+CI enables Cargo fingerprint diagnostics to explain rebuilds after a cache restore.
+These messages appear with the build output. Local checks keep Cargo's default logging.
 
 The native cache stores the debug profile used by CI. The firmware cache stores both host and Xtensa build outputs.
 Generated simulator snapshots and merged firmware images stay outside these caches. CI generates the published artifacts on each run.
