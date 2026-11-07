@@ -10,6 +10,9 @@ The tools stay inside the container, which avoids changes to the host shell.
 The [container configuration](../.devcontainer/devcontainer.json) restores write access to the tool directories when the container user's numeric ID changes.
 It skips ownership changes when the directory owner and group already match the container user.
 This avoids copying unchanged toolchain files from image layers into the container.
+CI keeps the image's user IDs to avoid changing tool ownership at startup.
+After cache restoration, workspace access control lists give the runner and container user write access to existing and new outputs.
+Git trusts only the mounted checkout path inside the CI container because its owner differs from the container user.
 
 ## Simulator access
 
