@@ -8,7 +8,12 @@ The [firmware runtime](../../firmware/src/main.rs) supplies USB identity, the HI
 The descriptor must match the logical coordinates submitted by the runtime.
 Its static lifetime lets the USB stack retain it without a copy or heap allocation.
 The [USB module](../../firmware/src/usb.rs) owns endpoint settings, buffers, workers, and lifecycle coordination.
-Command error encoding and connection diagnostics still depend on firmware modules.
+The command callback receives complete request bytes or a framing error with the issuing session identity.
+Firmware encodes JSON errors and selects the diagnostic providers in startup configuration.
+USB calls the fixed provider list in order and sends each bounded line through its connection checks.
+Each provider reads current state when called. The lines are not an atomic system snapshot.
+Providers must return without waiting or accessing USB. An empty list disables connection diagnostics.
+USB still uses the firmware protocol's request capacity. This limit remains separate from error encoding.
 
 The firmware uses the ESP32-S3 USB OTG controller through esp-hal and Embassy USB.
 GPIO20 is D+ and GPIO19 is D−.

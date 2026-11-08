@@ -79,6 +79,8 @@ The caller must clear partial input and overflow state when its source session c
 
 The firmware USB worker uses this mechanism with the existing command size limit.
 Firmware retains JSON parsing, error responses, and command routing.
+USB passes framing errors to the runtime callback with the original session identity.
+The same session checks apply to error replies and successful command replies.
 Platform tests cover capacity boundaries, overflow recovery, session clearing, empty frames, and byte preservation.
 Native integration tests combine the public framer with firmware routing to check fragmented commands and disconnects.
 

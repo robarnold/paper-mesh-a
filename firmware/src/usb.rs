@@ -13,10 +13,13 @@ pub use lifecycle::UsbLifecycle;
 use lifecycle::Worker;
 use paper_mesh_platform::worker::Pause;
 
-use paper_mesh_platform::transport::{ReplyTransport, SessionId};
+use paper_mesh_platform::transport::{ReplyTransport, SessionId, framing::FrameError};
 
-/// Runtime-selected dispatch for one complete request and its connection session.
-pub type CommandHandler = fn(&[u8], SessionId) -> Option<alloc::string::String>;
+/// Runtime-selected dispatch for a complete request or framing error in its session.
+pub type CommandHandler = fn(Result<&[u8], FrameError>, SessionId) -> Option<alloc::string::String>;
+
+/// Supply one connection diagnostic without waiting or accessing USB.
+pub type DiagnosticSource = fn() -> heapless::String<192>;
 
 use core::{
     cell::RefCell,
@@ -53,6 +56,8 @@ pub struct Config {
     /// Must describe the logical coordinates submitted through TouchpadHost.
     pub descriptor: &'static Descriptor,
     pub command_handler: CommandHandler,
+    /// Called in order when diagnostic output starts for a configured connection.
+    pub connection_diagnostics: &'static [DiagnosticSource],
 }
 
 static OUT_BUFFER: StaticCell<[u8; 256]> = StaticCell::new();
@@ -216,7 +221,7 @@ pub fn start(
         .spawn(command_worker(receiver, control, config.command_handler, commands_worker).unwrap());
     spawner.spawn(bus_worker(builder.build(), device_worker).unwrap());
     spawner.spawn(hid_worker(hid, hid_pause_worker).unwrap());
-    spawner.spawn(log_worker(sender, logs_worker).unwrap());
+    spawner.spawn(log_worker(sender, logs_worker, config.connection_diagnostics).unwrap());
     UsbLifecycle {
         device,
         hid: hid_pause,
@@ -331,14 +336,21 @@ impl log::Log for Logger {
 }
 
 #[embassy_executor::task]
-async fn log_worker(mut sender: cdc_acm::Sender<'static, Driver<'static>>, mut pause: Worker) {
+async fn log_worker(
+    mut sender: cdc_acm::Sender<'static, Driver<'static>>,
+    mut pause: Worker,
+    diagnostics: &'static [DiagnosticSource],
+) {
     loop {
         pause.checkpoint().await;
-        select(pause.requested(), write_logs(&mut sender)).await;
+        select(pause.requested(), write_logs(&mut sender, diagnostics)).await;
     }
 }
 
-async fn write_logs(sender: &mut cdc_acm::Sender<'static, Driver<'static>>) {
+async fn write_logs(
+    sender: &mut cdc_acm::Sender<'static, Driver<'static>>,
+    diagnostics: &'static [DiagnosticSource],
+) {
     let mut connection = None;
     loop {
         let generation = GENERATION.load(Ordering::Acquire);
@@ -355,7 +367,7 @@ async fn write_logs(sender: &mut cdc_acm::Sender<'static, Driver<'static>>) {
             if !send_log_line(sender, "\n", generation).await {
                 continue;
             }
-            if send_connection_info(sender, generation).await {
+            if send_connection_info(sender, generation, diagnostics).await {
                 connection = Some(generation);
             }
             continue;
@@ -398,13 +410,11 @@ async fn write_logs(sender: &mut cdc_acm::Sender<'static, Driver<'static>>) {
 fn send_connection_info<'a>(
     sender: &'a mut cdc_acm::Sender<'static, Driver<'static>>,
     generation: u32,
+    diagnostics: &'static [DiagnosticSource],
 ) -> core::pin::Pin<alloc::boxed::Box<dyn core::future::Future<Output = bool> + 'a>> {
     alloc::boxed::Box::pin(async move {
-        for line in [
-            crate::suspend::trace::connection_line(),
-            crate::suspend::trace::wake_line(),
-            crate::display_recovery::connection_line(),
-        ] {
+        for source in diagnostics {
+            let line = source();
             if !send_log_line(sender, &line, generation).await {
                 return false;
             }
@@ -445,7 +455,7 @@ async fn read_commands_inner(
     handler: CommandHandler,
 ) {
     use crate::usb_protocol as protocol;
-    use paper_mesh_platform::transport::framing::{FrameError, LineFramer};
+    use paper_mesh_platform::transport::framing::LineFramer;
     let mut frame = LineFramer::<{ protocol::MAX_REQUEST }>::default();
     let mut observed_generation = None;
     let mut control_session = None;
@@ -516,12 +526,8 @@ async fn read_commands_inner(
                 continue;
             };
             let reply = match message {
-                Ok(bytes) => handler(&bytes, packet_session),
-                Err(FrameError::TooLong) => Some(protocol::error(
-                    serde_json::Value::Null,
-                    -32600,
-                    "Request exceeds 512 bytes",
-                )),
+                Ok(bytes) => handler(Ok(&bytes), packet_session),
+                Err(error) => handler(Err(error), packet_session),
             };
             if let Some(reply) = reply
                 && with_timeout(

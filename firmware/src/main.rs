@@ -536,14 +536,23 @@ fn usb_config() -> usb::Config {
         device,
         descriptor: &DESCRIPTOR,
         command_handler: handle_command,
+        connection_diagnostics: &[
+            suspend::trace::connection_line,
+            suspend::trace::wake_line,
+            display_recovery::connection_line,
+        ],
     }
 }
 
 fn handle_command(
-    bytes: &[u8],
+    request: Result<&[u8], paper_mesh_platform::transport::framing::FrameError>,
     session: paper_mesh_platform::transport::SessionId,
 ) -> Option<alloc::string::String> {
     use crate::usb_protocol::{self, Route};
+    let bytes = match request {
+        Ok(bytes) => bytes,
+        Err(error) => return Some(usb_protocol::framing_error(error)),
+    };
     match usb_protocol::route(bytes) {
         Ok(Route::Ignore) => None,
         Ok(Route::Bootloader(id)) => {

@@ -7,6 +7,7 @@
 //! See [LILYGO USB touchpad and diagnostics](../../docs/boards/lilygo-t5-s3-pro-usb.md).
 
 use alloc::string::{String, ToString};
+use paper_mesh_platform::transport::framing::FrameError;
 use serde_json::{Value, json};
 
 pub const MAX_REQUEST: usize = 512;
@@ -16,6 +17,12 @@ pub enum Route {
     Ignore,
     Bootloader(Value),
     Diagnostic(Value),
+}
+
+pub fn framing_error(failure: FrameError) -> String {
+    match failure {
+        FrameError::TooLong => error(Value::Null, -32600, "Request exceeds 512 bytes"),
+    }
 }
 
 pub fn error(id: Value, code: i32, message: &str) -> String {

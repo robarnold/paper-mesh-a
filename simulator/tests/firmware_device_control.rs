@@ -68,6 +68,7 @@ fn only_explicit_correlated_requests_enter_the_downloader() {
     );
 }
 
+// Overflow must preserve the protocol error response and must not produce a reset command.
 #[test]
 fn fragment_overflow_and_disconnect_cannot_create_a_reset_request() {
     let mut frame = LineFramer::<{ protocol::MAX_REQUEST }>::default();
@@ -82,7 +83,16 @@ fn fragment_overflow_and_disconnect_cannot_create_a_reset_request() {
     for _ in 0..513 {
         frame.push(b'x');
     }
-    assert!(frame.push(b'\n').unwrap().is_err());
+    let failure = frame.push(b'\n').unwrap().unwrap_err();
+    let reply = protocol::framing_error(failure);
+    assert!(reply.ends_with('\n'));
+    assert_eq!(
+        serde_json::from_str::<Value>(&reply).unwrap(),
+        json!({
+            "jsonrpc": "2.0", "id": null,
+            "error": {"code": -32600, "message": "Request exceeds 512 bytes"}
+        })
+    );
     for byte in &request[..20] {
         frame.push(*byte);
     }
