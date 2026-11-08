@@ -7,18 +7,25 @@
 //!
 //! See [All physical controls](../../docs/boards/lilygo-t5-s3-pro.md#all-physical-controls).
 
+mod polling_lifecycle;
+pub use polling_lifecycle::ButtonPollingLifecycle;
+
 use core::cell::RefCell;
+use embassy_executor::Spawner;
+use embassy_futures::select::select;
 use embassy_sync::{
     blocking_mutex::{Mutex, raw::CriticalSectionRawMutex},
     channel::Channel,
     signal::Signal,
 };
-use embassy_time::Instant;
+use embassy_time::{Instant, Timer};
 use esp_hal::gpio::{Event, Input, InputConfig, Pull};
 use esp_hal::peripherals::GPIO0;
 use paper_mesh_platform::input::buttons::{
     ButtonCapability, ButtonDebouncer, ButtonDescriptor, ButtonEvent, ButtonId, ButtonState,
 };
+use paper_mesh_platform::worker::{Pause, PauseWorker};
+use static_cell::StaticCell;
 
 use crate::bus::Bus;
 
@@ -57,6 +64,7 @@ pub const CONTROLS: [ButtonDescriptor; 5] = [
 
 static EVENTS: Channel<CriticalSectionRawMutex, ButtonEvent, 16> = Channel::new();
 static CHANGED: Signal<CriticalSectionRawMutex, ()> = Signal::new();
+static POLLING_PAUSE: StaticCell<Pause<CriticalSectionRawMutex>> = StaticCell::new();
 static BOOT_PIN: Mutex<CriticalSectionRawMutex, RefCell<Option<Input<'static>>>> =
     Mutex::new(RefCell::new(None));
 static HOME_STATE: Mutex<CriticalSectionRawMutex, RefCell<ButtonDebouncer>> =
@@ -122,10 +130,22 @@ pub fn take_boot_interrupt(disarm: bool) -> bool {
     })
 }
 
+pub fn start_polling(
+    spawner: Spawner,
+    bus: Option<&'static Bus>,
+    pin: GPIO0<'static>,
+) -> ButtonPollingLifecycle {
+    let (pause, worker_pause) = POLLING_PAUSE.init(Pause::new()).split();
+    spawner.spawn(polling_worker(bus, pin, worker_pause).unwrap());
+    ButtonPollingLifecycle { pause }
+}
+
 #[embassy_executor::task]
-pub async fn worker(bus: Option<&'static Bus>, pin: GPIO0<'static>) {
-    use crate::suspend::{self, Service};
-    suspend::register(Service::Buttons);
+async fn polling_worker(
+    bus: Option<&'static Bus>,
+    pin: GPIO0<'static>,
+    mut pause: PauseWorker<'static, CriticalSectionRawMutex>,
+) {
     BOOT_PIN.lock(|slot| {
         *slot.borrow_mut() = Some(Input::new(pin, InputConfig::default().with_pull(Pull::Up)))
     });
@@ -136,7 +156,7 @@ pub async fn worker(bus: Option<&'static Bus>, pin: GPIO0<'static>) {
         log::info!("button: {} {:?}", control.label, control.capability);
     }
     loop {
-        suspend::checkpoint(Service::Buttons).await;
+        pause.checkpoint().await;
         let now = Instant::now().as_millis();
         let pressed = BOOT_PIN.lock(|slot| slot.borrow().as_ref().is_some_and(Input::is_low));
         if let Some(event) = boot_state.sample(pressed, now) {
@@ -158,7 +178,7 @@ pub async fn worker(bus: Option<&'static Bus>, pin: GPIO0<'static>) {
                 publish(event);
             }
         }
-        suspend::delay(Service::Buttons, 10).await;
+        select(Timer::after_millis(10), pause.requested()).await;
     }
 }
 

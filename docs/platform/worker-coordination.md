@@ -106,18 +106,34 @@ Pausing observations does not switch off the charger, battery gauge, or board po
 The system coordinator retains direct `read_now` access for suspend comparisons while the periodic worker is paused.
 Power-off preparation keeps the worker paused. The coordinator owns the hardware cut and reset recovery.
 
+## Button polling integration
+
+The [button module](../../firmware/src/buttons.rs) starts its polling worker and returns a `ButtonPollingLifecycle` handle.
+The worker polls BOOT directly and Function through the shared bus when available.
+Startup retains the handle even when bus initialization fails because BOOT polling still operates.
+
+A checkpoint follows GPIO setup, completed reads, event publication, and bus release.
+The pause request interrupts the polling delay. It does not cancel a bus transaction.
+Restoration resumes polling with the existing debounce state and queued events.
+Power-off preparation keeps polling paused until power removal or reset.
+
+This handle does not stop HOME updates from the touch worker or arm wake sources.
+The system coordinator waits for all required workers before it arms BOOT and expander wake interrupts.
+Hardware wake capture remains active while polling is paused.
+The runtime must coordinate touch separately when it needs all input workers stopped.
+
 ## Runtime composition
 
-The [runtime service handles](../../firmware/src/lifecycle.rs) combine RTC, USB, and available power-observation lifecycle capabilities.
-The hardware suspend coordinator still accepts one generic participant and has no dependency on either adapter.
-The runtime prepares USB, power observations, then the RTC. Restoration uses the reverse order.
+The [runtime service handles](../../firmware/src/lifecycle.rs) combine RTC, USB, button polling, and available power-observation lifecycle capabilities.
+The hardware suspend coordinator still accepts one generic participant and has no dependency on the selected lifecycle handles.
+The runtime prepares USB, button polling, power observations, then the RTC. Restoration uses the reverse order.
 It passes the same coordinator deadline to each service.
 Cancellation restores all present handles because preparation can stop at any await.
 The current implementations are infallible. General error aggregation and dependency planning remain separate work.
 
 Reset recovery requests all present services to pause without waiting for acknowledgement.
 This path does not claim safe device detachment. The watchdog returns through normal startup.
-Buttons, GNSS, and touch still use the global `Service` registry.
+GNSS and touch still use the global `Service` registry.
 The system coordinator waits for those workers in addition to the runtime participant.
 Display-core parking is a hardware execution barrier and remains distinct from a cooperative worker pause.
 

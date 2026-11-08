@@ -40,7 +40,6 @@ const POWER_OFF_FAULT_RESET_MS: u64 = 1_000;
 
 #[derive(Clone, Copy)]
 pub enum Service {
-    Buttons,
     Gnss,
     Touch,
 }
@@ -49,7 +48,7 @@ static REQUESTED: AtomicBool = AtomicBool::new(false);
 static REGISTERED: AtomicU32 = AtomicU32::new(0);
 static PAUSED: AtomicU32 = AtomicU32::new(0);
 static FAILED: AtomicBool = AtomicBool::new(false);
-static SIGNALS: [Signal<CriticalSectionRawMutex, ()>; 3] = [const { Signal::new() }; 3];
+static SIGNALS: [Signal<CriticalSectionRawMutex, ()>; 2] = [const { Signal::new() }; 2];
 static WAKE_BITS: AtomicU32 = AtomicU32::new(0);
 static PIN: Mutex<CriticalSectionRawMutex, RefCell<Option<Flex<'static>>>> =
     Mutex::new(RefCell::new(None));

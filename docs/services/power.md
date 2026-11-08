@@ -109,7 +109,7 @@ Successful restoration does not make old observations fresh.
 Power-off remains a separate capability. Suspend callbacks do not promise persistence or prepare physical power removal.
 
 The firmware suspend controller accepts a `SuspendParticipant` supplied by the runtime.
-The runtime [combines RTC, USB, and available power-observation handles](../platform/worker-coordination.md#runtime-composition) into one participant.
+The runtime [combines RTC, USB, button-polling, and available power-observation handles](../platform/worker-coordination.md#runtime-composition) into one participant.
 The clock handle requests and awaits its RTC worker through an explicit [pause channel](../platform/worker-coordination.md).
 The worker releases the bus and publishes its last result before acknowledgement. The clock then invalidates cached UTC.
 The controller calls `did_resume` after sleep, or `did_cancel_suspend` when preparation ends without sleep.
@@ -120,6 +120,7 @@ RTC restoration performs no I/O and cannot fail; the next worker poll establishe
 USB preparation stops endpoint operations before device detachment. Restoration requires a new connection session.
 Power observation preparation awaits completed reads and publication. Restoration releases the worker for a new sample.
 The coordinator retains direct power reads while periodic observations are paused.
+Button polling pauses before wake arming. Its lifecycle handle does not control wake interrupts or HOME input from the touch worker.
 Other workers still use the existing pause mechanism. General dependency coordination remains planned work.
 
 ## Power-off participants

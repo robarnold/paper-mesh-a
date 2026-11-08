@@ -154,7 +154,7 @@ fn initialize(
             power::fault();
         })
         .ok();
-    spawner.spawn(buttons::worker(bus, peripherals.GPIO0).unwrap());
+    let button_polling = buttons::start_polling(spawner, bus, peripherals.GPIO0);
     let Some(bus) = bus else {
         return (
             None,
@@ -164,6 +164,7 @@ fn initialize(
                 clock,
                 usb,
                 power_observation: None,
+                button_polling,
             },
         );
     };
@@ -229,6 +230,7 @@ fn initialize(
             clock,
             usb,
             power_observation: Some(power_observation),
+            button_polling,
         },
     )
 }

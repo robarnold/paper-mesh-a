@@ -37,7 +37,7 @@ The runtime supplies that handle to the suspend controller through the generic c
 The handle also implements the independent [power-off participant contract](services/power.md#power-off-participants).
 The runtime supplies this capability separately to the power-off coordinator.
 Power-off faults use watchdog reset and the normal startup checks before workers restart.
-RTC, USB, and power-observation workers use explicit pause handles instead of the global firmware pause registry.
+RTC, USB, button-polling, and power-observation workers use explicit pause handles instead of the global firmware pause registry.
 The runtime combines their lifecycle handles in [service composition](../firmware/src/lifecycle.rs).
 The hardware coordinator remains independent of the selected adapters.
 Other workers retain the registry until their migration.
