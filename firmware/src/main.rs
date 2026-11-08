@@ -156,7 +156,16 @@ fn initialize(
         .ok();
     spawner.spawn(buttons::worker(bus, peripherals.GPIO0).unwrap());
     let Some(bus) = bus else {
-        return (None, None, suspend, lifecycle::Services { clock, usb });
+        return (
+            None,
+            None,
+            suspend,
+            lifecycle::Services {
+                clock,
+                usb,
+                power_observation: None,
+            },
+        );
     };
     gnss::start(
         bus,
@@ -173,7 +182,7 @@ fn initialize(
         )
         .unwrap(),
     );
-    spawner.spawn(power::worker(bus).unwrap());
+    let power_observation = power::start_observation(spawner, bus);
     let panel = if display_safe.is_some_and(|result| {
         if let Err(error) = &result {
             error!("display: boot shutdown failed: {}", error);
@@ -216,7 +225,11 @@ fn initialize(
         panel.map(display_worker::Client::new),
         Some(bus),
         suspend,
-        lifecycle::Services { clock, usb },
+        lifecycle::Services {
+            clock,
+            usb,
+            power_observation: Some(power_observation),
+        },
     )
 }
 
@@ -239,7 +252,7 @@ async fn run_app(
     let mut inspection_hold: Option<display_inspection::Hold> = None;
     let mut discovery = discovery::FirmwareDiscovery;
     let mut location = gnss::FirmwareLocation;
-    let mut power = power::FirmwarePower;
+    let mut power_observation = power::FirmwarePowerObservation;
     let mut touchpad = usb::FirmwareTouchpad;
     let mut touchpad_session = TouchpadSession::new();
     #[cfg(feature = "radio-scan-demo")]
@@ -250,7 +263,7 @@ async fn run_app(
         app.set_touchpad_host(touchpad.state());
         app.poll_discovery(&services.clock, &mut discovery);
         app.poll_location(&services.clock, &mut location);
-        app.poll_power(&services.clock, &mut power);
+        app.poll_power(&services.clock, &mut power_observation);
         process_touch(app, &mut touchpad_session, &mut touchpad);
         // Drain earlier touch frames before applying an exit button.
         while let Some(event) = buttons::next_event() {

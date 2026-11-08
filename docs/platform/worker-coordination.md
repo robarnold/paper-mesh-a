@@ -91,18 +91,33 @@ Endpoint workers wait for a new configured connection before they access the dev
 Restoration permits reconnection. It does not promise that a host has connected.
 Power-off preparation leaves all workers paused until power removal or reset.
 
+## Power observation integration
+
+The [power module](../../firmware/src/power/mod.rs) starts its periodic worker and returns a `PowerObservationLifecycle` handle.
+Startup creates this handle only when shared-bus initialization succeeds.
+The runtime omits an unavailable worker from lifecycle composition, so preparation cannot wait for a task that never started.
+
+Preparation waits for battery and charger reads to finish, bus guards to drop, and the resulting snapshot to publish.
+The pause request interrupts the polling delay, but does not cancel a device transaction.
+Restoration releases the worker to take another sample. Cached observations retain their original timestamps until replaced.
+The read-only `FirmwarePowerObservation` capability remains separate from lifecycle ownership.
+
+Pausing observations does not switch off the charger, battery gauge, or board power.
+The system coordinator retains direct `read_now` access for suspend comparisons while the periodic worker is paused.
+Power-off preparation keeps the worker paused. The coordinator owns the hardware cut and reset recovery.
+
 ## Runtime composition
 
-The [runtime service handles](../../firmware/src/lifecycle.rs) combine the RTC and USB lifecycle capabilities.
+The [runtime service handles](../../firmware/src/lifecycle.rs) combine RTC, USB, and available power-observation lifecycle capabilities.
 The hardware suspend coordinator still accepts one generic participant and has no dependency on either adapter.
-The runtime prepares USB before the RTC and restores the RTC before USB.
-It passes the same coordinator deadline to both services.
-Cancellation restores both handles because preparation can stop at any await.
-Both current implementations are infallible. General error aggregation and dependency planning remain separate work.
+The runtime prepares USB, power observations, then the RTC. Restoration uses the reverse order.
+It passes the same coordinator deadline to each service.
+Cancellation restores all present handles because preparation can stop at any await.
+The current implementations are infallible. General error aggregation and dependency planning remain separate work.
 
-Reset recovery requests both services to pause without waiting for acknowledgement.
+Reset recovery requests all present services to pause without waiting for acknowledgement.
 This path does not claim safe device detachment. The watchdog returns through normal startup.
-Buttons, GNSS, power, and touch still use the global `Service` registry.
+Buttons, GNSS, and touch still use the global `Service` registry.
 The system coordinator waits for those workers in addition to the runtime participant.
 Display-core parking is a hardware execution barrier and remains distinct from a cooperative worker pause.
 

@@ -8,15 +8,21 @@
 //! See [Hardware and execution](../../../docs/boards/lilygo-t5-s3-pro-power.md#hardware-and-execution).
 
 mod device;
+mod observation_lifecycle;
+pub use observation_lifecycle::PowerObservationLifecycle;
 pub(crate) mod ship;
 
 use core::cell::RefCell;
+use embassy_executor::Spawner;
+use embassy_futures::select::select;
 use embassy_sync::{
     blocking_mutex::{Mutex, raw::CriticalSectionRawMutex},
     signal::Signal,
 };
-use embassy_time::Instant;
+use embassy_time::{Instant, Timer};
 use paper_mesh_platform::power::{Power, PowerAvailability, PowerReading, PowerSnapshot};
+use paper_mesh_platform::worker::{Pause, PauseWorker};
+use static_cell::StaticCell;
 
 use crate::bus::Bus;
 
@@ -24,10 +30,11 @@ const POLL_MS: u64 = 2_000;
 static STATE: Mutex<CriticalSectionRawMutex, RefCell<PowerSnapshot>> =
     Mutex::new(RefCell::new(PowerSnapshot::INITIAL));
 static CHANGED: Signal<CriticalSectionRawMutex, ()> = Signal::new();
+static PAUSE: StaticCell<Pause<CriticalSectionRawMutex>> = StaticCell::new();
 
-pub struct FirmwarePower;
+pub struct FirmwarePowerObservation;
 
-impl Power for FirmwarePower {
+impl Power for FirmwarePowerObservation {
     fn snapshot(&mut self, _now_ms: u64) -> PowerSnapshot {
         STATE.lock(|state| *state.borrow())
     }
@@ -84,13 +91,20 @@ pub async fn read_now(bus: &Bus) -> PowerSnapshot {
     snapshot
 }
 
+pub fn start_observation(spawner: Spawner, bus: &'static Bus) -> PowerObservationLifecycle {
+    let (pause, worker_pause) = PAUSE.init(Pause::new()).split();
+    spawner.spawn(observation_worker(bus, worker_pause).unwrap());
+    PowerObservationLifecycle { pause }
+}
+
 #[embassy_executor::task]
-pub async fn worker(bus: &'static Bus) {
-    use crate::suspend::{self, Service};
-    suspend::register(Service::Power);
+async fn observation_worker(
+    bus: &'static Bus,
+    mut pause: PauseWorker<'static, CriticalSectionRawMutex>,
+) {
     let mut failed = (false, false);
     loop {
-        suspend::checkpoint(Service::Power).await;
+        pause.checkpoint().await;
         let battery = {
             let mut bus = bus.lock().await;
             let at_ms = Instant::now().as_millis();
@@ -117,6 +131,6 @@ pub async fn worker(bus: &'static Bus) {
             battery: battery.unwrap_or(PowerReading::unavailable(PowerAvailability::Fault)),
             charger: charger.unwrap_or(PowerReading::unavailable(PowerAvailability::Fault)),
         });
-        suspend::delay(Service::Power, POLL_MS).await;
+        select(Timer::after_millis(POLL_MS), pause.requested()).await;
     }
 }
