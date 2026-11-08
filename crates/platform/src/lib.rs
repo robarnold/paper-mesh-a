@@ -25,6 +25,7 @@ pub mod time;
 pub mod touchpad;
 pub mod transport;
 pub mod ui;
+pub mod worker;
 
 /// Monotonic time and optional UTC calendar time.
 pub trait Clock {

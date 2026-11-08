@@ -525,6 +525,7 @@ dependencies = [
 name = "paper-mesh-platform"
 version = "0.1.0"
 dependencies = [
+ "embassy-sync",
  "embedded-graphics",
  "embedded-iconoir",
  "heapless",

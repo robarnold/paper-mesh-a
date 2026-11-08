@@ -11,12 +11,17 @@ use paper_mesh_pcf8563::Pcf8563;
 use paper_mesh_platform::rtc::synchronization as service;
 
 use core::cell::RefCell;
+use embassy_futures::select::select;
 use embassy_sync::blocking_mutex::{Mutex, raw::CriticalSectionRawMutex};
 use embassy_time::{Instant, Timer};
 use log::error;
 use paper_mesh_platform::{
-    Clock, location::LocationSnapshot, power_off::PowerOffParticipant, suspend::SuspendParticipant,
+    Clock,
+    location::LocationSnapshot,
+    power_off::PowerOffParticipant,
+    suspend::SuspendParticipant,
     time::UtcDateTime,
+    worker::{PauseControl, PauseWorker},
 };
 
 use crate::bus::Bus;
@@ -35,7 +40,9 @@ const POLICY: Policy = Policy {
 static STATE: Mutex<CriticalSectionRawMutex, RefCell<Service>> =
     Mutex::new(RefCell::new(Service::new(POLICY)));
 
-pub struct FirmwareClock;
+pub struct FirmwareClock {
+    pause: PauseControl<'static, CriticalSectionRawMutex>,
+}
 
 impl Clock for FirmwareClock {
     fn now_ms(&self) -> u64 {
@@ -48,12 +55,18 @@ impl Clock for FirmwareClock {
 }
 
 impl FirmwareClock {
-    async fn prepare_stop(&mut self) {
-        // The coordinator requests the worker pause and bounds this wait.
-        // Wait for its bus access and cache publication before invalidating UTC.
-        while !crate::suspend::is_paused(crate::suspend::Service::Rtc) {
-            Timer::after_millis(1).await;
-        }
+    pub fn new(pause: PauseControl<'static, CriticalSectionRawMutex>) -> Self {
+        Self { pause }
+    }
+
+    /// Request a worker pause before reset recovery without claiming it has completed.
+    pub fn request_pause(&mut self) {
+        self.pause.request_pause();
+    }
+
+    async fn prepare_pause(&mut self) {
+        // Pause acknowledgement follows bus release and cache publication.
+        self.pause.pause().await;
         self.invalidate_cache();
     }
 
@@ -67,12 +80,13 @@ impl SuspendParticipant for FirmwareClock {
     type Error = core::convert::Infallible;
 
     async fn will_suspend(&mut self, _deadline_ms: u64) -> Result<(), Self::Error> {
-        self.prepare_stop().await;
+        self.prepare_pause().await;
         Ok(())
     }
 
     async fn did_resume(&mut self, _deadline_ms: u64) -> Result<(), Self::Error> {
         self.invalidate_cache();
+        self.pause.resume();
         Ok(())
     }
 
@@ -86,18 +100,20 @@ impl PowerOffParticipant for FirmwareClock {
 
     async fn will_power_off(&mut self, _deadline_ms: u64) -> Result<(), Self::Error> {
         // Completed worker writes already reside in the RTC. Leave its retained counter running.
-        self.prepare_stop().await;
+        self.prepare_pause().await;
         Ok(())
     }
 }
 
 #[embassy_executor::task]
-pub async fn worker(bus: &'static Bus, location: fn(u64) -> LocationSnapshot) {
-    use crate::suspend::{self, Service};
-    suspend::register(Service::Rtc);
+pub async fn worker(
+    bus: &'static Bus,
+    location: fn(u64) -> LocationSnapshot,
+    mut pause: PauseWorker<'static, CriticalSectionRawMutex>,
+) {
     let mut faulted = false;
     loop {
-        suspend::checkpoint(Service::Rtc).await;
+        pause.checkpoint().await;
         // Lifecycle callbacks can invalidate the cache while the worker is paused.
         let mut service = STATE.lock(|state| *state.borrow());
         let result = {
@@ -112,11 +128,9 @@ pub async fn worker(bus: &'static Bus, location: fn(u64) -> LocationSnapshot) {
             error!("RTC: access failed: {:?}", error);
         }
         faulted = result.is_err();
-        suspend::delay(
-            Service::Rtc,
-            service
-                .next_deadline_ms()
-                .saturating_sub(Instant::now().as_millis()),
+        select(
+            Timer::at(Instant::from_millis(service.next_deadline_ms())),
+            pause.requested(),
         )
         .await;
     }

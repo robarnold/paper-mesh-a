@@ -18,6 +18,7 @@ standard's dictionary or permit other meanings and parts of speech.
 | Backpressure | A limit on new requests when a service cannot accept more work |
 | Board profile | Backend description of fitted hardware, wiring, calibration, and resource dependencies |
 | Capability | Supported service operation or limit |
+| Checkpoint | Worker boundary at which required resources are released and a pause can be acknowledged |
 | C/N0 | Carrier-to-noise density ratio, expressed in dB-Hz for GNSS signals |
 | Compositor | Shared component that combines damage and prepares display content |
 | Contract | Required behavior at a service boundary, including ownership and failure results |
@@ -33,6 +34,7 @@ standard's dictionary or permit other meanings and parts of speech.
 | GNSS | Global navigation satellite system |
 | GSV | NMEA message that supplies satellites in view and their signal levels |
 | Logical viewport | Display area and coordinate space that the application uses |
+| Lifecycle participant | Service control handle that implements preparation or restoration for a system power transition |
 | Mounting transform | Fixed rotation from native panel coordinates to device-body coordinates |
 | MSL | Mean sea level, the reference for GNSS elevation |
 | Native coordinates | Coordinates that use the display backend's storage orientation |
@@ -40,6 +42,9 @@ standard's dictionary or permit other meanings and parts of speech.
 | Observation | Service value with units, validity, and an observation time |
 | Page | One application destination with content, input behavior, and entry and exit callbacks |
 | Panel | A related content region within a page; no separate platform API exists yet |
+| Pause channel | Shared state and notifications between one pause controller and one worker |
+| Pause acknowledgement | Confirmation that a worker reached a safe checkpoint and remains paused until release |
+| Pause controller | Endpoint that requests, awaits, and releases a worker pause |
 | Platform | Application toolkit, service contracts, adapters, resources, and execution |
 | Platform crate | Reusable toolkit implementations and portable contracts in `crates/platform`, without an application dependency |
 | Position fix | Geographic position that a location provider marks as valid |
@@ -50,14 +55,17 @@ standard's dictionary or permit other meanings and parts of speech.
 | Radio debugger | Application screen that shows discovery results and scan controls |
 | Runtime | Code that connects an application to services and controls execution and event delivery |
 | Scenario profile | Simulator configuration for capabilities, timing, and faults |
+| Service control handle | Runtime-owned object that exposes service operations and lifecycle capabilities |
 | Navigator | Platform owner of shell launch, return history, active destination, and page lifecycle |
 | Shell | Persistent UI frame that supplies the shared header, Back gesture, and content bounds |
 | Style role | Named visual purpose that resolves to a selected font, color, or spacing value |
 | SSID | Name that identifies a Wi-Fi network |
 | Staging buffer | Pixel storage that accepts drawing before refresh submission |
+| System coordinator | Backend owner that orders lifecycle operations, enforces deadlines, and performs power transitions |
 | UTC | Coordinated Universal Time |
 | Waveform | Sequence of electrical drive commands that changes an e-paper pixel's shade |
 | WGS84 | Geodetic reference system for GNSS latitude and longitude |
+| Worker | Task that performs service work and reaches cooperative checkpoints |
 
 Established names such as Rust, Embassy, LoRa, and GT911 keep their official
 spelling. API identifiers, register names, units, and protocol names keep their

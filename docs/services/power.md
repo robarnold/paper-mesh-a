@@ -110,10 +110,10 @@ Power-off remains a separate capability. Suspend callbacks do not promise persis
 
 The firmware suspend controller accepts a `SuspendParticipant` supplied by the runtime.
 The runtime selects [`FirmwareClock`](../../firmware/src/rtc/mod.rs) as its first participant.
-It requests the existing worker pause before it calls `will_suspend`.
-The clock waits for the RTC worker to release the bus and publish its last result, then invalidates cached UTC.
+The clock handle requests and awaits its RTC worker through an explicit [pause channel](../platform/worker-coordination.md).
+The worker releases the bus and publishes its last result before acknowledgement. The clock then invalidates cached UTC.
 The controller calls `did_resume` after sleep, or `did_cancel_suspend` when preparation ends without sleep.
-It completes restoration before it releases the workers.
+The clock releases its worker after cache invalidation. The controller releases legacy workers after participant restoration completes.
 Preparation errors or timeouts prevent sleep and trigger cancellation.
 Restoration errors or timeouts keep workers stopped and the recovery watchdog armed until reset.
 RTC restoration performs no I/O and cannot fail; the next worker poll establishes calendar validity.
@@ -133,7 +133,7 @@ Any aborted shutdown after preparation starts requires reset recovery, including
 The firmware keeps workers stopped and uses watchdog reset to return through normal hardware initialization.
 
 The firmware controller accepts a `PowerOffParticipant` from the runtime, which supplies the RTC clock handle.
-The clock waits for its worker to stop, then invalidates cached UTC.
+The clock requests and awaits its worker's pause, then invalidates cached UTC.
 Completed calendar writes already reside in the RTC; preparation leaves its retained counter running.
 After reset, startup and a new RTC read establish calendar validity before UTC becomes available.
 Display shutdown and hardware power-cut sequencing remain backend responsibilities.

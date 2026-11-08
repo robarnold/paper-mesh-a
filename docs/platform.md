@@ -55,6 +55,7 @@ The platform overview does not imply that all services are implemented.
 | [UI requirements](platform/ui-requirements.md) | Proposed controls, consuming flows, and ordered acceptance criteria |
 | [Shared UI standard](ui.md) | Visual language, page behavior, navigation, and validation |
 | [Runtime execution](platform/runtime.md) | Implementation boundaries and the current application loop |
+| [Worker coordination](platform/worker-coordination.md) | Pause endpoints, acknowledgements, cancellation, and lifecycle integration |
 | [Orientation state and coordinate spaces](platform/orientation.md) | Coordinate transforms, orientation policy, and frame state |
 | [Display lifecycle and ownership](platform/display.md) | Frame submission, completion, buffers, and recovery boundaries |
 | [Host touchpad](services/touchpad.md) | Raw contact forwarding, input capture, and session cancellation |
