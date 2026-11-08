@@ -7,20 +7,16 @@
 //!
 //! See [ESP USB adapter](../../../../docs/adapters/usb.md).
 
-use super::{
-    control,
-    lifecycle::{UsbLifecycle, Worker},
-};
+mod workers;
+use super::{control, lifecycle::UsbLifecycle};
 use paper_mesh_platform::worker::Pause;
+pub use workers::UsbWorkers;
+use workers::{CdcWorkers, DeviceWorker, HidWorker};
 
-use paper_mesh_platform::transport::{
-    ReplyTransport, SessionId,
-    framing::{FrameError, LineFramer},
-};
+use paper_mesh_platform::transport::{ReplyTransport, SessionId, framing::FrameError};
 
 /// Fixed command-buffer capacity. Runtime protocol limits must fit this storage.
 pub const REQUEST_CAPACITY: usize = 512;
-type RequestFramer = LineFramer<REQUEST_CAPACITY>;
 
 /// Runtime-selected dispatch for a complete request or framing error in its session.
 pub type CommandHandler = fn(Result<&[u8], FrameError>, SessionId) -> Option<alloc::string::String>;
@@ -33,16 +29,14 @@ use core::{
     fmt::Write,
     sync::atomic::{AtomicBool, AtomicU32, Ordering},
 };
-use embassy_executor::Spawner;
-use embassy_futures::select::{Either, select};
 use embassy_sync::{
     blocking_mutex::{Mutex, raw::CriticalSectionRawMutex},
     channel::Channel,
     signal::Signal,
 };
-use embassy_time::{Duration, Instant, Timer, with_timeout};
+use embassy_time::{Duration, with_timeout};
 use embassy_usb::{
-    Builder, Handler, UsbDevice,
+    Builder, Handler,
     class::{cdc_acm, hid},
     control::OutResponse,
 };
@@ -53,7 +47,7 @@ use esp_hal::{
         embassy_usb_device::{Config as DriverConfig, Driver},
     },
 };
-use paper_mesh_hid_touchpad::{Descriptor, Encoder, REPORT_LEN};
+use paper_mesh_hid_touchpad::{Descriptor, REPORT_LEN};
 use paper_mesh_platform::touchpad::{HostFrame, HostState, TouchpadHost};
 use static_cell::StaticCell;
 
@@ -184,13 +178,15 @@ impl hid::RequestHandler for Requests {
     }
 }
 
-pub fn start(
-    spawner: Spawner,
+/// Initialize the composite device without launching its workers.
+/// Launch all returned workers on the preparation core before using the lifecycle handle.
+#[must_use = "launch the returned USB workers before using the lifecycle handle"]
+pub fn prepare(
     peripheral: USB_FS<'static>,
     dp: GPIO20<'static>,
     dm: GPIO19<'static>,
     config: Config,
-) -> UsbLifecycle {
+) -> (UsbLifecycle, UsbWorkers) {
     assert!(
         config.max_request_len <= REQUEST_CAPACITY,
         "USB request limit exceeds buffer capacity"
@@ -229,116 +225,28 @@ pub fn start(
             hid_boot_protocol: hid::HidBootProtocol::None,
         },
     );
-    let (sender, receiver, control) = cdc.split_with_control();
-    spawner.spawn(
-        command_worker(
-            receiver,
-            control,
-            config.command_handler,
-            commands_worker,
-            config.max_request_len,
-        )
-        .unwrap(),
+    let cdc_workers = CdcWorkers::new(
+        cdc,
+        config.command_handler,
+        config.max_request_len,
+        config.connection_diagnostics,
+        commands_worker,
+        logs_worker,
     );
-    spawner.spawn(bus_worker(builder.build(), device_worker).unwrap());
-    spawner.spawn(hid_worker(hid, hid_pause_worker).unwrap());
-    spawner.spawn(log_worker(sender, logs_worker, config.connection_diagnostics).unwrap());
-    UsbLifecycle {
-        device,
-        hid: hid_pause,
-        logs,
-        commands,
-    }
-}
-
-#[embassy_executor::task]
-async fn bus_worker(mut device: UsbDevice<'static, Driver<'static>>, mut pause: Worker) {
-    loop {
-        select(device.run(), select(RESTART.wait(), pause.requested())).await;
-        // The resolved Synopsys driver's disable() does not disconnect the PHY.
-        // Keep clocks running and detach before resetting the USB stack state.
-        USB_FS::regs().pcgcctl().modify(|_, w| {
-            w.stoppclk().clear_bit();
-            w.gatehclk().clear_bit()
-        });
-        USB_FS::regs().dctl().modify(|_, w| w.sftdiscon().set_bit());
-        // Embassy requires disable after cancellation of run().
-        device.disable().await;
-        loop {
-            pause.checkpoint().await;
-            if matches!(
-                select(pause.requested(), Timer::after_millis(250)).await,
-                Either::Second(())
-            ) {
-                break;
-            }
-        }
-        // A restart observed while detached is already satisfied by this reconnect.
-        RESTART.reset();
-        USB_FS::regs()
-            .dctl()
-            .modify(|_, w| w.sftdiscon().clear_bit());
-        log::info!("USB: reconnect");
-    }
-}
-
-#[embassy_executor::task]
-async fn hid_worker(
-    mut writer: hid::HidWriter<'static, Driver<'static>, REPORT_LEN>,
-    mut pause: Worker,
-) {
-    loop {
-        pause.checkpoint().await;
-        select(pause.requested(), write_hid(&mut writer)).await;
-    }
-}
-
-async fn write_hid(writer: &mut hid::HidWriter<'static, Driver<'static>, REPORT_LEN>) {
-    let mut generation = 0;
-    let mut encoder = Encoder::default();
-    let mut held: Option<(u32, HostFrame)> = None;
-    loop {
-        let (epoch, frame) = if let Some((epoch, mut frame)) = held {
-            match select(FRAMES.receive(), Timer::after_millis(16)).await {
-                Either::First(next) => next,
-                Either::Second(()) => {
-                    // Linux releases Win8 contacts after 100 ms without a report.
-                    frame.at_ms = Instant::now().as_millis();
-                    (epoch, frame)
-                }
-            }
-        } else {
-            FRAMES.receive().await
-        };
-        held = None;
-        if epoch != GENERATION.load(Ordering::Acquire) || !ACTIVE.load(Ordering::Acquire) {
-            continue;
-        }
-        if epoch != generation {
-            encoder = Encoder::default();
-            generation = epoch;
-            log::info!("touchpad: first report; generation={}", generation);
-        }
-        let reports = encoder.encode(frame);
-        for packet in reports.packets() {
-            if epoch != GENERATION.load(Ordering::Acquire) {
-                break;
-            }
-            if !matches!(
-                with_timeout(Duration::from_millis(100), writer.write(packet)).await,
-                Ok(Ok(()))
-            ) {
-                if epoch == GENERATION.load(Ordering::Acquire) {
-                    log::warn!("touchpad: HID write failed or timed out");
-                    FirmwareTouchpad.cancel();
-                }
-                break;
-            }
-        }
-        if epoch == GENERATION.load(Ordering::Acquire) && !frame.contacts.is_empty() {
-            held = Some((epoch, frame));
-        }
-    }
+    let workers = UsbWorkers::new(
+        DeviceWorker::new(builder.build(), device_worker),
+        HidWorker::new(hid, hid_pause_worker),
+        cdc_workers,
+    );
+    (
+        UsbLifecycle {
+            device,
+            hid: hid_pause,
+            logs,
+            commands,
+        },
+        workers,
+    )
 }
 
 struct Logger;
@@ -354,221 +262,6 @@ impl log::Log for Logger {
         }
     }
     fn flush(&self) {}
-}
-
-#[embassy_executor::task]
-async fn log_worker(
-    mut sender: cdc_acm::Sender<'static, Driver<'static>>,
-    mut pause: Worker,
-    diagnostics: &'static [DiagnosticSource],
-) {
-    loop {
-        pause.checkpoint().await;
-        select(pause.requested(), write_logs(&mut sender, diagnostics)).await;
-    }
-}
-
-async fn write_logs(
-    sender: &mut cdc_acm::Sender<'static, Driver<'static>>,
-    diagnostics: &'static [DiagnosticSource],
-) {
-    let mut connection = None;
-    loop {
-        let generation = GENERATION.load(Ordering::Acquire);
-        // The driver's disable leaves endpoints enabled until the next USB reset.
-        // Wait for a new configuration before accessing those stale endpoints.
-        if !log_connection(sender, generation) {
-            connection = None;
-            Timer::after_millis(50).await;
-            continue;
-        }
-        sender.wait_connection().await;
-        if connection != Some(generation) {
-            // End any partial line that the previous connection received.
-            if !send_log_line(sender, "\n", generation).await {
-                continue;
-            }
-            if send_connection_info(sender, generation, diagnostics).await {
-                connection = Some(generation);
-            }
-            continue;
-        }
-        let (line, session, acknowledgement) = match select(
-            REPLIES.receive(),
-            select(LOGS.receive(), Timer::after_millis(250)),
-        )
-        .await
-        {
-            Either::First(reply) => {
-                if reply.generation != generation
-                    || !reply_session_live(generation, reply.session)
-                    || reply
-                        .acknowledgement
-                        .is_some_and(|ticket| !control_reply_live(ticket))
-                {
-                    if let Some(ticket) = reply.acknowledgement {
-                        REPLY_SENT.signal((ticket, false));
-                    }
-                    continue;
-                }
-                (reply.line, reply.session, reply.acknowledgement)
-            }
-            Either::Second(Either::First(line)) => {
-                (alloc::string::String::from(line.as_str()), None, None)
-            }
-            _ => continue,
-        };
-        let sent = send_line(sender, &line, generation, session, acknowledgement).await;
-        if let Some(ticket) = acknowledgement {
-            REPLY_SENT.signal((ticket, sent && control_reply_live(ticket)));
-        }
-        if !sent {
-            connection = None;
-        }
-    }
-}
-
-fn send_connection_info<'a>(
-    sender: &'a mut cdc_acm::Sender<'static, Driver<'static>>,
-    generation: u32,
-    diagnostics: &'static [DiagnosticSource],
-) -> core::pin::Pin<alloc::boxed::Box<dyn core::future::Future<Output = bool> + 'a>> {
-    alloc::boxed::Box::pin(async move {
-        for source in diagnostics {
-            let line = source();
-            if !send_log_line(sender, &line, generation).await {
-                return false;
-            }
-        }
-        true
-    })
-}
-
-#[embassy_executor::task]
-async fn command_worker(
-    mut receiver: cdc_acm::Receiver<'static, Driver<'static>>,
-    control: cdc_acm::ControlChanged<'static>,
-    handler: CommandHandler,
-    mut pause: Worker,
-    max_request_len: usize,
-) {
-    // Construct storage in the task to keep it off the startup stack.
-    let mut frame = RequestFramer::with_limit(max_request_len).expect("validated at USB startup");
-    loop {
-        pause.checkpoint().await;
-        // Canceled reads must not retain partial requests after lifecycle restoration.
-        frame.clear();
-        // Boxing keeps the cancellation wrapper within the firmware stack limit.
-        select(
-            pause.requested(),
-            alloc::boxed::Box::pin(read_commands(&mut receiver, &control, handler, &mut frame)),
-        )
-        .await;
-    }
-}
-
-async fn read_commands(
-    receiver: &mut cdc_acm::Receiver<'static, Driver<'static>>,
-    control: &cdc_acm::ControlChanged<'static>,
-    handler: CommandHandler,
-    frame: &mut RequestFramer,
-) {
-    let mut observed_generation = None;
-    let mut control_session = None;
-    let mut packet = [0; 64];
-    loop {
-        let generation = GENERATION.load(Ordering::Acquire);
-        let connected = STATUS.load(Ordering::Acquire) == 1 && receiver.dtr();
-        CONTROL.lock(|state| state.borrow_mut().observe(generation, connected));
-        let observed_session = CONTROL.lock(|state| state.borrow().session(generation));
-        if control_session != observed_session {
-            frame.clear();
-            control_session = observed_session;
-        }
-        if observed_generation != Some(generation) || !connected {
-            if let Some(previous) = observed_generation.take() {
-                command_disconnected(previous);
-                REPLIES.clear();
-            }
-            frame.clear();
-            if !connected {
-                Timer::after_millis(50).await;
-                continue;
-            }
-            observed_generation = Some(generation);
-        }
-        let length = match with_timeout(
-            Duration::from_millis(100),
-            select(control.control_changed(), receiver.read_packet(&mut packet)),
-        )
-        .await
-        {
-            Ok(Either::First(())) => {
-                // Notifications can combine a close and reopen. Invalidate the old session
-                // even when DTR is already high when the worker receives the event.
-                CONTROL.lock(|state| state.borrow_mut().disconnect(generation));
-                if !control.dtr() {
-                    command_disconnected(generation);
-                }
-                frame.clear();
-                continue;
-            }
-            Ok(Either::Second(Ok(length))) => length,
-            Ok(Either::Second(Err(_))) => {
-                command_disconnected(generation);
-                frame.clear();
-                Timer::after_millis(50).await;
-                continue;
-            }
-            Err(_) => continue,
-        };
-        if GENERATION.load(Ordering::Acquire) != generation || !receiver.dtr() {
-            if !receiver.dtr() {
-                command_disconnected(generation);
-            }
-            frame.clear();
-            continue;
-        }
-        let Some(packet_session) = control_session else {
-            frame.clear();
-            continue;
-        };
-        for byte in &packet[..length] {
-            if !is_session_active(packet_session) {
-                frame.clear();
-                break;
-            }
-            let Some(message) = frame.push(*byte) else {
-                continue;
-            };
-            let reply = match message {
-                Ok(bytes) => handler(Ok(&bytes), packet_session),
-                Err(error) => handler(Err(error), packet_session),
-            };
-            if let Some(reply) = reply
-                && with_timeout(
-                    Duration::from_millis(250),
-                    REPLIES.send(Reply {
-                        generation,
-                        // Errors belong to the same CDC session as their requests.
-                        session: Some(packet_session),
-                        line: reply,
-                        acknowledgement: None,
-                    }),
-                )
-                .await
-                .is_err()
-            {
-                command_disconnected(generation);
-                frame.clear();
-                break;
-            }
-        }
-    }
-}
-
-fn command_disconnected(generation: u32) {
-    CONTROL.lock(|state| state.borrow_mut().disconnect(generation));
 }
 
 pub struct UsbControl;
@@ -647,53 +340,4 @@ pub async fn send_control_reply(session: SessionId, line: alloc::string::String)
         .await,
         Ok(true)
     )
-}
-
-fn log_connection(sender: &cdc_acm::Sender<'static, Driver<'static>>, generation: u32) -> bool {
-    let connected = STATUS.load(Ordering::Acquire) == 1
-        && GENERATION.load(Ordering::Acquire) == generation
-        && sender.dtr();
-    if !connected {
-        CONTROL.lock(|state| state.borrow_mut().disconnect(generation));
-    }
-    connected
-}
-
-async fn send_log_line(
-    sender: &mut cdc_acm::Sender<'static, Driver<'static>>,
-    line: &str,
-    generation: u32,
-) -> bool {
-    send_line(sender, line, generation, None, None).await
-}
-
-async fn send_line(
-    sender: &mut cdc_acm::Sender<'static, Driver<'static>>,
-    line: &str,
-    generation: u32,
-    session: Option<SessionId>,
-    acknowledgement: Option<control::Ticket>,
-) -> bool {
-    if line.is_empty() {
-        return true;
-    }
-    let packets = line
-        .as_bytes()
-        .chunks(64)
-        .chain(line.len().is_multiple_of(64).then_some(&[][..]));
-    for packet in packets {
-        if !log_connection(sender, generation)
-            || !reply_session_live(generation, session)
-            || acknowledgement.is_some_and(|ticket| !control_reply_live(ticket))
-            || !matches!(
-                with_timeout(Duration::from_millis(250), sender.write_packet(packet)).await,
-                Ok(Ok(()))
-            )
-        {
-            return false;
-        }
-    }
-    log_connection(sender, generation)
-        && reply_session_live(generation, session)
-        && acknowledgement.is_none_or(control_reply_live)
 }

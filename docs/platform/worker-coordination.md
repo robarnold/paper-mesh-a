@@ -79,7 +79,8 @@ This request does not claim that the worker has already stopped.
 ## USB integration
 
 The [USB lifecycle handle](../../crates/esp-adapters/src/usb/lifecycle.rs) owns four pause controllers.
-USB startup supplies their worker endpoints to the device, HID, log, and command tasks.
+USB preparation supplies their worker endpoints to the device, HID, log, and command workers.
+The runtime launches every prepared worker before it uses the lifecycle handle.
 Each task receives its own pause endpoint.
 The reply transport remains a separate capability. Sending a reply does not require lifecycle ownership.
 
@@ -192,7 +193,7 @@ USB lifecycle tests cover endpoint ordering, partial cancellation, session inval
 GNSS lifecycle tests cover hardware failure combinations, acknowledgement ordering, retries, incomplete cancellation, and retained pauses after power-off failure.
 Firmware checks verify runtime integration. These checks do not establish physical sleep or wake reliability.
 
-The [platform manifest](../../crates/platform/Cargo.toml) pins the synchronization dependency.
+The [platform manifest](../../crates/platform/Cargo.toml) pins the synchronization and executor dependencies.
 The [reviewed Embassy source](https://github.com/embassy-rs/embassy/tree/ca966f8ff4ee81c14bccade56b7a52c1fc154e26) offers MIT or Apache-2.0 licensing.
 The MIT option permits redistribution with its copyright and permission notice.
 Distribute the [MIT notice](../../crates/platform/licenses/LICENSE-embassy-MIT) with products that include this dependency.

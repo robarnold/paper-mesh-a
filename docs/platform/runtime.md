@@ -18,11 +18,24 @@ Only this connection requires both the application and backend code.
 
 The firmware runtime selects cores, executors, software interrupts, and worker priorities.
 The [execution module](../../firmware/src/execution.rs) owns explicit executor storage and the display stack.
-Its `Execution` owner receives CPU control and the three executor-related software interrupts together at initialization.
+Its `Execution` owner receives the main spawner, CPU control, and the three executor-related software interrupts together at initialization.
 Start methods consume the correct resources internally. The display core and its scheduler interrupt remain paired.
 Each executor can start only once. Construction alone does not start a core or enable an interrupt.
 The [entry point](../../firmware/src/main.rs) starts the RTOS scheduler and supplies the main executor's spawner to ordinary service workers.
 Adapters accept the selected spawner or expose a worker future. They do not allocate another executor.
+
+### Adapter worker sets
+
+The platform [WorkerSet contract](../../crates/platform/src/worker.rs) accepts an Embassy spawner selected by firmware through `Execution::spawn`.
+It consumes a concrete worker set. The empty set is `()`, which launches no work.
+USB supplies a [set of four private workers](../adapters/usb.md#worker-preparation-and-placement) as the first consumer.
+Other adapters retain their existing spawner or worker-future interfaces.
+
+Adapters own worker membership, resources, and launch order. Firmware selects the spawner without knowledge of individual workers.
+All workers in the current contract share one local spawner. Per-worker executor selection is outside this contract.
+Workers are async tasks, not necessarily OS threads. Several workers can share one executor and its thread.
+Concrete worker types retain their resource types and `Send` restrictions without allocation or type erasure.
+The interface does not assign priorities or describe peripheral interrupt bindings.
 
 | Work | Execution context | Reason |
 | --- | --- | --- |

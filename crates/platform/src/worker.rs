@@ -1,18 +1,33 @@
-//! Cooperative pause coordination between one controller and one worker.
+//! Adapter worker launch and cooperative pause coordination.
 //!
 //! # Design choices
 //!
 //! - Separate request and acknowledgement so the controller cannot infer resource release from a request alone.
 //! - Keep notifications separate from state so coalesced or stale signals cannot acknowledge another pause.
+//! - Let adapters own worker membership and launch order while the runtime supplies the Embassy spawner.
 //! - Let the backend supply locking without selecting an executor, timer, or power policy.
 //!
 //! See [Worker coordination](../../../docs/platform/worker-coordination.md).
 
 use core::cell::Cell;
+use embassy_executor::{SpawnError, Spawner};
 use embassy_sync::{
     blocking_mutex::{Mutex, raw::RawMutex},
     signal::Signal,
 };
+
+/// Prepared adapter work launched through a runtime-selected execution context.
+/// Adapters own membership and launch order. The runtime supplies compatible execution resources.
+/// Launch failure need not undo workers that have already started.
+pub trait WorkerSet {
+    fn spawn(self, spawner: Spawner) -> Result<(), SpawnError>;
+}
+
+impl WorkerSet for () {
+    fn spawn(self, _spawner: Spawner) -> Result<(), SpawnError> {
+        Ok(())
+    }
+}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum State {

@@ -14,7 +14,7 @@ mod device;
 #[cfg(feature = "esp32s3")]
 pub use device::{
     CommandHandler, Config, DiagnosticSource, FirmwareTouchpad, REQUEST_CAPACITY, UsbControl,
-    changed, is_session_active, send_control_reply, start,
+    UsbWorkers, changed, is_session_active, prepare, send_control_reply,
 };
 #[cfg(feature = "esp32s3")]
 use device::{RESTART, change};

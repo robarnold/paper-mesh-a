@@ -60,6 +60,7 @@ USB retains buffers, endpoint settings, worker ownership, and lifecycle coordina
 Runtime configuration supplies the protocol request limit, which USB validates against its fixed buffer capacity.
 ROM download and display inspection handlers depend on the platform contract instead of the USB module.
 The [ESP adapter crate](../crates/esp-adapters/README.md) owns USB hardware, session tracking, the RTC clock, and their service lifecycle coordination.
+USB preparation returns its lifecycle handle and a worker set that implements the platform contract. Firmware selects its spawner through `Execution::spawn`.
 Firmware retains board configuration, command dispatch, diagnostic providers, and system power coordination.
 
 ```mermaid

@@ -3,6 +3,7 @@
 This `no_std` crate implements platform contracts through ESP hardware and Embassy.
 The `esp32s3` feature exposes the [USB adapter](../../docs/adapters/usb.md) and [RTC clock adapter](../../docs/adapters/rtc.md#esp-clock-integration).
 Firmware supplies device configuration, command dispatch, diagnostics, an executor, and an allocator.
+USB preparation returns a typed worker set. Firmware selects a local spawner for the set before using the lifecycle handle.
 The adapters do not depend on firmware or the application.
 The RTC adapter receives synchronization policy, state storage, the shared ESP I2C bus, and location observations from the runtime.
 Its worker loop runs inside a runtime task. The runtime selects the executor and bus queue capacity.

@@ -8,13 +8,14 @@
 //!
 //! See [firmware execution placement](../../docs/platform/runtime.md#firmware-execution-placement).
 
-use embassy_executor::{SendSpawner, Spawner};
+use embassy_executor::{SendSpawner, SpawnError, Spawner};
 use esp_hal::{
     interrupt::Priority,
     peripherals::{CPU_CTRL, FROM_CPU_INTR1, FROM_CPU_INTR2, FROM_CPU_INTR3},
     system::{Cpu, Stack},
 };
 use esp_rtos::embassy::{Executor, InterruptExecutor};
+use paper_mesh_platform::worker::WorkerSet;
 use static_cell::{ConstStaticCell, StaticCell};
 
 static TOUCH_EXECUTOR: StaticCell<InterruptExecutor<2>> = StaticCell::new();
@@ -24,6 +25,7 @@ static DISPLAY_STACK: ConstStaticCell<Stack<8192>> = ConstStaticCell::new(Stack:
 
 /// Own the board resources used to start each executor once.
 pub struct Execution {
+    services: Spawner,
     touch_interrupt: Option<FROM_CPU_INTR2<'static>>,
     gnss_interrupt: Option<FROM_CPU_INTR3<'static>>,
     display_core: Option<(CPU_CTRL<'static>, FROM_CPU_INTR1<'static>)>,
@@ -31,16 +33,23 @@ pub struct Execution {
 
 impl Execution {
     pub fn new(
+        services: Spawner,
         cpu_control: CPU_CTRL<'static>,
         from_cpu_intr1: FROM_CPU_INTR1<'static>,
         from_cpu_intr2: FROM_CPU_INTR2<'static>,
         from_cpu_intr3: FROM_CPU_INTR3<'static>,
     ) -> Self {
         Self {
+            services,
             touch_interrupt: Some(from_cpu_intr2),
             gnss_interrupt: Some(from_cpu_intr3),
             display_core: Some((cpu_control, from_cpu_intr1)),
         }
+    }
+
+    /// Launch an adapter's prepared workers according to firmware placement policy.
+    pub fn spawn(&mut self, workers: impl WorkerSet) -> Result<(), SpawnError> {
+        workers.spawn(self.services)
     }
 
     pub fn start_touch(&mut self) -> SendSpawner {

@@ -91,6 +91,7 @@ fn initialize(
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::_240MHz);
     let peripherals = esp_hal::init(config);
     let mut execution = execution::Execution::new(
+        spawner,
         peripherals.CPU_CTRL,
         peripherals.FROM_CPU_INTR1,
         peripherals.FROM_CPU_INTR2,
@@ -143,13 +144,15 @@ fn initialize(
     esp_alloc::heap_allocator!(size: 128 * 1024);
     let timers = TimerGroup::new(peripherals.TIMG0);
     esp_rtos::start(timers.timer0, peripherals.FROM_CPU_INTR0);
-    let usb = usb::start(
-        spawner,
+    let (usb, usb_workers) = usb::prepare(
         peripherals.USB_FS,
         peripherals.GPIO20,
         peripherals.GPIO19,
         usb_config(),
     );
+    execution
+        .spawn(usb_workers)
+        .expect("USB worker startup failed");
     diagnostics::report_previous_panic();
     display_recovery::report_previous();
     suspend::trace::boot();
