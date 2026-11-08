@@ -109,7 +109,7 @@ Successful restoration does not make old observations fresh.
 Power-off remains a separate capability. Suspend callbacks do not promise persistence or prepare physical power removal.
 
 The firmware suspend controller accepts a `SuspendParticipant` supplied by the runtime.
-The runtime selects [`FirmwareClock`](../../firmware/src/rtc/mod.rs) as its first participant.
+The runtime [combines RTC and USB handles](../platform/worker-coordination.md#runtime-composition) into one participant.
 The clock handle requests and awaits its RTC worker through an explicit [pause channel](../platform/worker-coordination.md).
 The worker releases the bus and publishes its last result before acknowledgement. The clock then invalidates cached UTC.
 The controller calls `did_resume` after sleep, or `did_cancel_suspend` when preparation ends without sleep.
@@ -117,7 +117,8 @@ The clock releases its worker after cache invalidation. The controller releases 
 Preparation errors or timeouts prevent sleep and trigger cancellation.
 Restoration errors or timeouts keep workers stopped and the recovery watchdog armed until reset.
 RTC restoration performs no I/O and cannot fail; the next worker poll establishes calendar validity.
-Other workers still use the existing pause mechanism. Participant groups and general dependency coordination remain planned work.
+USB preparation stops endpoint operations before device detachment. Restoration requires a new connection session.
+Other workers still use the existing pause mechanism. General dependency coordination remains planned work.
 
 ## Power-off participants
 
@@ -132,12 +133,12 @@ The coordinator controls work admission, callback order, and deadlines in the mo
 Any aborted shutdown after preparation starts requires reset recovery, including a dropped preparation future.
 The firmware keeps workers stopped and uses watchdog reset to return through normal hardware initialization.
 
-The firmware controller accepts a `PowerOffParticipant` from the runtime, which supplies the RTC clock handle.
+The firmware controller accepts a `PowerOffParticipant` from the runtime, which supplies its combined RTC and USB handles.
 The clock requests and awaits its worker's pause, then invalidates cached UTC.
 Completed calendar writes already reside in the RTC; preparation leaves its retained counter running.
 After reset, startup and a new RTC read establish calendar validity before UTC becomes available.
 Display shutdown and hardware power-cut sequencing remain backend responsibilities.
-Participant groups and migration of other workers remain planned work.
+USB remains detached after preparation. Migration of other workers remains planned work.
 
 ## Planned control and lifecycle services
 

@@ -35,7 +35,10 @@ The runtime supplies that handle to the suspend controller through the generic c
 The handle also implements the independent [power-off participant contract](services/power.md#power-off-participants).
 The runtime supplies this capability separately to the power-off coordinator.
 Power-off faults use watchdog reset and the normal startup checks before workers restart.
-The RTC no longer registers with the global firmware pause registry. Other workers retain that mechanism until their migration.
+RTC and USB workers use explicit pause handles instead of the global firmware pause registry.
+The runtime combines their lifecycle handles in [service composition](../firmware/src/lifecycle.rs).
+The hardware coordinator remains independent of the selected adapters.
+Other workers retain the registry until their migration.
 The worker reads shared synchronization state after each pause so lifecycle invalidation reaches its next poll.
 It supplies observation age limits, correction thresholds, and calendar range to the synchronization service.
 Startup supplies location observations through a callback, so the RTC worker does not depend on the GNSS adapter.

@@ -22,6 +22,7 @@ mod display_inspection;
 mod display_recovery;
 mod display_worker;
 mod gnss;
+mod lifecycle;
 mod power;
 mod recovery;
 mod rtc;
@@ -59,8 +60,8 @@ esp_bootloader_esp_idf::esp_app_desc!();
 
 #[esp_rtos::main]
 async fn main(spawner: Spawner) -> ! {
-    let (panel, bus, suspend, clock) = initialize(spawner);
-    let mut application = alloc::boxed::Box::pin(run_app(panel, bus, suspend, clock));
+    let (panel, bus, suspend, services) = initialize(spawner);
+    let mut application = alloc::boxed::Box::pin(run_app(panel, bus, suspend, services));
     loop {
         match select(application.as_mut(), device_control::request()).await {
             Either::First(never) => match never {},
@@ -77,7 +78,7 @@ fn initialize(
     Option<display_worker::Client>,
     Option<&'static bus::Bus>,
     suspend::Controller,
-    FirmwareClock,
+    lifecycle::Services,
 ) {
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::_240MHz);
     let peripherals = esp_hal::init(config);
@@ -129,7 +130,7 @@ fn initialize(
     esp_alloc::heap_allocator!(size: 128 * 1024);
     let timers = TimerGroup::new(peripherals.TIMG0);
     esp_rtos::start(timers.timer0, peripherals.FROM_CPU_INTR0);
-    usb::start(
+    let usb = usb::start(
         spawner,
         peripherals.USB_FS,
         peripherals.GPIO20,
@@ -155,7 +156,7 @@ fn initialize(
         .ok();
     spawner.spawn(buttons::worker(bus, peripherals.GPIO0).unwrap());
     let Some(bus) = bus else {
-        return (None, None, suspend, clock);
+        return (None, None, suspend, lifecycle::Services { clock, usb });
     };
     gnss::start(
         bus,
@@ -215,7 +216,7 @@ fn initialize(
         panel.map(display_worker::Client::new),
         Some(bus),
         suspend,
-        clock,
+        lifecycle::Services { clock, usb },
     )
 }
 
@@ -223,7 +224,7 @@ async fn run_app(
     mut panel: Option<display_worker::Client>,
     bus: Option<&'static bus::Bus>,
     mut suspend: suspend::Controller,
-    mut clock: FirmwareClock,
+    mut services: lifecycle::Services,
 ) -> ! {
     // The application and its scan results use static RAM instead of the task stack.
     let app = APP.take();
@@ -247,9 +248,9 @@ async fn run_app(
         touchpad_session.set_active(app.touchpad_open(), &mut touchpad);
         touchpad_session.poll(&touchpad);
         app.set_touchpad_host(touchpad.state());
-        app.poll_discovery(&clock, &mut discovery);
-        app.poll_location(&clock, &mut location);
-        app.poll_power(&clock, &mut power);
+        app.poll_discovery(&services.clock, &mut discovery);
+        app.poll_location(&services.clock, &mut location);
+        app.poll_power(&services.clock, &mut power);
         process_touch(app, &mut touchpad_session, &mut touchpad);
         // Drain earlier touch frames before applying an exit button.
         while let Some(event) = buttons::next_event() {
@@ -273,7 +274,7 @@ async fn run_app(
         if app.take_power_off_request() {
             app.cancel_touchpad();
             touchpad_session.set_active(false, &mut touchpad);
-            power_off_app(app, panel.as_mut(), bus, &mut suspend, &mut clock).await;
+            power_off_app(app, panel.as_mut(), bus, &mut suspend, &mut services).await;
             continue;
         }
         if let Some(request) = app.take_suspend_request() {
@@ -285,7 +286,7 @@ async fn run_app(
                 bus,
                 request,
                 &mut suspend,
-                &mut clock,
+                &mut services,
             ))
             .await;
             continue;
@@ -293,7 +294,7 @@ async fn run_app(
         if let Some(display) = panel.as_mut()
             && let Err(error) = display.complete().and_then(|()| {
                 if !display.is_busy() {
-                    app.display_completed(clock.now_ms());
+                    app.display_completed(services.clock.now_ms());
                 }
                 let submitted = app.present(&mut PortraitDisplay::new(display))?;
                 if submitted {
@@ -337,8 +338,8 @@ async fn run_app(
                 display_inspection::reject(pending, &usb::UsbControl).await;
             }
         }
-        if let Some(uptime) = app.tick(&clock) {
-            log_heartbeat(uptime, &clock, &mut location);
+        if let Some(uptime) = app.tick(&services.clock) {
+            log_heartbeat(uptime, &services.clock, &mut location);
         }
     }
 }
@@ -404,9 +405,9 @@ fn power_off_app<'a>(
     panel: Option<&'a mut display_worker::Client>,
     bus: Option<&'a bus::Bus>,
     controller: &'a mut suspend::Controller,
-    clock: &'a mut FirmwareClock,
+    services: &'a mut lifecycle::Services,
 ) -> core::pin::Pin<alloc::boxed::Box<dyn core::future::Future<Output = ()> + 'a>> {
-    alloc::boxed::Box::pin(power_off_app_inner(app, panel, bus, controller, clock))
+    alloc::boxed::Box::pin(power_off_app_inner(app, panel, bus, controller, services))
 }
 
 async fn power_off_app_inner(
@@ -414,7 +415,7 @@ async fn power_off_app_inner(
     panel: Option<&mut display_worker::Client>,
     bus: Option<&bus::Bus>,
     controller: &mut suspend::Controller,
-    clock: &mut FirmwareClock,
+    services: &mut lifecycle::Services,
 ) {
     use paper_mesh_platform::power_off::PowerOffError;
     let result = async {
@@ -424,11 +425,11 @@ async fn power_off_app_inner(
             Ok(Ok(())) => {}
             Ok(Err(PowerOffError::ExternalPower)) => return Err(PowerOffError::ExternalPower),
             Ok(Err(_)) => {
-                clock.request_pause();
+                services.request_pause();
                 suspend::reset_after_power_off_fault("preflight failed").await
             }
             Err(_) => {
-                clock.request_pause();
+                services.request_pause();
                 suspend::reset_after_power_off_fault("preflight timed out").await
             }
         }
@@ -455,11 +456,11 @@ async fn power_off_app_inner(
             })
             .await;
             if completed.is_err() {
-                clock.request_pause();
+                services.request_pause();
                 suspend::reset_after_power_off_fault("final display timed out").await;
             }
         }
-        controller.power_off(bus, clock).await
+        controller.power_off(bus, services).await
     }
     .await;
     // Successful battery isolation cannot return a firmware result.
@@ -474,7 +475,7 @@ async fn suspend_app(
     bus: Option<&bus::Bus>,
     request: paper_mesh_platform::suspend::SuspendRequest,
     suspend: &mut suspend::Controller,
-    clock: &mut FirmwareClock,
+    services: &mut lifecycle::Services,
 ) {
     let before_frame = if let Some(display) = panel.as_deref_mut() {
         with_timeout(Duration::from_secs(10), async {
@@ -495,7 +496,7 @@ async fn suspend_app(
     let result = if before_frame.is_some()
         && let Some(bus) = bus
     {
-        alloc::boxed::Box::pin(suspend.run(bus, request, clock)).await
+        alloc::boxed::Box::pin(suspend.run(bus, request, services)).await
     } else {
         Err(paper_mesh_platform::suspend::SuspendError::Preparation)
     };

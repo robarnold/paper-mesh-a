@@ -8,7 +8,7 @@ The runtime creates its storage and supplies each endpoint to its owner.
 
 | Role | Responsibility |
 | --- | --- |
-| Worker | Task that performs service work and reaches safe checkpoints |
+| Worker | Async operation that performs service work and reaches safe checkpoints |
 | Service control handle | Runtime-owned object that exposes service operations and lifecycle capabilities |
 | Lifecycle participant | Service control handle that implements a suspend or power-off contract |
 | Pause controller | `PauseControl`, the endpoint that requests, awaits, and releases a worker pause |
@@ -37,7 +37,11 @@ Release permits work but does not establish that the task has run again.
 It does not refresh observations or perform device initialization.
 
 `request_pause` submits the request without waiting, for paths such as reset recovery.
-`PauseWorker::requested` can interrupt an idle wait when raced against the worker's normal deadline.
+`PauseWorker::requested` can interrupt an idle wait when raced against a timer, queue receive, or other event.
+The normal operation must permit cancellation when the caller races it against a pause request.
+Workers need no timer loop or separate OS task. Their futures and the controller must receive concurrent polling.
+An executor can run them as separate tasks, or one task can poll them together.
+Waiting yields the future. It does not block the executor thread.
 The RTC uses this to reach its checkpoint without waiting for another calendar poll.
 The mechanism does not interrupt an operation already in progress. The system coordinator bounds preparation with its lifecycle deadline.
 
@@ -68,10 +72,38 @@ Power-off preparation leaves the worker paused until power removal or reset.
 Preflight fault paths explicitly request its pause before starting reset recovery.
 This request does not claim that the worker has already stopped.
 
-Other firmware workers still use the global `Service` registry and its pause notifications.
-That enum currently identifies worker tasks, including separate USB tasks, rather than portable service contracts.
-The system coordinator waits for those legacy workers in addition to the injected RTC participant.
-Migration of other workers, participant groups, and general dependency ordering remain separate work.
+## USB integration
+
+The [USB lifecycle handle](../../firmware/src/usb/lifecycle.rs) owns four pause controllers.
+USB startup supplies their worker endpoints to the device, HID, log, and command tasks.
+These workers no longer use the global suspend registry.
+The reply transport remains a separate capability. Sending a reply does not require lifecycle ownership.
+
+Preparation requests the three endpoint workers first and waits for all acknowledgements.
+Their pause requests cancel pending endpoint futures before acknowledgement.
+Command cancellation also discards an incomplete request frame.
+The device worker then detaches the PHY and disables the USB stack before its checkpoint.
+A pause request during the reconnect delay keeps the device detached.
+
+Restoration invalidates the previous session and queued replies, then requests USB reconnection before releasing the workers.
+This also applies after partial preparation, even if the device has not yet detached.
+Endpoint workers wait for a new configured connection before they access the device.
+Restoration permits reconnection. It does not promise that a host has connected.
+Power-off preparation leaves all workers paused until power removal or reset.
+
+## Runtime composition
+
+The [runtime service handles](../../firmware/src/lifecycle.rs) combine the RTC and USB lifecycle capabilities.
+The hardware suspend coordinator still accepts one generic participant and has no dependency on either adapter.
+The runtime prepares USB before the RTC and restores the RTC before USB.
+It passes the same coordinator deadline to both services.
+Cancellation restores both handles because preparation can stop at any await.
+Both current implementations are infallible. General error aggregation and dependency planning remain separate work.
+
+Reset recovery requests both services to pause without waiting for acknowledgement.
+This path does not claim safe device detachment. The watchdog returns through normal startup.
+Buttons, GNSS, power, and touch still use the global `Service` registry.
+The system coordinator waits for those workers in addition to the runtime participant.
 Display-core parking is a hardware execution barrier and remains distinct from a cooperative worker pause.
 
 ## Implementation and verification
@@ -82,7 +114,8 @@ Firmware uses critical-section locking. Native tests use a single-thread lock an
 No lock is held across an await, and the channel requires no heap allocation.
 
 Tests cover both request orderings, canceled waits, revoked acknowledgements, rapid release and re-request, independent channels, and endpoint wakeups.
-Firmware checks verify RTC integration. These checks do not establish physical sleep or wake reliability.
+USB lifecycle tests cover endpoint ordering, partial cancellation, session invalidation, and reset pause requests.
+Firmware checks verify runtime integration. These checks do not establish physical sleep or wake reliability.
 
 The [platform manifest](../../crates/platform/Cargo.toml) pins the synchronization dependency.
 The [reviewed Embassy source](https://github.com/embassy-rs/embassy/tree/ca966f8ff4ee81c14bccade56b7a52c1fc154e26) offers MIT or Apache-2.0 licensing.

@@ -8,6 +8,10 @@
 //! See [LILYGO USB touchpad and diagnostics](../../docs/boards/lilygo-t5-s3-pro-usb.md).
 
 mod control;
+mod lifecycle;
+pub use lifecycle::UsbLifecycle;
+use lifecycle::Worker;
+use paper_mesh_platform::worker::Pause;
 
 use paper_mesh_platform::transport::{ReplyTransport, SessionId};
 
@@ -75,6 +79,7 @@ static REPLY_SENT: Signal<CriticalSectionRawMutex, (control::Ticket, bool)> = Si
 static CONTROL: Mutex<CriticalSectionRawMutex, RefCell<control::State>> =
     Mutex::new(RefCell::new(control::State::new()));
 static LOGGER: Logger = Logger;
+static PAUSES: StaticCell<[Pause<CriticalSectionRawMutex>; 4]> = StaticCell::new();
 
 pub struct FirmwareTouchpad;
 impl TouchpadHost for FirmwareTouchpad {
@@ -169,7 +174,12 @@ pub fn start(
     dp: GPIO20<'static>,
     dm: GPIO19<'static>,
     handler: CommandHandler,
-) {
+) -> UsbLifecycle {
+    let [device, hid_pause, logs, commands] = PAUSES.init(core::array::from_fn(|_| Pause::new()));
+    let (device, device_worker) = device.split();
+    let (hid_pause, hid_pause_worker) = hid_pause.split();
+    let (logs, logs_worker) = logs.split();
+    let (commands, commands_worker) = commands.split();
     log::set_logger(&LOGGER).unwrap();
     log::set_max_level(log::LevelFilter::Info);
     let driver = Driver::new(
@@ -207,22 +217,22 @@ pub fn start(
         },
     );
     let (sender, receiver, control) = cdc.split_with_control();
-    spawner.spawn(command_worker(receiver, control, handler).unwrap());
-    spawner.spawn(bus_worker(builder.build()).unwrap());
-    spawner.spawn(hid_worker(hid).unwrap());
-    spawner.spawn(log_worker(sender).unwrap());
+    spawner.spawn(command_worker(receiver, control, handler, commands_worker).unwrap());
+    spawner.spawn(bus_worker(builder.build(), device_worker).unwrap());
+    spawner.spawn(hid_worker(hid, hid_pause_worker).unwrap());
+    spawner.spawn(log_worker(sender, logs_worker).unwrap());
+    UsbLifecycle {
+        device,
+        hid: hid_pause,
+        logs,
+        commands,
+    }
 }
 
 #[embassy_executor::task]
-async fn bus_worker(mut device: UsbDevice<'static, Driver<'static>>) {
-    use crate::suspend::{self, Service};
-    suspend::register(Service::Usb);
+async fn bus_worker(mut device: UsbDevice<'static, Driver<'static>>, mut pause: Worker) {
     loop {
-        select(
-            device.run(),
-            select(RESTART.wait(), suspend::request(Service::Usb)),
-        )
-        .await;
+        select(device.run(), select(RESTART.wait(), pause.requested())).await;
         // The resolved Synopsys driver's disable() does not disconnect the PHY.
         // Keep clocks running and detach before resetting the USB stack state.
         USB_FS::regs().pcgcctl().modify(|_, w| {
@@ -232,8 +242,17 @@ async fn bus_worker(mut device: UsbDevice<'static, Driver<'static>>) {
         USB_FS::regs().dctl().modify(|_, w| w.sftdiscon().set_bit());
         // Embassy requires disable after cancellation of run().
         device.disable().await;
-        suspend::checkpoint(Service::Usb).await;
-        Timer::after_millis(250).await;
+        loop {
+            pause.checkpoint().await;
+            if matches!(
+                select(pause.requested(), Timer::after_millis(250)).await,
+                Either::Second(())
+            ) {
+                break;
+            }
+        }
+        // A restart observed while detached is already satisfied by this reconnect.
+        RESTART.reset();
         USB_FS::regs()
             .dctl()
             .modify(|_, w| w.sftdiscon().clear_bit());
@@ -242,12 +261,13 @@ async fn bus_worker(mut device: UsbDevice<'static, Driver<'static>>) {
 }
 
 #[embassy_executor::task]
-async fn hid_worker(mut writer: hid::HidWriter<'static, Driver<'static>, REPORT_LEN>) {
-    use crate::suspend::{self, Service};
-    suspend::register(Service::Hid);
+async fn hid_worker(
+    mut writer: hid::HidWriter<'static, Driver<'static>, REPORT_LEN>,
+    mut pause: Worker,
+) {
     loop {
-        suspend::checkpoint(Service::Hid).await;
-        select(suspend::request(Service::Hid), write_hid(&mut writer)).await;
+        pause.checkpoint().await;
+        select(pause.requested(), write_hid(&mut writer)).await;
     }
 }
 
@@ -315,12 +335,10 @@ impl log::Log for Logger {
 }
 
 #[embassy_executor::task]
-async fn log_worker(mut sender: cdc_acm::Sender<'static, Driver<'static>>) {
-    use crate::suspend::{self, Service};
-    suspend::register(Service::Logs);
+async fn log_worker(mut sender: cdc_acm::Sender<'static, Driver<'static>>, mut pause: Worker) {
     loop {
-        suspend::checkpoint(Service::Logs).await;
-        select(suspend::request(Service::Logs), write_logs(&mut sender)).await;
+        pause.checkpoint().await;
+        select(pause.requested(), write_logs(&mut sender)).await;
     }
 }
 
@@ -404,15 +422,38 @@ async fn command_worker(
     mut receiver: cdc_acm::Receiver<'static, Driver<'static>>,
     control: cdc_acm::ControlChanged<'static>,
     handler: CommandHandler,
+    mut pause: Worker,
+) {
+    loop {
+        pause.checkpoint().await;
+        select(
+            pause.requested(),
+            read_commands(&mut receiver, &control, handler),
+        )
+        .await;
+    }
+}
+
+fn read_commands<'a>(
+    receiver: &'a mut cdc_acm::Receiver<'static, Driver<'static>>,
+    control: &'a cdc_acm::ControlChanged<'static>,
+    handler: CommandHandler,
+) -> core::pin::Pin<alloc::boxed::Box<dyn core::future::Future<Output = ()> + 'a>> {
+    // Keep command framing outside the task's cancellation wrapper to bound stack use.
+    alloc::boxed::Box::pin(read_commands_inner(receiver, control, handler))
+}
+
+async fn read_commands_inner(
+    receiver: &mut cdc_acm::Receiver<'static, Driver<'static>>,
+    control: &cdc_acm::ControlChanged<'static>,
+    handler: CommandHandler,
 ) {
     use crate::usb_protocol as protocol;
-    crate::suspend::register(crate::suspend::Service::Commands);
     let mut frame = protocol::Framer::default();
     let mut observed_generation = None;
     let mut control_session = None;
     let mut packet = [0; 64];
     loop {
-        crate::suspend::checkpoint(crate::suspend::Service::Commands).await;
         let generation = GENERATION.load(Ordering::Acquire);
         let connected = STATUS.load(Ordering::Acquire) == 1 && receiver.dtr();
         CONTROL.lock(|state| state.borrow_mut().observe(generation, connected));
@@ -458,10 +499,7 @@ async fn command_worker(
             }
             Err(_) => continue,
         };
-        if GENERATION.load(Ordering::Acquire) != generation
-            || !receiver.dtr()
-            || crate::suspend::requested()
-        {
+        if GENERATION.load(Ordering::Acquire) != generation || !receiver.dtr() {
             if !receiver.dtr() {
                 command_disconnected(generation);
             }
@@ -473,7 +511,7 @@ async fn command_worker(
             continue;
         };
         for byte in &packet[..length] {
-            if !is_session_active(packet_session) || crate::suspend::requested() {
+            if !is_session_active(packet_session) {
                 frame.clear();
                 break;
             }
