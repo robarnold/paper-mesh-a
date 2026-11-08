@@ -28,6 +28,9 @@ The platform owns calendar synchronization through its `Rtc` contract.
 The PCF8563 crate implements that contract without ESP peripherals or executor dependencies.
 The platform has no dependency on the PCF8563 crate.
 Firmware retains the RTC worker, shared bus ownership, scheduling, and suspend coordination.
+The clock control handle implements the platform [suspend participant contract](services/power.md#suspend-participants).
+The runtime supplies that handle to the suspend controller through the generic contract.
+The worker reads shared synchronization state after each pause so lifecycle invalidation reaches its next poll.
 It supplies observation age limits, correction thresholds, and calendar range to the synchronization service.
 Startup supplies location observations through a callback, so the RTC worker does not depend on the GNSS adapter.
 

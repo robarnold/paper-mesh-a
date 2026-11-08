@@ -107,3 +107,57 @@ fn deadlines_advance_after_success_and_failure() {
     assert_eq!(service.now_utc(550), Some(utc(5)));
     assert_eq!(service.next_deadline_ms(), 600);
 }
+
+// A lifecycle interruption hides cached UTC and must not replay a consumed correction.
+#[test]
+fn invalidation_requires_a_fresh_read_and_preserves_consumed_corrections() {
+    let mut calendar = Calendar {
+        utc: None,
+        writes: 0,
+        fail: false,
+    };
+    let mut service = Service::new(POLICY);
+    let report = source(0, 0);
+    service.poll(&mut calendar, report, 0).unwrap();
+    assert_eq!(calendar.writes, 1);
+    assert_eq!(service.now_utc(10), Some(utc(0)));
+
+    service.invalidate_cache();
+    service.invalidate_cache();
+    assert_eq!(service.now_utc(10), None);
+    assert_eq!(service.next_deadline_ms(), 0);
+
+    // The retained clock can advance while its worker is stopped.
+    calendar.utc = Some(utc(20));
+    service.poll(&mut calendar, report, 20).unwrap();
+    assert_eq!(service.now_utc(20), Some(utc(20)));
+    assert_eq!(service.next_deadline_ms(), 70);
+    assert_eq!(calendar.writes, 1);
+}
+
+// Failed access after restoration must keep UTC absent and permit a later correction retry.
+#[test]
+fn failed_read_after_invalidation_does_not_restore_old_utc() {
+    let mut calendar = Calendar {
+        utc: Some(utc(0)),
+        writes: 0,
+        fail: false,
+    };
+    let mut service = Service::new(POLICY);
+    service
+        .poll(&mut calendar, LocationSnapshot::new(), 0)
+        .unwrap();
+    service.invalidate_cache();
+    calendar.fail = true;
+    let report = source(10, 10);
+    assert_eq!(
+        service.poll(&mut calendar, report, 10),
+        Err(RtcError::Access(()))
+    );
+    assert_eq!(service.now_utc(10), None);
+    assert_eq!(service.next_deadline_ms(), 60);
+    calendar.fail = false;
+    service.poll(&mut calendar, report, 60).unwrap();
+    assert_eq!(calendar.writes, 1);
+    assert_eq!(service.now_utc(60), Some(utc(10)));
+}

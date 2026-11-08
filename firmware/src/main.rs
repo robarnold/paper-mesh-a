@@ -442,7 +442,8 @@ async fn suspend_app(
     let result = if before_frame.is_some()
         && let Some(bus) = bus
     {
-        alloc::boxed::Box::pin(suspend.run(bus, request)).await
+        let mut participant = FirmwareClock;
+        alloc::boxed::Box::pin(suspend.run(bus, request, &mut participant)).await
     } else {
         Err(paper_mesh_platform::suspend::SuspendError::Preparation)
     };

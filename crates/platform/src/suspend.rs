@@ -14,6 +14,36 @@ use crate::{
     power::{GaugeState, PowerAvailability, PowerSnapshot},
 };
 
+/// A service control handle for suspend preparation and restoration.
+/// The coordinator serializes calls, controls work admission, and orders dependencies.
+/// It enforces deadlines in the monotonic `Clock::now_ms` epoch.
+pub trait SuspendParticipant {
+    type Error;
+
+    /// Stop new work and release resources required by the suspend plan.
+    /// Success keeps the service prepared until restoration or cancellation.
+    /// An error prevents suspend. Dropping this future can leave partial preparation.
+    fn will_suspend(
+        &mut self,
+        deadline_ms: u64,
+    ) -> impl core::future::Future<Output = Result<(), Self::Error>>;
+
+    /// Restore operation after wake. Success does not imply fresh observations.
+    /// Failure must keep unavailable operations blocked.
+    fn did_resume(
+        &mut self,
+        deadline_ms: u64,
+    ) -> impl core::future::Future<Output = Result<(), Self::Error>>;
+
+    /// Restore operation after preparation without system sleep.
+    /// Handle partial preparation, including a dropped preparation future.
+    /// Failure must keep unavailable operations blocked.
+    fn did_cancel_suspend(
+        &mut self,
+        deadline_ms: u64,
+    ) -> impl core::future::Future<Output = Result<(), Self::Error>>;
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SuspendRequest {
     pub duration_ms: u64,
@@ -41,6 +71,8 @@ pub enum SuspendError {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SuspendReport {
+    /// The backend entered sleep. This does not establish physical sleep residency.
+    pub entered_sleep: bool,
     pub elapsed_ms: u64,
     /// Observed wake events. Array order does not establish event order.
     pub wake_reasons: [Option<WakeReason>; 4],

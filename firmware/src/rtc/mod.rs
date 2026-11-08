@@ -12,9 +12,11 @@ use paper_mesh_platform::rtc::synchronization as service;
 
 use core::cell::RefCell;
 use embassy_sync::blocking_mutex::{Mutex, raw::CriticalSectionRawMutex};
-use embassy_time::Instant;
+use embassy_time::{Instant, Timer};
 use log::error;
-use paper_mesh_platform::{Clock, location::LocationSnapshot, time::UtcDateTime};
+use paper_mesh_platform::{
+    Clock, location::LocationSnapshot, suspend::SuspendParticipant, time::UtcDateTime,
+};
 
 use crate::bus::Bus;
 use service::{Policy, Service};
@@ -44,14 +46,39 @@ impl Clock for FirmwareClock {
     }
 }
 
+impl SuspendParticipant for FirmwareClock {
+    type Error = core::convert::Infallible;
+
+    async fn will_suspend(&mut self, _deadline_ms: u64) -> Result<(), Self::Error> {
+        // The coordinator requests the worker pause and bounds this wait.
+        // Wait for its bus access and cache publication before invalidating UTC.
+        while !crate::suspend::is_paused(crate::suspend::Service::Rtc) {
+            Timer::after_millis(1).await;
+        }
+        STATE.lock(|state| state.borrow_mut().invalidate_cache());
+        Ok(())
+    }
+
+    async fn did_resume(&mut self, _deadline_ms: u64) -> Result<(), Self::Error> {
+        // Restore admission separately from freshness. The worker reads the RTC after release.
+        STATE.lock(|state| state.borrow_mut().invalidate_cache());
+        Ok(())
+    }
+
+    async fn did_cancel_suspend(&mut self, deadline_ms: u64) -> Result<(), Self::Error> {
+        self.did_resume(deadline_ms).await
+    }
+}
+
 #[embassy_executor::task]
 pub async fn worker(bus: &'static Bus, location: fn(u64) -> LocationSnapshot) {
     use crate::suspend::{self, Service};
     suspend::register(Service::Rtc);
-    let mut service = service::Service::new(POLICY);
     let mut faulted = false;
     loop {
         suspend::checkpoint(Service::Rtc).await;
+        // Lifecycle callbacks can invalidate the cache while the worker is paused.
+        let mut service = STATE.lock(|state| *state.borrow());
         let result = {
             let mut bus = bus.lock().await;
             let now_ms = Instant::now().as_millis();

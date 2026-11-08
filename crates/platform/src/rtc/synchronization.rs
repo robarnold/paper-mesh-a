@@ -52,6 +52,13 @@ impl Service {
         self.next_poll_ms
     }
 
+    /// Require a new RTC read after an interruption without replaying consumed corrections.
+    /// The next poll is due immediately in the existing monotonic epoch.
+    pub fn invalidate_cache(&mut self) {
+        self.reference = None;
+        self.next_poll_ms = 0;
+    }
+
     pub fn now_utc(&self, now_ms: u64) -> Option<UtcDateTime> {
         let reference = self.reference?;
         ObservationWindow::new(now_ms, self.policy.rtc_max_age_ms)

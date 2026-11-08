@@ -639,6 +639,7 @@ impl Simulation {
             return;
         };
         let report = SuspendReport {
+            entered_sleep: true,
             elapsed_ms: self.clock.now_ms().saturating_sub(suspended.started_at_ms),
             wake_reasons: [Some(reason), None, None, None],
             before: suspended.before,

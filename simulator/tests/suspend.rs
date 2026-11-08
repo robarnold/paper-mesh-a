@@ -60,6 +60,7 @@ fn timed_suspend_retains_state_and_suppresses_periodic_work() {
     assert!(!sim.snapshot().suspended);
     assert_eq!(sim.snapshot().taps, 1);
     let report = sim.power().suspend.result().unwrap().unwrap();
+    assert!(report.entered_sleep);
     assert_eq!(
         report.wake_reasons,
         [Some(WakeReason::Timer), None, None, None]

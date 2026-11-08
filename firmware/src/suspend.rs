@@ -23,7 +23,9 @@ use esp_hal::{
     rtc_cntl::{Rtc, WakeLock, sleep::LowPower},
 };
 use paper_mesh_platform::power::PowerSnapshot;
-use paper_mesh_platform::suspend::{SuspendError, SuspendReport, SuspendRequest};
+use paper_mesh_platform::suspend::{
+    SuspendError, SuspendParticipant, SuspendReport, SuspendRequest,
+};
 
 use crate::bus::Bus;
 pub mod cores;
@@ -82,6 +84,9 @@ pub fn register(service: Service) {
 }
 pub fn requested() -> bool {
     REQUESTED.load(Ordering::Acquire)
+}
+pub fn is_paused(service: Service) -> bool {
+    PAUSED.load(Ordering::Acquire) & (1 << service as u32) != 0
 }
 pub fn fail() {
     FAILED.store(true, Ordering::Release);
@@ -161,7 +166,16 @@ fn disarm() {
     });
 }
 
-async fn prepare(bus: &Bus, touch_wake: bool) -> Result<(PowerSnapshot, [u8; 2]), SuspendError> {
+async fn prepare(
+    bus: &Bus,
+    touch_wake: bool,
+    participant: &mut impl SuspendParticipant,
+    deadline_ms: u64,
+) -> Result<(PowerSnapshot, [u8; 2]), SuspendError> {
+    participant
+        .will_suspend(deadline_ms)
+        .await
+        .map_err(|_| SuspendError::Preparation)?;
     while PAUSED.load(Ordering::Acquire) != REGISTERED.load(Ordering::Acquire) {
         Timer::after_millis(1).await;
     }
@@ -198,6 +212,21 @@ async fn prepare(bus: &Bus, touch_wake: bool) -> Result<(PowerSnapshot, [u8; 2])
         Ok(())
     })?;
     Ok((before, ports))
+}
+
+async fn restore_participant(
+    participant: &mut impl SuspendParticipant,
+    slept: bool,
+    deadline_ms: u64,
+) -> Result<(), ()> {
+    if slept {
+        participant.did_resume(deadline_ms).await.map_err(|_| ())
+    } else {
+        participant
+            .did_cancel_suspend(deadline_ms)
+            .await
+            .map_err(|_| ())
+    }
 }
 
 impl Controller {
@@ -274,10 +303,70 @@ impl Controller {
         result
     }
 
+    // Separate transition futures from restoration to bound coordinator stack use.
+    async fn suspend_once(
+        &mut self,
+        bus: &Bus,
+        request: SuspendRequest,
+        participant: &mut impl SuspendParticipant,
+    ) -> Result<SuspendReport, SuspendError> {
+        let preparation_deadline = Instant::now() + Duration::from_secs(5);
+        match with_timeout(
+            Duration::from_secs(5),
+            prepare(
+                bus,
+                request.touch_wake,
+                participant,
+                preparation_deadline.as_millis(),
+            ),
+        )
+        .await
+        {
+            Ok(Ok((before, ports_before))) => {
+                trace::mark(trace::Stage::ParkingCore);
+                let parked = with_timeout(Duration::from_secs(1), cores::request_park()).await;
+                let started = Instant::now();
+                let deadline = started + Duration::from_millis(request.duration_ms);
+                let result = if !parked.is_ok_and(|result| result.is_ok()) {
+                    Err(SuspendError::Preparation)
+                } else {
+                    if self.recovery.arm(request.duration_ms + 15_000) {
+                        cores::sleep(&mut self.low_power, deadline)
+                            .map(|entered| (started.elapsed().as_millis(), entered))
+                    } else {
+                        Err(SuspendError::Preparation)
+                    }
+                };
+                self.recovery.arm(15_000);
+                cores::release();
+                // Capture all pending inputs before bus reads or service restoration.
+                disarm();
+                let captured = WAKE_BITS.load(Ordering::Acquire);
+                let timer = Instant::now() >= deadline;
+                let ports_after = expander::inputs(&mut *bus.lock().await).ok();
+                let wake_reasons =
+                    wake::reasons(captured, ports_after.map(|ports| ports[1]), timer);
+                trace::record_wake(captured, ports_before, ports_after, result.ok(), timer);
+                trace::mark(trace::Stage::ReadingAfter);
+                let after = crate::power::read_now(bus).await;
+                result.map(|(elapsed_ms, entered_sleep)| SuspendReport {
+                    entered_sleep,
+                    elapsed_ms,
+                    wake_reasons,
+                    before,
+                    after,
+                })
+            }
+            Ok(Err(error)) => Err(error),
+            Err(_) => Err(SuspendError::Preparation),
+        }
+    }
+
     pub async fn run(
         &mut self,
         bus: &Bus,
         request: SuspendRequest,
+        participant: &mut impl SuspendParticipant,
     ) -> Result<SuspendReport, SuspendError> {
         if requested() || PAUSED.load(Ordering::Acquire) != 0 || crate::discovery::is_active() {
             return Err(SuspendError::Busy);
@@ -292,47 +381,23 @@ impl Controller {
         WAKE_BITS.store(0, Ordering::Release);
         trace::mark(trace::Stage::Preparing);
         notify(true);
-        let result =
-            match with_timeout(Duration::from_secs(5), prepare(bus, request.touch_wake)).await {
-                Ok(Ok((before, ports_before))) => {
-                    trace::mark(trace::Stage::ParkingCore);
-                    let parked = with_timeout(Duration::from_secs(1), cores::request_park()).await;
-                    let started = Instant::now();
-                    let deadline = started + Duration::from_millis(request.duration_ms);
-                    let result = if !parked.is_ok_and(|result| result.is_ok()) {
-                        Err(SuspendError::Preparation)
-                    } else {
-                        if self.recovery.arm(request.duration_ms + 15_000) {
-                            cores::sleep(&mut self.low_power, deadline)
-                                .map(|entered| (started.elapsed().as_millis(), entered))
-                        } else {
-                            Err(SuspendError::Preparation)
-                        }
-                    };
-                    self.recovery.arm(15_000);
-                    cores::release();
-                    // Capture all pending inputs before bus reads or service restoration.
-                    disarm();
-                    let captured = WAKE_BITS.load(Ordering::Acquire);
-                    let timer = Instant::now() >= deadline;
-                    let ports_after = expander::inputs(&mut *bus.lock().await).ok();
-                    let wake_reasons =
-                        wake::reasons(captured, ports_after.map(|ports| ports[1]), timer);
-                    trace::record_wake(captured, ports_before, ports_after, result.ok(), timer);
-                    trace::mark(trace::Stage::ReadingAfter);
-                    let after = crate::power::read_now(bus).await;
-                    result.map(|(elapsed_ms, _)| SuspendReport {
-                        elapsed_ms,
-                        wake_reasons,
-                        before,
-                        after,
-                    })
-                }
-                Ok(Err(error)) => Err(error),
-                Err(_) => Err(SuspendError::Preparation),
-            };
+        let result = self.suspend_once(bus, request, participant).await;
+        let entered_sleep = result.as_ref().is_ok_and(|report| report.entered_sleep);
         disarm();
         trace::mark(trace::Stage::ResumingServices);
+        let restoration_deadline = (Instant::now() + Duration::from_secs(1)).as_millis();
+        let restored = with_timeout(
+            Duration::from_secs(1),
+            restore_participant(participant, entered_sleep, restoration_deadline),
+        )
+        .await;
+        if !matches!(restored, Ok(Ok(()))) {
+            log::error!("suspend: participant restoration failed or timed out");
+            // Keep workers stopped and the recovery watchdog armed after failed restoration.
+            loop {
+                Timer::after_secs(1).await;
+            }
+        }
         notify(false);
         trace::mark(if result.is_ok() {
             trace::Stage::Complete

@@ -49,6 +49,8 @@ The application requests the transition. The runtime waits for the final display
 Preparation failure returns an explicit error and resumes the paused services.
 
 `SuspendReport` records elapsed monotonic time, observed wake events, and fresh power observations before and after the suspend interval.
+Its `entered_sleep` field distinguishes sleep entry from a successful attempt that ended before entry.
+The firmware uses this field to select wake restoration or cancellation. It does not establish physical sleep residency.
 Control events carry portable control identities. A touch interrupt does not establish a deliberate tap.
 An unidentified input remains explicit. The report can contain simultaneous events, and array order does not establish event order.
 RAM retains the application and report across light sleep. The experiment does not write the external RTC or flash.
@@ -87,6 +89,32 @@ The simulator retains the final image and stops application work after a success
 It tests explicit requests, the hold gesture, external-power refusal, missing observations, and retry.
 Simulator completion does not prove physical supply removal or battery leakage current.
 The [board adapter](../boards/lilygo-t5-s3-pro-power.md) defines the electrical mechanism and its limits.
+
+## Suspend participants
+
+The platform [`SuspendParticipant`](../../crates/platform/src/suspend.rs) contract belongs to service control handles.
+It does not require an executor or heap allocation.
+`will_suspend` stops work and releases resources required by the suspend plan.
+Success keeps the service prepared. An error prevents suspend.
+`did_resume` restores operation after wake.
+`did_cancel_suspend` restores operation when preparation ends without sleep, including after a dropped preparation future.
+Restoration must handle partial preparation. A failure must keep unavailable operations blocked.
+
+The coordinator controls work admission, serializes callbacks, and orders dependencies.
+It enforces deadlines in the monotonic `Clock::now_ms` epoch.
+Successful restoration does not make old observations fresh.
+Power-off remains a separate capability. Suspend callbacks do not promise persistence or prepare physical power removal.
+
+The firmware suspend controller accepts a `SuspendParticipant` supplied by the runtime.
+The runtime selects [`FirmwareClock`](../../firmware/src/rtc/mod.rs) as its first participant.
+It requests the existing worker pause before it calls `will_suspend`.
+The clock waits for the RTC worker to release the bus and publish its last result, then invalidates cached UTC.
+The controller calls `did_resume` after sleep, or `did_cancel_suspend` when preparation ends without sleep.
+It completes restoration before it releases the workers.
+Preparation errors or timeouts prevent sleep and trigger cancellation.
+Restoration errors or timeouts keep workers stopped and the recovery watchdog armed until reset.
+RTC restoration performs no I/O and cannot fail; the next worker poll establishes calendar validity.
+Other workers still use the existing pause mechanism. Participant groups, general dependency coordination, and power-off participants remain planned work.
 
 ## Planned control and lifecycle services
 

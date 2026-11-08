@@ -67,8 +67,15 @@ The [firmware worker](../../firmware/src/rtc/mod.rs) supplies the existing confi
 The service does not own a bus or select an executor.
 The correction threshold does not establish an accuracy bound.
 
+The firmware clock implements the [suspend participant contract](power.md#suspend-participants).
+Preparation invalidates cached UTC after the RTC worker stops.
+Wake and canceled preparation leave UTC unavailable until a new RTC read completes.
+Cache invalidation makes polling due immediately and preserves consumed correction identities in the existing monotonic epoch.
+It does not stop or reset the retained RTC.
+
 ## Deterministic verification
 
 Native tests cover invalid dates, midnight, leap days, year rollover, stale reports, retained time, voltage loss, bus failures, and recovery.
+They also verify cache invalidation, immediate polling, and correction history across service interruptions.
 Simulator tests verify that UTC corrections do not change monotonic time, heartbeats, or completed display frames.
 These checks do not establish oscillator accuracy or physical retention.
