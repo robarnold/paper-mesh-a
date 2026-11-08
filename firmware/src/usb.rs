@@ -32,7 +32,7 @@ use embassy_sync::{
 };
 use embassy_time::{Duration, Instant, Timer, with_timeout};
 use embassy_usb::{
-    Builder, Config, Handler, UsbDevice,
+    Builder, Handler, UsbDevice,
     class::{cdc_acm, hid},
     control::OutResponse,
 };
@@ -43,16 +43,18 @@ use esp_hal::{
         embassy_usb_device::{Config as DriverConfig, Driver},
     },
 };
-use paper_mesh_hid_touchpad::{Descriptor, Encoder, Geometry, REPORT_LEN};
+use paper_mesh_hid_touchpad::{Descriptor, Encoder, REPORT_LEN};
 use paper_mesh_platform::touchpad::{HostFrame, HostState, TouchpadHost};
 use static_cell::StaticCell;
 
-static DESCRIPTOR: Descriptor = Descriptor::new(Geometry {
-    width: 540,
-    height: 960,
-    width_tenth_mm: 583,
-    height_tenth_mm: 1037,
-});
+/// Runtime-selected device identity, touchpad geometry, and command dispatch.
+pub struct Config {
+    pub device: embassy_usb::Config<'static>,
+    /// Must describe the logical coordinates submitted through TouchpadHost.
+    pub descriptor: &'static Descriptor,
+    pub command_handler: CommandHandler,
+}
+
 static OUT_BUFFER: StaticCell<[u8; 256]> = StaticCell::new();
 static CONFIG_BUFFER: StaticCell<[u8; 256]> = StaticCell::new();
 static BOS_BUFFER: StaticCell<[u8; 64]> = StaticCell::new();
@@ -173,7 +175,7 @@ pub fn start(
     peripheral: USB_FS<'static>,
     dp: GPIO20<'static>,
     dm: GPIO19<'static>,
-    handler: CommandHandler,
+    config: Config,
 ) -> UsbLifecycle {
     let [device, hid_pause, logs, commands] = PAUSES.init(core::array::from_fn(|_| Pause::new()));
     let (device, device_worker) = device.split();
@@ -187,16 +189,9 @@ pub fn start(
         OUT_BUFFER.init([0; 256]),
         DriverConfig::default(),
     );
-    // These IDs are for a private prototype. They are not allocated product IDs.
-    let mut config = Config::new(0xcafe, 0x4010);
-    config.manufacturer = Some("Paper Mesh");
-    config.product = Some("Paper Mesh Touchpad");
-    config.serial_number = Some("paper-mesh-prototype");
-    config.self_powered = true;
-    config.max_power = 500;
     let mut builder = Builder::new(
         driver,
-        config,
+        config.device,
         CONFIG_BUFFER.init([0; 256]),
         BOS_BUFFER.init([0; 64]),
         &mut [],
@@ -208,7 +203,7 @@ pub fn start(
         &mut builder,
         HID.init(hid::State::new()),
         hid::Config {
-            report_descriptor: DESCRIPTOR.as_bytes(),
+            report_descriptor: config.descriptor.as_bytes(),
             request_handler: Some(REQUESTS.init(Requests)),
             poll_ms: 8,
             max_packet_size: 64,
@@ -217,7 +212,8 @@ pub fn start(
         },
     );
     let (sender, receiver, control) = cdc.split_with_control();
-    spawner.spawn(command_worker(receiver, control, handler, commands_worker).unwrap());
+    spawner
+        .spawn(command_worker(receiver, control, config.command_handler, commands_worker).unwrap());
     spawner.spawn(bus_worker(builder.build(), device_worker).unwrap());
     spawner.spawn(hid_worker(hid, hid_pause_worker).unwrap());
     spawner.spawn(log_worker(sender, logs_worker).unwrap());

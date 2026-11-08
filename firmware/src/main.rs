@@ -135,7 +135,7 @@ fn initialize(
         peripherals.USB_FS,
         peripherals.GPIO20,
         peripherals.GPIO19,
-        handle_command,
+        usb_config(),
     );
     diagnostics::report_previous_panic();
     display_recovery::report_previous();
@@ -515,6 +515,28 @@ async fn suspend_app(
         Err(error) => error!("suspend: failed: {:?}", error),
     }
     app.finish_suspend(result);
+}
+
+fn usb_config() -> usb::Config {
+    static DESCRIPTOR: paper_mesh_hid_touchpad::Descriptor =
+        paper_mesh_hid_touchpad::Descriptor::new(paper_mesh_hid_touchpad::Geometry {
+            width: 540,
+            height: 960,
+            width_tenth_mm: 583,
+            height_tenth_mm: 1037,
+        });
+    // These IDs are for a private prototype. They are not allocated product IDs.
+    let mut device = embassy_usb::Config::new(0xcafe, 0x4010);
+    device.manufacturer = Some("Paper Mesh");
+    device.product = Some("Paper Mesh Touchpad");
+    device.serial_number = Some("paper-mesh-prototype");
+    device.self_powered = true;
+    device.max_power = 500;
+    usb::Config {
+        device,
+        descriptor: &DESCRIPTOR,
+        command_handler: handle_command,
+    }
 }
 
 fn handle_command(

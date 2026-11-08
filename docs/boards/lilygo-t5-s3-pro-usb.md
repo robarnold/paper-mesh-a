@@ -4,6 +4,12 @@
 
 ## Transport
 
+The [firmware runtime](../../firmware/src/main.rs) supplies USB identity, the HID descriptor, and command dispatch through `usb::Config`.
+The descriptor must match the logical coordinates submitted by the runtime.
+Its static lifetime lets the USB stack retain it without a copy or heap allocation.
+The [USB module](../../firmware/src/usb.rs) owns endpoint settings, buffers, workers, and lifecycle coordination.
+Command error encoding and connection diagnostics still depend on firmware modules.
+
 The firmware uses the ESP32-S3 USB OTG controller through esp-hal and Embassy USB.
 GPIO20 is D+ and GPIO19 is D−.
 The internal PHY serves a composite device with CDC serial and HID touchpad interfaces.

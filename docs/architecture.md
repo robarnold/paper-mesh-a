@@ -46,6 +46,8 @@ Startup supplies location observations through a callback, so the RTC worker doe
 The platform defines the [reply transport contract](services/connectivity.md#reply-transport) and [bounded request framing](services/connectivity.md#request-framing).
 Firmware selects frame capacity and owns JSON parsing and command routing.
 USB owns transport state and implements acknowledged replies. The runtime supplies command dispatch.
+The runtime also supplies USB identity and the HID descriptor through startup configuration.
+USB retains buffers, endpoint settings, worker ownership, and lifecycle coordination.
 ROM download and display inspection handlers depend on the platform contract instead of the USB module.
 USB hardware, session tracking, and lifecycle coordination remain in firmware.
 
