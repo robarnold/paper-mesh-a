@@ -5,7 +5,7 @@
 //! - Await completed observations and bus release before acknowledging preparation.
 //! - Keep hardware power removal in the system coordinator, separate from observation workers.
 //!
-//! See [power worker coordination](../../../docs/platform/worker-coordination.md#power-observation-integration).
+//! See [power worker coordination](../../../../docs/platform/worker-coordination.md#power-observation-integration).
 
 use core::convert::Infallible;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;

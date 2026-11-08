@@ -133,7 +133,7 @@ async fn prepare(
     // Its later status transition must finish before GPIO38 becomes a wake input.
     Timer::after_millis(500).await;
     trace::mark(trace::Stage::ReadingBefore);
-    let before = crate::power::read_now(bus).await;
+    let before = crate::power::observation::read_now(bus).await;
     let mut bus = bus.lock().await;
     // Clear both expander interrupt comparisons after the display and GNSS stop.
     let ports = expander::inputs(&mut *bus).map_err(|_| SuspendError::Preparation)?;
@@ -286,7 +286,7 @@ impl Controller {
                     wake::reasons(captured, ports_after.map(|ports| ports[1]), timer);
                 trace::record_wake(captured, ports_before, ports_after, result.ok(), timer);
                 trace::mark(trace::Stage::ReadingAfter);
-                let after = crate::power::read_now(bus).await;
+                let after = crate::power::observation::read_now(bus).await;
                 result.map(|(elapsed_ms, entered_sleep)| SuspendReport {
                     entered_sleep,
                     elapsed_ms,

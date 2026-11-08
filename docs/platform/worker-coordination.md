@@ -97,7 +97,8 @@ Power-off preparation leaves all workers paused until power removal or reset.
 
 ## Power observation integration
 
-The [power module](../../firmware/src/power/mod.rs) starts its periodic worker and returns a `PowerObservationLifecycle` handle.
+The [power observation module](../../firmware/src/power/observation.rs) starts its periodic worker and returns a `PowerObservationLifecycle` handle.
+The runtime supplies a nonzero polling interval. The worker waits that interval after each completed pair of device reads.
 Startup creates this handle only when shared-bus initialization succeeds.
 The runtime omits an unavailable worker from lifecycle composition, so preparation cannot wait for a task that never started.
 
@@ -105,6 +106,8 @@ Preparation waits for battery and charger reads to finish, bus guards to drop, a
 The pause request interrupts the polling delay, but does not cancel a device transaction.
 Restoration releases the worker to take another sample. Cached observations retain their original timestamps until replaced.
 The read-only `FirmwarePowerObservation` capability remains separate from lifecycle ownership.
+Cached reads, change notifications, fault publication, and immediate reads belong to the observation module.
+Power-off admission and battery isolation remain separate operations in the power control module.
 
 Pausing observations does not switch off the charger, battery gauge, or board power.
 The system coordinator retains direct `read_now` access for suspend comparisons while the periodic worker is paused.

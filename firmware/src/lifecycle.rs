@@ -18,7 +18,7 @@ pub struct Services {
     /// Absent when the shared bus or touch controller could not initialize.
     pub touch_input: Option<crate::touch::TouchInputLifecycle>,
     /// Absent when shared-bus initialization prevented the worker from starting.
-    pub power_observation: Option<crate::power::PowerObservationLifecycle>,
+    pub power_observation: Option<crate::power::observation::PowerObservationLifecycle>,
 }
 
 impl Services {

@@ -7,7 +7,9 @@
 The [schematic][schematic], sheet 1, shows the 10 mΩ gauge sense resistor but no confirmed MCU route for charger `INT` or gauge `GPOUT`.
 The adapter therefore polls each source independently. Other users of the shared bus can delay either reading.
 Each timestamp records the start of that device read. If one fails, the other source can still supply a current observation.
-See the [power adapter](../../firmware/src/power/mod.rs) for scheduling and the [vendor pin map][pinmap] for connections.
+The [observation worker](../../firmware/src/power/observation.rs) uses the polling interval supplied by the [runtime](../../firmware/src/main.rs).
+Its delay follows each completed pair of device reads. Pause requests interrupt that delay.
+See the [vendor pin map][pinmap] for connections.
 
 ## Fuel gauge
 

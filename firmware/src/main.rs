@@ -55,6 +55,8 @@ const RTC_POLICY: paper_mesh_platform::rtc::synchronization::Policy =
         first_year: 2000,
         last_year: 2099,
     };
+const POWER_OBSERVATION_INTERVAL: Duration = Duration::from_secs(2);
+
 static RTC_STATE: StaticCell<ClockState> = StaticCell::new();
 
 static APP: ConstStaticCell<App> = ConstStaticCell::new(App::unstarted());
@@ -157,7 +159,7 @@ fn initialize(
         .map_err(|error| {
             error!("I2C: initialization failed: {:?}", error);
             gnss::fault();
-            power::fault();
+            power::observation::fault();
         })
         .ok();
     let button_polling = buttons::start_polling(spawner, bus, peripherals.GPIO0);
@@ -191,7 +193,8 @@ fn initialize(
         )
         .unwrap(),
     );
-    let power_observation = power::start_observation(spawner, bus);
+    let power_observation =
+        power::observation::start_observation(spawner, bus, POWER_OBSERVATION_INTERVAL);
     let panel = if display_safe.is_some_and(|result| {
         if let Err(error) = &result {
             error!("display: boot shutdown failed: {}", error);
@@ -264,7 +267,7 @@ async fn run_app(
     let mut inspection_hold: Option<display_inspection::Hold> = None;
     let mut discovery = discovery::FirmwareDiscovery;
     let mut location = gnss::FirmwareLocation;
-    let mut power_observation = power::FirmwarePowerObservation;
+    let mut power_observation = power::observation::FirmwarePowerObservation;
     let mut touchpad = usb::FirmwareTouchpad;
     let mut touchpad_session = TouchpadSession::new();
     #[cfg(feature = "radio-scan-demo")]
@@ -349,7 +352,7 @@ async fn run_app(
                 display_worker::changed(),
                 select(
                     discovery::changed(),
-                    select(gnss::changed(), power::changed()),
+                    select(gnss::changed(), power::observation::changed()),
                 ),
                 Timer::at(Instant::from_millis(app.next_deadline_ms())),
             ),

@@ -94,6 +94,9 @@ The platform supplies calendar types and elapsed-time conversion without hardwar
 
 The [power contract](services/power.md) separates battery observations from charger observations.
 Backends control device access and measurement conversion. The application controls the detail screen and observation age limits.
+Firmware separates [power observations](../firmware/src/power/observation.rs) from [power-off control](../firmware/src/power/mod.rs).
+The observation module owns cached snapshots, notifications, immediate reads, and worker lifecycle coordination.
+The runtime selects its polling interval. Power-off checks and battery isolation do not depend on the observation worker.
 The application also requests explicit lifecycle transitions through portable request and error types.
 The runtime coordinates display completion and service preparation before the backend changes system power.
 Hardware recovery deadlines and retained fault records stay in the firmware backend.
