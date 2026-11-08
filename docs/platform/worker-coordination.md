@@ -122,19 +122,35 @@ The system coordinator waits for all required workers before it arms BOOT and ex
 Hardware wake capture remains active while polling is paused.
 The runtime must coordinate touch separately when it needs all input workers stopped.
 
+## Touch input integration
+
+The [touch module](../../firmware/src/touch.rs) returns a `TouchInputLifecycle` handle only after successful controller initialization.
+The runtime omits it when the shared bus or touch controller is unavailable.
+This handle stops contact reports and HOME input from the touch worker.
+
+The worker waits for a pause request or a controller interrupt.
+A pause request takes precedence when both are ready. A report already in progress finishes and releases the bus before preparation.
+Before acknowledgement, the worker disables normal touch interrupts, clears queued reports, and records whether contacts and HOME are idle.
+The system coordinator then decides whether touch can serve as a wake source.
+
+After release, the worker checks the contact state, pending pin level, and captured touch wake reason.
+It cancels uncertain contacts until an empty report confirms release, then resumes normal interrupt handling.
+Suspend cancellation follows the same restoration path. Power-off preparation leaves the worker paused until reset or power removal.
+The module retains its firmware wake hooks. Lifecycle coordination does not replace interrupt routing or wake-source policy.
+
 ## Runtime composition
 
-The [runtime service handles](../../firmware/src/lifecycle.rs) combine RTC, USB, button polling, and available power-observation lifecycle capabilities.
+The [runtime service handles](../../firmware/src/lifecycle.rs) combine RTC, USB, button polling, and available touch-input and power-observation lifecycle capabilities.
 The hardware suspend coordinator still accepts one generic participant and has no dependency on the selected lifecycle handles.
-The runtime prepares USB, button polling, power observations, then the RTC. Restoration uses the reverse order.
+The runtime prepares USB, touch input, button polling, power observations, then the RTC. Restoration uses the reverse order.
 It passes the same coordinator deadline to each service.
 Cancellation restores all present handles because preparation can stop at any await.
 The current implementations are infallible. General error aggregation and dependency planning remain separate work.
 
 Reset recovery requests all present services to pause without waiting for acknowledgement.
 This path does not claim safe device detachment. The watchdog returns through normal startup.
-GNSS and touch still use the global `Service` registry.
-The system coordinator waits for those workers in addition to the runtime participant.
+GNSS still uses the global `Service` registry.
+The system coordinator waits for that worker in addition to the runtime participant.
 Display-core parking is a hardware execution barrier and remains distinct from a cooperative worker pause.
 
 ## Implementation and verification

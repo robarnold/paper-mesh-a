@@ -7,6 +7,9 @@
 //!
 //! See [LILYGO touch input and interrupts](../../docs/boards/lilygo-t5-s3-pro-touch.md).
 
+mod input_lifecycle;
+pub use input_lifecycle::TouchInputLifecycle;
+
 use crate::display::NATIVE_SCREEN_SIZE;
 use core::{
     cell::RefCell,
@@ -32,6 +35,7 @@ use esp_hal::{
 use esp_rtos::embassy::InterruptExecutor;
 use log::{error, info};
 use paper_mesh_gt911::{CONFIG_BYTES, Event, Frame, Gt911};
+use paper_mesh_platform::worker::{Pause, PauseWorker};
 use paper_mesh_platform::{TouchEvent, input::contacts::TouchFrame, rotation::PortraitRotation};
 use static_cell::StaticCell;
 
@@ -46,6 +50,7 @@ static WAKE_READY: AtomicBool = AtomicBool::new(false);
 static CHANGED: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 static EVENTS: Channel<CriticalSectionRawMutex, Sample, 32> = Channel::new();
 static EXECUTOR: StaticCell<InterruptExecutor<2>> = StaticCell::new();
+static INPUT_PAUSE: StaticCell<Pause<CriticalSectionRawMutex>> = StaticCell::new();
 static STATS: Mutex<CriticalSectionRawMutex, RefCell<Statistics>> =
     Mutex::new(RefCell::new(Statistics::new()));
 
@@ -103,18 +108,17 @@ pub fn start(
     interrupt: peripherals::GPIO3<'static>,
     io_mux: peripherals::IO_MUX<'static>,
     software_interrupt: peripherals::FROM_CPU_INTR2<'static>,
-) {
+) -> Option<TouchInputLifecycle> {
     assert!(Cpu::current() == Cpu::ProCpu);
     Io::new(io_mux).set_interrupt_handler(interrupt_handler);
-    let touch = Touch::new(&mut bus.try_lock().unwrap(), reset, interrupt);
-    let Some((touch, pin)) = touch else {
-        return;
-    };
+    let (touch, pin) = Touch::new(&mut bus.try_lock().unwrap(), reset, interrupt)?;
     PIN.lock(|slot| slot.borrow_mut().replace(pin));
+    let (pause, worker_pause) = INPUT_PAUSE.init(Pause::new()).split();
     EXECUTOR
         .init(InterruptExecutor::new(software_interrupt))
         .start(Priority::Priority2)
-        .spawn(worker(touch, bus).unwrap());
+        .spawn(worker(touch, bus, worker_pause).unwrap());
+    Some(TouchInputLifecycle { pause })
 }
 
 #[esp_hal::handler]
@@ -311,33 +315,35 @@ impl Touch {
 }
 
 #[embassy_executor::task]
-async fn worker(mut touch: Touch, bus: &'static Bus) {
-    use crate::suspend::{self, Service};
-    suspend::register(Service::Touch);
+async fn worker(
+    mut touch: Touch,
+    bus: &'static Bus,
+    mut pause: PauseWorker<'static, CriticalSectionRawMutex>,
+) {
     assert!(Cpu::current() == Cpu::ProCpu);
     info!("touch: interrupt worker started; core=0; GPIO3 low level; priority=2");
     loop {
-        if suspend::requested() {
-            PIN.lock(|slot| {
-                if let Some(pin) = slot.borrow_mut().as_mut() {
-                    pin.unlisten();
-                    pin.clear_interrupt();
-                }
-            });
-            EVENTS.clear();
-            let contacts_idle = touch.driver.contacts_idle();
-            WAKE_READY.store(contacts_idle && !touch.home_pressed, Ordering::Release);
-            suspend::checkpoint(Service::Touch).await;
-            let pending = PIN.lock(|slot| slot.borrow().as_ref().is_some_and(Flex::is_low));
-            if !contacts_idle || pending || suspend::touch_woke() {
-                // Consume contacts from suspend until an empty report confirms release.
-                touch.driver.cancel();
-            }
-            IRQ.reset();
-        }
         arm_interrupt();
-        let irq = match select(suspend::request(Service::Touch), IRQ.wait()).await {
-            Either::First(()) => continue,
+        let irq = match select(pause.requested(), IRQ.wait()).await {
+            Either::First(()) => {
+                PIN.lock(|slot| {
+                    if let Some(pin) = slot.borrow_mut().as_mut() {
+                        pin.unlisten();
+                        pin.clear_interrupt();
+                    }
+                });
+                EVENTS.clear();
+                let contacts_idle = touch.driver.contacts_idle();
+                WAKE_READY.store(contacts_idle && !touch.home_pressed, Ordering::Release);
+                pause.checkpoint().await;
+                let pending = PIN.lock(|slot| slot.borrow().as_ref().is_some_and(Flex::is_low));
+                if !contacts_idle || pending || crate::suspend::touch_woke() {
+                    // Consume contacts from suspend until an empty report confirms release.
+                    touch.driver.cancel();
+                }
+                IRQ.reset();
+                continue;
+            }
             Either::Second(irq) => irq,
         };
         let wait_start = Instant::now();

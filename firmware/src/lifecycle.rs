@@ -14,6 +14,8 @@ pub struct Services {
     pub clock: crate::rtc::FirmwareClock,
     pub usb: crate::usb::UsbLifecycle,
     pub button_polling: crate::buttons::ButtonPollingLifecycle,
+    /// Absent when the shared bus or touch controller could not initialize.
+    pub touch_input: Option<crate::touch::TouchInputLifecycle>,
     /// Absent when shared-bus initialization prevented the worker from starting.
     pub power_observation: Option<crate::power::PowerObservationLifecycle>,
 }
@@ -22,6 +24,9 @@ impl Services {
     pub fn request_pause(&mut self) {
         self.clock.request_pause();
         self.usb.request_pause();
+        if let Some(touch_input) = &mut self.touch_input {
+            touch_input.request_pause();
+        }
         self.button_polling.request_pause();
         if let Some(observation) = &mut self.power_observation {
             observation.request_pause();
@@ -34,6 +39,9 @@ impl SuspendParticipant for Services {
 
     async fn will_suspend(&mut self, deadline_ms: u64) -> Result<(), Self::Error> {
         self.usb.will_suspend(deadline_ms).await?;
+        if let Some(touch_input) = &mut self.touch_input {
+            touch_input.will_suspend(deadline_ms).await?;
+        }
         self.button_polling.will_suspend(deadline_ms).await?;
         if let Some(observation) = &mut self.power_observation {
             observation.will_suspend(deadline_ms).await?;
@@ -47,6 +55,9 @@ impl SuspendParticipant for Services {
             observation.did_resume(deadline_ms).await?;
         }
         self.button_polling.did_resume(deadline_ms).await?;
+        if let Some(touch_input) = &mut self.touch_input {
+            touch_input.did_resume(deadline_ms).await?;
+        }
         self.usb.did_resume(deadline_ms).await
     }
 
@@ -56,6 +67,9 @@ impl SuspendParticipant for Services {
             observation.did_cancel_suspend(deadline_ms).await?;
         }
         self.button_polling.did_cancel_suspend(deadline_ms).await?;
+        if let Some(touch_input) = &mut self.touch_input {
+            touch_input.did_cancel_suspend(deadline_ms).await?;
+        }
         self.usb.did_cancel_suspend(deadline_ms).await
     }
 }
@@ -65,6 +79,9 @@ impl PowerOffParticipant for Services {
 
     async fn will_power_off(&mut self, deadline_ms: u64) -> Result<(), Self::Error> {
         self.usb.will_power_off(deadline_ms).await?;
+        if let Some(touch_input) = &mut self.touch_input {
+            touch_input.will_power_off(deadline_ms).await?;
+        }
         self.button_polling.will_power_off(deadline_ms).await?;
         if let Some(observation) = &mut self.power_observation {
             observation.will_power_off(deadline_ms).await?;

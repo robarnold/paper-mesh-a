@@ -165,6 +165,7 @@ fn initialize(
                 usb,
                 power_observation: None,
                 button_polling,
+                touch_input: None,
             },
         );
     };
@@ -205,7 +206,7 @@ fn initialize(
         error!("display: updates blocked; disconnect USB and hold BOOT for 3 seconds to power off");
         None
     };
-    touch::start(
+    let touch_input = touch::start(
         bus,
         peripherals.GPIO9,
         peripherals.GPIO3,
@@ -231,6 +232,7 @@ fn initialize(
             usb,
             power_observation: Some(power_observation),
             button_polling,
+            touch_input,
         },
     )
 }
