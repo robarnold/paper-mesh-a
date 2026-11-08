@@ -1,5 +1,41 @@
 use super::{FrameError, LineFramer};
 
+// A protocol limit below storage capacity must reject longer frames, including after reset.
+#[test]
+fn configured_limit_survives_completion_and_clear() {
+    let mut frame = LineFramer::<8>::with_limit(2).unwrap();
+    for _ in 0..2 {
+        for byte in b"ab" {
+            assert_eq!(frame.push(*byte), None);
+        }
+        assert_eq!(frame.push(b'\n').unwrap().unwrap().as_slice(), b"ab");
+        for byte in b"abc" {
+            assert_eq!(frame.push(*byte), None);
+        }
+        assert_eq!(frame.push(b'\n'), Some(Err(FrameError::TooLong)));
+        frame.clear();
+    }
+}
+
+// Configuration must reject limits that fixed storage cannot satisfy.
+#[test]
+fn configured_limit_cannot_exceed_capacity() {
+    assert!(LineFramer::<8>::with_limit(9).is_none());
+    let mut frame = LineFramer::<2>::with_limit(2).unwrap();
+    assert_eq!(frame.push(b'a'), None);
+    assert_eq!(frame.push(b'b'), None);
+    assert_eq!(frame.push(b'\n').unwrap().unwrap().as_slice(), b"ab");
+}
+
+// A zero protocol limit must accept only empty frames even when storage is available.
+#[test]
+fn zero_limit_rejects_payload_with_spare_capacity() {
+    let mut frame = LineFramer::<8>::with_limit(0).unwrap();
+    assert!(frame.push(b'\n').unwrap().unwrap().is_empty());
+    assert_eq!(frame.push(b'x'), None);
+    assert_eq!(frame.push(b'\n'), Some(Err(FrameError::TooLong)));
+}
+
 // A frame at capacity must succeed because LF does not consume payload storage.
 #[test]
 fn capacity_excludes_the_delimiter() {

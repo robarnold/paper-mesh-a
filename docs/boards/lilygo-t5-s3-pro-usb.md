@@ -13,7 +13,9 @@ Firmware encodes JSON errors and selects the diagnostic providers in startup con
 USB calls the fixed provider list in order and sends each bounded line through its connection checks.
 Each provider reads current state when called. The lines are not an atomic system snapshot.
 Providers must return without waiting or accessing USB. An empty list disables connection diagnostics.
-USB still uses the firmware protocol's request capacity. This limit remains separate from error encoding.
+Startup supplies the protocol request limit through `usb::Config`.
+USB owns fixed buffer capacity and rejects a larger limit before it starts workers.
+USB no longer imports the command protocol or diagnostic modules.
 
 The firmware uses the ESP32-S3 USB OTG controller through esp-hal and Embassy USB.
 GPIO20 is D+ and GPIO19 is D−.

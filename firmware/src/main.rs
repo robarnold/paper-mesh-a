@@ -536,6 +536,7 @@ fn usb_config() -> usb::Config {
         device,
         descriptor: &DESCRIPTOR,
         command_handler: handle_command,
+        max_request_len: usb_protocol::MAX_REQUEST,
         connection_diagnostics: &[
             suspend::trace::connection_line,
             suspend::trace::wake_line,

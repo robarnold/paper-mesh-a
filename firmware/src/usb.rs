@@ -13,7 +13,14 @@ pub use lifecycle::UsbLifecycle;
 use lifecycle::Worker;
 use paper_mesh_platform::worker::Pause;
 
-use paper_mesh_platform::transport::{ReplyTransport, SessionId, framing::FrameError};
+use paper_mesh_platform::transport::{
+    ReplyTransport, SessionId,
+    framing::{FrameError, LineFramer},
+};
+
+/// Fixed command-buffer capacity. Runtime protocol limits must fit this storage.
+pub const REQUEST_CAPACITY: usize = 512;
+type RequestFramer = LineFramer<REQUEST_CAPACITY>;
 
 /// Runtime-selected dispatch for a complete request or framing error in its session.
 pub type CommandHandler = fn(Result<&[u8], FrameError>, SessionId) -> Option<alloc::string::String>;
@@ -56,6 +63,8 @@ pub struct Config {
     /// Must describe the logical coordinates submitted through TouchpadHost.
     pub descriptor: &'static Descriptor,
     pub command_handler: CommandHandler,
+    /// Maximum payload bytes, excluding LF. Must not exceed REQUEST_CAPACITY.
+    pub max_request_len: usize,
     /// Called in order when diagnostic output starts for a configured connection.
     pub connection_diagnostics: &'static [DiagnosticSource],
 }
@@ -182,6 +191,10 @@ pub fn start(
     dm: GPIO19<'static>,
     config: Config,
 ) -> UsbLifecycle {
+    assert!(
+        config.max_request_len <= REQUEST_CAPACITY,
+        "USB request limit exceeds buffer capacity"
+    );
     let [device, hid_pause, logs, commands] = PAUSES.init(core::array::from_fn(|_| Pause::new()));
     let (device, device_worker) = device.split();
     let (hid_pause, hid_pause_worker) = hid_pause.split();
@@ -217,8 +230,16 @@ pub fn start(
         },
     );
     let (sender, receiver, control) = cdc.split_with_control();
-    spawner
-        .spawn(command_worker(receiver, control, config.command_handler, commands_worker).unwrap());
+    spawner.spawn(
+        command_worker(
+            receiver,
+            control,
+            config.command_handler,
+            commands_worker,
+            config.max_request_len,
+        )
+        .unwrap(),
+    );
     spawner.spawn(bus_worker(builder.build(), device_worker).unwrap());
     spawner.spawn(hid_worker(hid, hid_pause_worker).unwrap());
     spawner.spawn(log_worker(sender, logs_worker, config.connection_diagnostics).unwrap());
@@ -429,34 +450,29 @@ async fn command_worker(
     control: cdc_acm::ControlChanged<'static>,
     handler: CommandHandler,
     mut pause: Worker,
+    max_request_len: usize,
 ) {
+    // Construct storage in the task to keep it off the startup stack.
+    let mut frame = RequestFramer::with_limit(max_request_len).expect("validated at USB startup");
     loop {
         pause.checkpoint().await;
+        // Canceled reads must not retain partial requests after lifecycle restoration.
+        frame.clear();
+        // Boxing keeps the cancellation wrapper within the firmware stack limit.
         select(
             pause.requested(),
-            read_commands(&mut receiver, &control, handler),
+            alloc::boxed::Box::pin(read_commands(&mut receiver, &control, handler, &mut frame)),
         )
         .await;
     }
 }
 
-fn read_commands<'a>(
-    receiver: &'a mut cdc_acm::Receiver<'static, Driver<'static>>,
-    control: &'a cdc_acm::ControlChanged<'static>,
-    handler: CommandHandler,
-) -> core::pin::Pin<alloc::boxed::Box<dyn core::future::Future<Output = ()> + 'a>> {
-    // Keep command framing outside the task's cancellation wrapper to bound stack use.
-    alloc::boxed::Box::pin(read_commands_inner(receiver, control, handler))
-}
-
-async fn read_commands_inner(
+async fn read_commands(
     receiver: &mut cdc_acm::Receiver<'static, Driver<'static>>,
     control: &cdc_acm::ControlChanged<'static>,
     handler: CommandHandler,
+    frame: &mut RequestFramer,
 ) {
-    use crate::usb_protocol as protocol;
-    use paper_mesh_platform::transport::framing::LineFramer;
-    let mut frame = LineFramer::<{ protocol::MAX_REQUEST }>::default();
     let mut observed_generation = None;
     let mut control_session = None;
     let mut packet = [0; 64];

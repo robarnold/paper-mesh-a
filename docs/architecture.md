@@ -49,6 +49,7 @@ USB owns transport state and implements acknowledged replies. The runtime suppli
 The runtime also supplies USB identity and the HID descriptor through startup configuration.
 It selects connection diagnostics and encodes command errors outside the USB transport.
 USB retains buffers, endpoint settings, worker ownership, and lifecycle coordination.
+Runtime configuration supplies the protocol request limit, which USB validates against its fixed buffer capacity.
 ROM download and display inspection handlers depend on the platform contract instead of the USB module.
 USB hardware, session tracking, and lifecycle coordination remain in firmware.
 

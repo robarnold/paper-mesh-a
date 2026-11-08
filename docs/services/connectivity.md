@@ -72,16 +72,19 @@ Hardware transport behavior requires device validation.
 ## Request framing
 
 The platform [line framer](../../crates/platform/src/transport/framing.rs) collects bounded byte frames terminated by LF.
-Callers select capacity. The delimiter does not consume payload capacity and is absent from the returned frame.
+Callers select storage capacity and can set a smaller protocol limit with `with_limit`.
+Configuration rejects limits above storage capacity. Default construction uses the full capacity.
+The delimiter does not consume payload capacity and is absent from the returned frame.
 Other bytes, including CR, remain unchanged. Protocol code decides whether an empty frame is valid.
 Overflow discards input through the next LF, then returns `FrameError::TooLong` and permits a new frame.
 The caller must clear partial input and overflow state when its source session changes.
 
-The firmware USB worker uses this mechanism with the existing command size limit.
+The firmware runtime supplies the command size limit to USB startup.
+USB validates that limit against its fixed buffer capacity before it starts workers.
 Firmware retains JSON parsing, error responses, and command routing.
 USB passes framing errors to the runtime callback with the original session identity.
 The same session checks apply to error replies and successful command replies.
-Platform tests cover capacity boundaries, overflow recovery, session clearing, empty frames, and byte preservation.
+Platform tests cover capacity and protocol limits, overflow recovery, session clearing, empty frames, and byte preservation.
 Native integration tests combine the public framer with firmware routing to check fragmented commands and disconnects.
 
 ## Planned communications services

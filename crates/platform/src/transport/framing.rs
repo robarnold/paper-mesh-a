@@ -14,13 +14,32 @@ pub enum FrameError {
 
 /// Collect bytes until LF, excluding LF from the returned frame.
 /// Other bytes, including CR, remain unchanged. Empty frames are permitted.
-#[derive(Default)]
 pub struct LineFramer<const N: usize> {
     bytes: heapless::Vec<u8, N>,
+    limit: usize,
     overflow: bool,
 }
 
+impl<const N: usize> Default for LineFramer<N> {
+    fn default() -> Self {
+        Self {
+            bytes: heapless::Vec::new(),
+            limit: N,
+            overflow: false,
+        }
+    }
+}
+
 impl<const N: usize> LineFramer<N> {
+    /// Select a payload limit within the fixed storage capacity.
+    /// Return None if the requested limit exceeds N. Default uses the full capacity.
+    pub fn with_limit(limit: usize) -> Option<Self> {
+        (limit <= N).then(|| Self {
+            limit,
+            ..Self::default()
+        })
+    }
+
     /// Discard partial input and overflow state when the source session changes.
     pub fn clear(&mut self) {
         self.bytes.clear();
@@ -39,7 +58,7 @@ impl<const N: usize> LineFramer<N> {
             self.clear();
             return Some(result);
         }
-        if !self.overflow && self.bytes.push(byte).is_err() {
+        if !self.overflow && (self.bytes.len() == self.limit || self.bytes.push(byte).is_err()) {
             self.overflow = true;
         }
         None
