@@ -33,7 +33,7 @@ Firmware retains the RTC worker, shared bus ownership, scheduling, and suspend c
 The platform supplies [bus arbitration](platform/shared-bus.md) for asynchronous and synchronous clients without hardware dependencies.
 Firmware selects the bus driver, pins, storage, raw mutex, and queue capacity.
 The platform supplies a [worker pause channel](platform/worker-coordination.md) with separate controller and worker endpoints.
-The runtime creates the channel and passes its endpoints to the RTC clock handle and task.
+The runtime initializes RTC storage with its synchronization policy and splits matching clock and worker endpoints.
 The clock control handle implements the platform [suspend participant contract](services/power.md#suspend-participants).
 The runtime supplies that handle to the suspend controller through the generic contract.
 The handle also implements the independent [power-off participant contract](services/power.md#power-off-participants).
@@ -45,7 +45,7 @@ The hardware coordinator remains independent of the selected adapters.
 The coordinator retains a system admission flag, but no global worker registry.
 GNSS reports hardware preparation failures through its lifecycle handle.
 The worker reads shared synchronization state after each pause so lifecycle invalidation reaches its next poll.
-It supplies observation age limits, correction thresholds, and calendar range to the synchronization service.
+Runtime configuration supplies polling intervals, observation age limits, correction thresholds, and calendar range to the synchronization service.
 Startup supplies location observations through a callback, so the RTC worker does not depend on the GNSS adapter.
 
 The platform defines the [reply transport contract](services/connectivity.md#reply-transport) and [bounded request framing](services/connectivity.md#request-framing).

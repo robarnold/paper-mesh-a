@@ -21,27 +21,51 @@ use paper_mesh_platform::{
     power_off::PowerOffParticipant,
     suspend::SuspendParticipant,
     time::UtcDateTime,
-    worker::{PauseControl, PauseWorker},
+    worker::{Pause, PauseControl, PauseWorker},
 };
 
 use crate::bus::Bus;
 use service::{Policy, Service};
 
-const POLL_MS: u64 = 1_000;
-const POLICY: Policy = Policy {
-    poll_interval_ms: POLL_MS,
-    source_max_age_ms: 2_000,
-    rtc_max_age_ms: 10_000,
-    correction_threshold_secs: 2,
-    first_year: 2000,
-    last_year: 2099,
-};
+/// Runtime-owned calendar cache and pause channel.
+pub struct ClockState {
+    service: Mutex<CriticalSectionRawMutex, RefCell<Service>>,
+    pause: Pause<CriticalSectionRawMutex>,
+}
 
-static STATE: Mutex<CriticalSectionRawMutex, RefCell<Service>> =
-    Mutex::new(RefCell::new(Service::new(POLICY)));
+impl ClockState {
+    pub const fn new(policy: Policy) -> Self {
+        Self {
+            service: Mutex::new(RefCell::new(Service::new(policy))),
+            pause: Pause::new(),
+        }
+    }
+
+    /// Give the clock and worker matching state and unique pause endpoints.
+    pub fn split(&'static mut self) -> (FirmwareClock, ClockWorker) {
+        let (control, worker) = self.pause.split();
+        (
+            FirmwareClock {
+                state: &self.service,
+                pause: control,
+            },
+            ClockWorker {
+                state: &self.service,
+                pause: worker,
+            },
+        )
+    }
+}
 
 pub struct FirmwareClock {
+    state: &'static Mutex<CriticalSectionRawMutex, RefCell<Service>>,
     pause: PauseControl<'static, CriticalSectionRawMutex>,
+}
+
+/// Worker endpoint paired with the clock handle during runtime initialization.
+pub struct ClockWorker {
+    state: &'static Mutex<CriticalSectionRawMutex, RefCell<Service>>,
+    pause: PauseWorker<'static, CriticalSectionRawMutex>,
 }
 
 impl Clock for FirmwareClock {
@@ -50,15 +74,12 @@ impl Clock for FirmwareClock {
     }
 
     fn now_utc(&self) -> Option<UtcDateTime> {
-        STATE.lock(|state| state.borrow().now_utc(self.now_ms()))
+        self.state
+            .lock(|state| state.borrow().now_utc(self.now_ms()))
     }
 }
 
 impl FirmwareClock {
-    pub fn new(pause: PauseControl<'static, CriticalSectionRawMutex>) -> Self {
-        Self { pause }
-    }
-
     /// Request a worker pause before reset recovery without claiming it has completed.
     pub fn request_pause(&mut self) {
         self.pause.request_pause();
@@ -72,7 +93,8 @@ impl FirmwareClock {
 
     fn invalidate_cache(&mut self) {
         // Restore admission separately from freshness. The worker reads the RTC after release.
-        STATE.lock(|state| state.borrow_mut().invalidate_cache());
+        self.state
+            .lock(|state| state.borrow_mut().invalidate_cache());
     }
 }
 
@@ -106,22 +128,19 @@ impl PowerOffParticipant for FirmwareClock {
 }
 
 #[embassy_executor::task]
-pub async fn worker(
-    bus: &'static Bus,
-    location: fn(u64) -> LocationSnapshot,
-    mut pause: PauseWorker<'static, CriticalSectionRawMutex>,
-) {
+pub async fn worker(bus: &'static Bus, location: fn(u64) -> LocationSnapshot, worker: ClockWorker) {
+    let ClockWorker { state, mut pause } = worker;
     let mut faulted = false;
     loop {
         pause.checkpoint().await;
         // Lifecycle callbacks can invalidate the cache while the worker is paused.
-        let mut service = STATE.lock(|state| *state.borrow());
+        let mut service = state.lock(|state| *state.borrow());
         let result = {
             let mut bus = bus.lock().await;
             let now_ms = Instant::now().as_millis();
             service.poll(&mut Pcf8563::new(&mut *bus), location(now_ms), now_ms)
         };
-        STATE.lock(|state| *state.borrow_mut() = service);
+        state.lock(|state| *state.borrow_mut() = service);
         if let Err(error) = &result
             && !faulted
         {

@@ -43,12 +43,19 @@ use paper_mesh_app::App;
 use paper_mesh_platform::touchpad::{TouchpadHost, TouchpadSession};
 use paper_mesh_platform::{Clock, Display, location::Location, rotation::PortraitDisplay};
 
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use paper_mesh_platform::worker::Pause;
 use rtc::FirmwareClock;
 use static_cell::{ConstStaticCell, StaticCell};
 
-static RTC_PAUSE: StaticCell<Pause<CriticalSectionRawMutex>> = StaticCell::new();
+const RTC_POLICY: paper_mesh_platform::rtc::synchronization::Policy =
+    paper_mesh_platform::rtc::synchronization::Policy {
+        poll_interval_ms: 1_000,
+        source_max_age_ms: 2_000,
+        rtc_max_age_ms: 10_000,
+        correction_threshold_secs: 2,
+        first_year: 2000,
+        last_year: 2099,
+    };
+static RTC_STATE: StaticCell<rtc::ClockState> = StaticCell::new();
 
 static APP: ConstStaticCell<App> = ConstStaticCell::new(App::unstarted());
 static DISPLAY_STACK: ConstStaticCell<Stack<8192>> = ConstStaticCell::new(Stack::new());
@@ -82,8 +89,7 @@ fn initialize(
 ) {
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::_240MHz);
     let peripherals = esp_hal::init(config);
-    let (rtc_control, rtc_worker) = RTC_PAUSE.init(Pause::new()).split();
-    let clock = FirmwareClock::new(rtc_control);
+    let (clock, rtc_worker) = RTC_STATE.init(rtc::ClockState::new(RTC_POLICY)).split();
     let suspend = suspend::initialize(peripherals.GPIO38, peripherals.LPWR, peripherals.RTC_TIMER);
     display_recovery::boot();
     assert!(recovery::arm(recovery::Owner::Boot, 15_000));
