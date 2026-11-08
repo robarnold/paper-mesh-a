@@ -15,7 +15,8 @@ use embassy_sync::blocking_mutex::{Mutex, raw::CriticalSectionRawMutex};
 use embassy_time::{Instant, Timer};
 use log::error;
 use paper_mesh_platform::{
-    Clock, location::LocationSnapshot, suspend::SuspendParticipant, time::UtcDateTime,
+    Clock, location::LocationSnapshot, power_off::PowerOffParticipant, suspend::SuspendParticipant,
+    time::UtcDateTime,
 };
 
 use crate::bus::Bus;
@@ -46,27 +47,47 @@ impl Clock for FirmwareClock {
     }
 }
 
-impl SuspendParticipant for FirmwareClock {
-    type Error = core::convert::Infallible;
-
-    async fn will_suspend(&mut self, _deadline_ms: u64) -> Result<(), Self::Error> {
+impl FirmwareClock {
+    async fn prepare_stop(&mut self) {
         // The coordinator requests the worker pause and bounds this wait.
         // Wait for its bus access and cache publication before invalidating UTC.
         while !crate::suspend::is_paused(crate::suspend::Service::Rtc) {
             Timer::after_millis(1).await;
         }
+        self.invalidate_cache();
+    }
+
+    fn invalidate_cache(&mut self) {
+        // Restore admission separately from freshness. The worker reads the RTC after release.
         STATE.lock(|state| state.borrow_mut().invalidate_cache());
+    }
+}
+
+impl SuspendParticipant for FirmwareClock {
+    type Error = core::convert::Infallible;
+
+    async fn will_suspend(&mut self, _deadline_ms: u64) -> Result<(), Self::Error> {
+        self.prepare_stop().await;
         Ok(())
     }
 
     async fn did_resume(&mut self, _deadline_ms: u64) -> Result<(), Self::Error> {
-        // Restore admission separately from freshness. The worker reads the RTC after release.
-        STATE.lock(|state| state.borrow_mut().invalidate_cache());
+        self.invalidate_cache();
         Ok(())
     }
 
     async fn did_cancel_suspend(&mut self, deadline_ms: u64) -> Result<(), Self::Error> {
         self.did_resume(deadline_ms).await
+    }
+}
+
+impl PowerOffParticipant for FirmwareClock {
+    type Error = core::convert::Infallible;
+
+    async fn will_power_off(&mut self, _deadline_ms: u64) -> Result<(), Self::Error> {
+        // Completed worker writes already reside in the RTC. Leave its retained counter running.
+        self.prepare_stop().await;
+        Ok(())
     }
 }
 

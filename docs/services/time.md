@@ -72,6 +72,8 @@ Preparation invalidates cached UTC after the RTC worker stops.
 Wake and canceled preparation leave UTC unavailable until a new RTC read completes.
 Cache invalidation makes polling due immediately and preserves consumed correction identities in the existing monotonic epoch.
 It does not stop or reset the retained RTC.
+The clock also implements the separate [power-off participant contract](power.md#power-off-participants).
+It waits for pending worker operations before power removal. An aborted shutdown uses reset and normal clock startup.
 
 ## Deterministic verification
 

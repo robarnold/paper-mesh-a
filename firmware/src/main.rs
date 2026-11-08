@@ -100,6 +100,18 @@ fn initialize(
         .as_ref()
         .ok()
         .map(|bus| display::establish_safe_state(bus, &mut pins));
+    // Restore retained charger state through the same path after cold start or watchdog reset.
+    let power_ready = bus_result
+        .as_ref()
+        .ok()
+        .and_then(|bus| bus.try_lock())
+        .is_some_and(|mut bus| power::ship::initialize(&mut *bus).is_ok());
+    if !power_ready {
+        // Do not start workers or disable the boot watchdog with an unconfirmed power state.
+        loop {
+            esp_hal::delay::Delay::new().delay_millis(1_000);
+        }
+    }
     if matches!(display_safe, Some(Ok(()))) {
         recovery::disable(recovery::Owner::Boot);
     } else {
@@ -380,34 +392,40 @@ async fn power_off_app_inner(
     let result = async {
         let bus = bus.ok_or(PowerOffError::Unsupported)?;
         // Reject external power before a final display update or service pause.
-        with_timeout(Duration::from_secs(1), power::check_power_off(bus))
-            .await
-            .map_err(|_| PowerOffError::Preparation)??;
+        match with_timeout(Duration::from_secs(1), power::check_power_off(bus)).await {
+            Ok(Ok(())) => {}
+            Ok(Err(PowerOffError::ExternalPower)) => return Err(PowerOffError::ExternalPower),
+            Ok(Err(_)) => suspend::reset_after_power_off_fault("preflight failed").await,
+            Err(_) => suspend::reset_after_power_off_fault("preflight timed out").await,
+        }
         if let Some(display) = panel {
-            with_timeout(Duration::from_secs(30), async {
+            let completed = with_timeout(Duration::from_secs(30), async {
                 loop {
                     if let Err(error) = display.complete() {
                         error!("power off: final display unavailable: {}", error);
                         // The coordinator must confirm controls off before any battery cut.
-                        break Ok::<(), PowerOffError>(());
+                        break;
                     }
                     if !display.is_busy() {
                         match app.present(&mut PortraitDisplay::new(&mut *display)) {
-                            Ok(false) => break Ok(()),
+                            Ok(false) => break,
                             Ok(true) => {}
                             Err(error) => {
                                 error!("power off: final display unavailable: {}", error);
-                                break Ok(());
+                                break;
                             }
                         }
                     }
                     display_worker::changed().await;
                 }
             })
-            .await
-            .map_err(|_| PowerOffError::Busy)??;
+            .await;
+            if completed.is_err() {
+                suspend::reset_after_power_off_fault("final display timed out").await;
+            }
         }
-        controller.power_off(bus).await
+        let mut participant = FirmwareClock;
+        controller.power_off(bus, &mut participant).await
     }
     .await;
     // Successful battery isolation cannot return a firmware result.

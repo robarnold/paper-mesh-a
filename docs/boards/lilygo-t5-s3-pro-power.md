@@ -70,10 +70,17 @@ It clears command bits instead of repeating a prior command through a register r
 No charge limit, ADC, watchdog, or fuel-gauge configuration changes occur.
 
 Successful system power removal prevents a firmware completion report.
-If execution continues for one second, the runtime clears the cut request and verifies `REG09` bits `0x28` are clear.
-It resumes services only after this cancellation succeeds.
-If cancellation fails, services remain stopped until watchdog recovery.
+If execution continues for one second after a cut attempt, services remain stopped until watchdog reset.
+The runtime does not retry the cut or restore services after an uncertain attempt.
+Preparation faults and timeouts also use reset recovery.
+External-power refusal before preparation leaves the device running normally.
+External power detected after preparation starts prevents the cut and uses reset recovery.
 External input can change between the last check and the write, so a successful write does not prove system power removal.
+
+Cold start and watchdog recovery use the same charger initialization before workers start.
+After the display controls are made safe, startup clears retained cut requests and verifies `REG09` bits `0x28` are clear.
+It preserves the same configuration bits as the isolation operation and does not replay command bits.
+An access or verification failure leaves the boot watchdog active and does not start workers.
 
 Hold Power for approximately two seconds to restart from shipping mode.
 Connecting external input also restarts the system.
@@ -82,7 +89,7 @@ BOOT, Function, touch, and the RTC cannot restart a system without power.
 The separate long Power hold performs a charger-controlled system reset and is not this shutdown operation.
 See the [BQ25896 datasheet][charger], sections 8.6, 9.2.10, 9.3, and 9.4.10.
 
-Native tests check register masks, input rejection, I2C failures, and cancellation readback.
+Native tests check register masks, input rejection, I2C failures, startup readback, and repeated initialization.
 Physical tests must confirm SYS removal, restart, current consumption, and external-input races.
 These tests must also verify the display remains off during failure recovery.
 

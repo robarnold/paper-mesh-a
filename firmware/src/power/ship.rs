@@ -46,8 +46,8 @@ pub fn cut<I: I2c>(bus: &mut I) -> Result<(), Error<I::Error>> {
         .map_err(Error::Bus)
 }
 
-pub fn cancel<I: I2c>(bus: &mut I) -> Result<(), Error<I::Error>> {
-    // If the CPU still runs, remove the cut request before services resume.
+pub fn initialize<I: I2c>(bus: &mut I) -> Result<(), Error<I::Error>> {
+    // Charger state survives a processor reset. Clear retained cut requests before workers start.
     let old = read(bus, 0x09)?;
     bus.write(CHARGER, &[0x09, old & 0x54])
         .map_err(Error::Bus)?;

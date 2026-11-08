@@ -1,4 +1,4 @@
-//! Charger isolation and cancellation tests.
+//! Charger isolation and startup recovery tests.
 //!
 //! # Design choices
 //!
@@ -59,6 +59,7 @@ impl I2c for Bus {
     }
 }
 
+// External input or boost must refuse isolation before any configuration write.
 #[test]
 fn input_or_boost_blocks_every_cut_without_configuration_writes() {
     for (register, bit) in [
@@ -76,6 +77,7 @@ fn input_or_boost_blocks_every_cut_without_configuration_writes() {
     }
 }
 
+// Isolation and startup must preserve settings without replaying command bits.
 #[test]
 fn cut_preserves_configuration_but_never_replays_one_shot_commands() {
     for value in 0..=255 {
@@ -83,11 +85,12 @@ fn cut_preserves_configuration_but_never_replays_one_shot_commands() {
         bus.registers[9] = value;
         ship::cut(&mut bus).unwrap();
         assert_eq!(bus.writes, [(9, (value & 0x54) | 0x20)]);
-        ship::cancel(&mut bus).unwrap();
+        ship::initialize(&mut bus).unwrap();
         assert_eq!(bus.registers[9], value & 0x54);
     }
 }
 
+// Each access failure must stop the cut sequence without retrying a possible write.
 #[test]
 fn every_transport_failure_aborts_without_retrying_the_cut() {
     for step in 1..=5 {
@@ -101,6 +104,7 @@ fn every_transport_failure_aborts_without_retrying_the_cut() {
     }
 }
 
+// A newly attached supply must refuse the cut even after successful preflight.
 #[test]
 fn input_is_checked_again_at_commit_even_after_successful_preflight() {
     let mut bus = Bus::default();
@@ -110,21 +114,23 @@ fn input_is_checked_again_at_commit_even_after_successful_preflight() {
     assert!(bus.writes.is_empty());
 }
 
+// Startup must reject retained isolation when a write succeeds without changing the register.
 #[test]
-fn acknowledged_cancel_is_not_enough_if_the_cut_bit_remains_set() {
+fn startup_rejects_an_acknowledged_write_if_the_cut_bit_remains_set() {
     let mut bus = Bus {
         ignore_write: true,
         ..Bus::default()
     };
     bus.registers[9] = 0x20;
-    assert_eq!(ship::cancel(&mut bus), Err(ship::Error::Verification));
+    assert_eq!(ship::initialize(&mut bus), Err(ship::Error::Verification));
     bus.ignore_write = false;
-    ship::cancel(&mut bus).unwrap();
+    ship::initialize(&mut bus).unwrap();
     assert_eq!(bus.registers[9] & 0x28, 0);
 }
 
+// Failed startup reads, writes, or verification must prevent a ready result.
 #[test]
-fn cancellation_requires_all_three_bus_transactions() {
+fn startup_requires_all_three_bus_transactions() {
     for step in 1..=3 {
         let mut bus = Bus {
             fail_at: Some(step),
@@ -132,9 +138,23 @@ fn cancellation_requires_all_three_bus_transactions() {
         };
         bus.registers[9] = 0x20;
         assert_eq!(
-            ship::cancel(&mut bus),
+            ship::initialize(&mut bus),
             Err(ship::Error::Bus(ErrorKind::Other))
         );
         assert_eq!(bus.calls, step);
+    }
+}
+
+// Cold start and repeated reset recovery must converge on the same retained configuration.
+#[test]
+fn startup_clears_retained_commands_and_is_repeatable() {
+    for value in 0..=255 {
+        let mut bus = Bus::default();
+        bus.registers[9] = value;
+        ship::initialize(&mut bus).unwrap();
+        assert_eq!(bus.registers[9], value & 0x54);
+        ship::initialize(&mut bus).unwrap();
+        assert_eq!(bus.registers[9], value & 0x54);
+        assert_eq!(bus.writes, [(9, value & 0x54), (9, value & 0x54)]);
     }
 }

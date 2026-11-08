@@ -82,8 +82,11 @@ The final image is optional after a display failure. Confirmed display shutdown 
 The backend checks external power before preparation and again before the final power-control write.
 `PowerOffError` distinguishes unsupported, busy, external-power, preparation, and still-powered results.
 A successful physical power removal cannot return to the application.
-If execution continues, the backend cancels the cut request before normal services resume.
-An unconfirmed cancellation keeps services stopped until reset.
+External-power refusal before preparation leaves the device running normally.
+Once preparation starts, any aborted shutdown uses watchdog reset recovery, including external power detected at the final check.
+Preflight faults, preparation faults, timeouts, and cut attempts that leave execution running use watchdog reset recovery.
+Normal startup clears retained charger cut requests and verifies the powered state before workers start.
+Failed startup verification keeps workers stopped under the boot watchdog.
 
 The simulator retains the final image and stops application work after a successful modeled transition.
 It tests explicit requests, the hold gesture, external-power refusal, missing observations, and retry.
@@ -114,7 +117,27 @@ It completes restoration before it releases the workers.
 Preparation errors or timeouts prevent sleep and trigger cancellation.
 Restoration errors or timeouts keep workers stopped and the recovery watchdog armed until reset.
 RTC restoration performs no I/O and cannot fail; the next worker poll establishes calendar validity.
-Other workers still use the existing pause mechanism. Participant groups, general dependency coordination, and power-off participants remain planned work.
+Other workers still use the existing pause mechanism. Participant groups and general dependency coordination remain planned work.
+
+## Power-off participants
+
+The platform [`PowerOffParticipant`](../../crates/platform/src/power_off.rs) contract is independent of `SuspendParticipant`.
+A service can implement either capability or both.
+`will_power_off` finishes required persistence and releases resources for power removal.
+Success keeps the service prepared. An error or timeout prevents the hardware cut.
+Refusal checks belong before preparation. The trait has no refusal or cancellation callback.
+There is no callback after successful physical power removal.
+
+The coordinator controls work admission, callback order, and deadlines in the monotonic `Clock::now_ms` epoch.
+Any aborted shutdown after preparation starts requires reset recovery, including a dropped preparation future.
+The firmware keeps workers stopped and uses watchdog reset to return through normal hardware initialization.
+
+The firmware controller accepts a `PowerOffParticipant` from the runtime, which supplies the RTC clock handle.
+The clock waits for its worker to stop, then invalidates cached UTC.
+Completed calendar writes already reside in the RTC; preparation leaves its retained counter running.
+After reset, startup and a new RTC read establish calendar validity before UTC becomes available.
+Display shutdown and hardware power-cut sequencing remain backend responsibilities.
+Participant groups and migration of other workers remain planned work.
 
 ## Planned control and lifecycle services
 

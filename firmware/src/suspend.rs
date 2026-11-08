@@ -35,6 +35,9 @@ mod recovery;
 pub mod trace;
 mod wake;
 
+const POWER_OFF_PREPARATION_TIMEOUT: Duration = Duration::from_secs(6);
+const POWER_OFF_FAULT_RESET_MS: u64 = 1_000;
+
 #[derive(Clone, Copy)]
 pub enum Service {
     Buttons,
@@ -229,10 +232,27 @@ async fn restore_participant(
     }
 }
 
+pub(crate) async fn reset_after_power_off_fault(reason: &str) -> ! {
+    log::error!("power off: {}; waiting for reset recovery", reason);
+    notify(true);
+    let mut armed =
+        crate::recovery::arm(crate::recovery::Owner::PowerOff, POWER_OFF_FAULT_RESET_MS);
+    // Keep workers stopped. Normal startup restores hardware under the boot watchdog.
+    loop {
+        Timer::after_secs(1).await;
+        // Preserve another operation's deadline, but claim recovery if that operation finishes.
+        if !armed {
+            armed =
+                crate::recovery::arm(crate::recovery::Owner::PowerOff, POWER_OFF_FAULT_RESET_MS);
+        }
+    }
+}
+
 impl Controller {
     pub async fn power_off(
         &mut self,
         bus: &Bus,
+        participant: &mut impl paper_mesh_platform::power_off::PowerOffParticipant,
     ) -> Result<(), paper_mesh_platform::power_off::PowerOffError> {
         use crate::recovery::{self, Owner};
         use paper_mesh_platform::power_off::PowerOffError;
@@ -248,7 +268,12 @@ impl Controller {
         notify(true);
         let mut controls_attempted = false;
         let mut controls_confirmed = false;
-        let prepared = with_timeout(Duration::from_secs(6), async {
+        let preparation_deadline = (Instant::now() + POWER_OFF_PREPARATION_TIMEOUT).as_millis();
+        let prepared = with_timeout(POWER_OFF_PREPARATION_TIMEOUT, async {
+            participant
+                .will_power_off(preparation_deadline)
+                .await
+                .map_err(|_| PowerOffError::Preparation)?;
             while PAUSED.load(Ordering::Acquire) != REGISTERED.load(Ordering::Acquire) {
                 Timer::after_millis(1).await;
             }
@@ -264,43 +289,24 @@ impl Controller {
         .await;
         if controls_attempted && !controls_confirmed {
             crate::display_recovery::latch_fault(crate::display_recovery::Stage::ShuttingDown);
-            // The watchdog repeats early boot shutdown. Do not resume with unconfirmed controls.
-            loop {
-                Timer::after_secs(1).await;
-            }
+            reset_after_power_off_fault("display shutdown unconfirmed").await;
         }
-        let result = match prepared {
+        match prepared {
             Ok(Ok(())) => {
                 let cut = {
                     let mut bus = bus.lock().await;
                     crate::power::ship::cut(&mut *bus)
                 };
                 if matches!(cut, Err(crate::power::ship::Error::ExternalPower)) {
-                    Err(PowerOffError::ExternalPower)
-                } else {
-                    // An ACK can disappear with system power. Do not retry the cut.
-                    Timer::after_millis(1_000).await;
-                    let canceled = with_timeout(Duration::from_secs(1), async {
-                        crate::power::ship::cancel(&mut *bus.lock().await)
-                    })
-                    .await;
-                    if !matches!(canceled, Ok(Ok(()))) {
-                        // Keep services stopped. The independent watchdog restarts recovery.
-                        loop {
-                            Timer::after_secs(1).await;
-                        }
-                    }
-                    Err(cut
-                        .err()
-                        .map_or(PowerOffError::StillPowered, crate::power::ship_error))
+                    reset_after_power_off_fault("external power appeared after preparation").await;
                 }
+                // The write may take effect despite a missing ACK. Never retry or resume here.
+                Timer::after_millis(1_000).await;
+                reset_after_power_off_fault("power cut did not stop execution").await;
             }
-            Ok(Err(error)) => Err(error),
-            Err(_) => Err(PowerOffError::Preparation),
-        };
-        notify(false);
-        recovery::disable(Owner::PowerOff);
-        result
+            Ok(Err(_)) => reset_after_power_off_fault("preparation failed").await,
+            Err(_) => reset_after_power_off_fault("preparation timed out").await,
+        }
     }
 
     // Separate transition futures from restoration to bound coordinator stack use.

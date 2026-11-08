@@ -30,6 +30,9 @@ The platform has no dependency on the PCF8563 crate.
 Firmware retains the RTC worker, shared bus ownership, scheduling, and suspend coordination.
 The clock control handle implements the platform [suspend participant contract](services/power.md#suspend-participants).
 The runtime supplies that handle to the suspend controller through the generic contract.
+The handle also implements the independent [power-off participant contract](services/power.md#power-off-participants).
+The runtime supplies this capability separately to the power-off coordinator.
+Power-off faults use watchdog reset and the normal startup checks before workers restart.
 The worker reads shared synchronization state after each pause so lifecycle invalidation reaches its next poll.
 It supplies observation age limits, correction thresholds, and calendar range to the synchronization service.
 Startup supplies location observations through a callback, so the RTC worker does not depend on the GNSS adapter.
