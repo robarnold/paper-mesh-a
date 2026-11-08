@@ -69,6 +69,19 @@ Native tests cover connection changes, stale replies, canceled sends, acknowledg
 Firmware compilation checks the connection between the platform interface, handlers, and USB backend.
 Hardware transport behavior requires device validation.
 
+## Request framing
+
+The platform [line framer](../../crates/platform/src/transport/framing.rs) collects bounded byte frames terminated by LF.
+Callers select capacity. The delimiter does not consume payload capacity and is absent from the returned frame.
+Other bytes, including CR, remain unchanged. Protocol code decides whether an empty frame is valid.
+Overflow discards input through the next LF, then returns `FrameError::TooLong` and permits a new frame.
+The caller must clear partial input and overflow state when its source session changes.
+
+The firmware USB worker uses this mechanism with the existing command size limit.
+Firmware retains JSON parsing, error responses, and command routing.
+Platform tests cover capacity boundaries, overflow recovery, session clearing, empty frames, and byte preservation.
+Native integration tests combine the public framer with firmware routing to check fragmented commands and disconnects.
+
 ## Planned communications services
 
 Packet radio, general connection management, file transfers, and update transport stay planned work.

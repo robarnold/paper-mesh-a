@@ -9,6 +9,8 @@
 
 use core::future::Future;
 
+pub mod framing;
+
 /// An identity assigned by a transport to one connection session.
 /// Treat this value as opaque outside the backend that issued it.
 /// Identities are scoped to that transport, not globally unique.

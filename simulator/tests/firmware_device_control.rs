@@ -14,7 +14,8 @@ mod protocol;
 #[path = "../../firmware/src/device_control/safety.rs"]
 mod safety;
 
-use protocol::{Framer, Route, route};
+use paper_mesh_platform::transport::framing::LineFramer;
+use protocol::{Route, route};
 use safety::Check;
 use serde_json::{Value, json};
 
@@ -69,7 +70,7 @@ fn only_explicit_correlated_requests_enter_the_downloader() {
 
 #[test]
 fn fragment_overflow_and_disconnect_cannot_create_a_reset_request() {
-    let mut frame = Framer::default();
+    let mut frame = LineFramer::<{ protocol::MAX_REQUEST }>::default();
     let request = b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"system.bootloader\"}\n";
     for byte in &request[..request.len() - 1] {
         assert!(frame.push(*byte).is_none());

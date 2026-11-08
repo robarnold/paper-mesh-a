@@ -1,9 +1,8 @@
-//! Bounded CDC frames and routing for acknowledged device commands.
+//! JSON routing for acknowledged device commands.
 //!
 //! # Design choices
 //!
-//! - Discard incomplete CDC requests across disconnects so bytes from two sessions
-//!   cannot form a maintenance command.
+//! - Validate command envelopes before dispatch so malformed requests cannot trigger maintenance operations.
 //!
 //! See [LILYGO USB touchpad and diagnostics](../../docs/boards/lilygo-t5-s3-pro-usb.md).
 
@@ -17,35 +16,6 @@ pub enum Route {
     Ignore,
     Bootloader(Value),
     Diagnostic(Value),
-}
-
-#[derive(Default)]
-pub struct Framer {
-    bytes: heapless::Vec<u8, MAX_REQUEST>,
-    overflow: bool,
-}
-
-impl Framer {
-    pub fn clear(&mut self) {
-        self.bytes.clear();
-        self.overflow = false;
-    }
-
-    pub fn push(&mut self, byte: u8) -> Option<Result<heapless::Vec<u8, MAX_REQUEST>, ()>> {
-        if byte == b'\n' {
-            let result = if self.overflow {
-                Err(())
-            } else {
-                Ok(core::mem::take(&mut self.bytes))
-            };
-            self.clear();
-            return Some(result);
-        }
-        if !self.overflow && self.bytes.push(byte).is_err() {
-            self.overflow = true;
-        }
-        None
-    }
 }
 
 pub fn error(id: Value, code: i32, message: &str) -> String {

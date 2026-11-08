@@ -43,7 +43,8 @@ The worker reads shared synchronization state after each pause so lifecycle inva
 It supplies observation age limits, correction thresholds, and calendar range to the synchronization service.
 Startup supplies location observations through a callback, so the RTC worker does not depend on the GNSS adapter.
 
-The platform defines the [reply transport contract](services/connectivity.md#reply-transport).
+The platform defines the [reply transport contract](services/connectivity.md#reply-transport) and [bounded request framing](services/connectivity.md#request-framing).
+Firmware selects frame capacity and owns JSON parsing and command routing.
 USB owns transport state and implements acknowledged replies. The runtime supplies command dispatch.
 ROM download and display inspection handlers depend on the platform contract instead of the USB module.
 USB hardware, session tracking, and lifecycle coordination remain in firmware.

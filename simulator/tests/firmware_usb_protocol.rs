@@ -13,11 +13,12 @@ extern crate alloc;
 #[path = "../../firmware/src/usb_protocol.rs"]
 mod protocol;
 
-use protocol::{Framer, Route};
+use paper_mesh_platform::transport::framing::LineFramer;
+use protocol::Route;
 
 #[test]
 fn fragmented_requests_keep_their_json_boundary() {
-    let mut frame = Framer::default();
+    let mut frame = LineFramer::<{ protocol::MAX_REQUEST }>::default();
     let request = b"{\"jsonrpc\":\"2.0\",\"id\":17,\"method\":\"display.inspect\"}\r\n";
     let mut messages = Vec::new();
     for packet in request.chunks(7) {
@@ -33,7 +34,7 @@ fn fragmented_requests_keep_their_json_boundary() {
 
 #[test]
 fn overflow_and_disconnect_do_not_join_requests() {
-    let mut frame = Framer::default();
+    let mut frame = LineFramer::<{ protocol::MAX_REQUEST }>::default();
     for _ in 0..513 {
         assert!(frame.push(b'x').is_none());
     }

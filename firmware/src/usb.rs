@@ -449,7 +449,8 @@ async fn read_commands_inner(
     handler: CommandHandler,
 ) {
     use crate::usb_protocol as protocol;
-    let mut frame = protocol::Framer::default();
+    use paper_mesh_platform::transport::framing::{FrameError, LineFramer};
+    let mut frame = LineFramer::<{ protocol::MAX_REQUEST }>::default();
     let mut observed_generation = None;
     let mut control_session = None;
     let mut packet = [0; 64];
@@ -520,7 +521,7 @@ async fn read_commands_inner(
             };
             let reply = match message {
                 Ok(bytes) => handler(&bytes, packet_session),
-                Err(()) => Some(protocol::error(
+                Err(FrameError::TooLong) => Some(protocol::error(
                     serde_json::Value::Null,
                     -32600,
                     "Request exceeds 512 bytes",
