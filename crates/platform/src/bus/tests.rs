@@ -5,17 +5,17 @@
 //! - Check shared-bus arbitration with competing callers so releasing one transaction
 //!   permits waiting work to proceed.
 //!
-//! See [Concurrent display and touch](../../docs/boards/lilygo-t5-s3-pro-touch.md#concurrent-display-and-touch).
+//! See [shared bus ownership](../../../../docs/platform/shared-bus.md).
 
-#[path = "../../firmware/src/bus/arbitration.rs"]
-mod arbitration;
+extern crate std;
 
-use arbitration::Arbitrated;
+use super::Arbitrated;
 use core::{
     future::Future,
     task::{Context, Poll},
 };
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
+use std::boxed::Box;
 use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
@@ -36,6 +36,7 @@ fn waker() -> (Arc<Wakes>, Waker) {
     (count.clone(), Waker::from(count))
 }
 
+// Queued clients remain asleep until ownership passes to them in arrival order.
 #[test]
 fn contending_clients_wait_quietly_and_get_the_bus_in_order() {
     let bus = Arbitrated::<NoopRawMutex, _, 8>::new(0);
@@ -71,6 +72,7 @@ fn contending_clients_wait_quietly_and_get_the_bus_in_order() {
     assert_eq!(*bus.lock_blocking(|| false).unwrap(), 42);
 }
 
+// Canceling a queued client frees its slot without removing the next client.
 #[test]
 fn canceling_a_waiter_releases_its_queue_slot_and_preserves_the_next_client() {
     let bus = Arbitrated::<NoopRawMutex, _, 2>::new(7);
@@ -117,6 +119,7 @@ fn canceling_a_waiter_releases_its_queue_slot_and_preserves_the_next_client() {
     );
 }
 
+// Synchronous acquisition respects the retry budget and can proceed after the owner releases its guard.
 #[test]
 fn synchronous_wait_stops_at_its_retry_budget_or_acquires_after_release() {
     let bus = Arbitrated::<NoopRawMutex, _, 2>::new(3);

@@ -14,8 +14,8 @@ use esp_hal::{
     peripherals,
     time::{Duration, Rate},
 };
+use paper_mesh_platform::bus as arbitration;
 use static_cell::StaticCell;
-mod arbitration;
 
 // The mutex masks interrupts only while it changes its lock state.
 // A guard keeps the bus exclusive while interrupts remain enabled.

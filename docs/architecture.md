@@ -30,6 +30,8 @@ The platform owns calendar synchronization through its `Rtc` contract.
 The PCF8563 crate implements that contract without ESP peripherals or executor dependencies.
 The platform has no dependency on the PCF8563 crate.
 Firmware retains the RTC worker, shared bus ownership, scheduling, and suspend coordination.
+The platform supplies [bus arbitration](platform/shared-bus.md) for asynchronous and synchronous clients without hardware dependencies.
+Firmware selects the bus driver, pins, storage, raw mutex, and queue capacity.
 The platform supplies a [worker pause channel](platform/worker-coordination.md) with separate controller and worker endpoints.
 The runtime creates the channel and passes its endpoints to the RTC clock handle and task.
 The clock control handle implements the platform [suspend participant contract](services/power.md#suspend-participants).

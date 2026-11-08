@@ -5,7 +5,7 @@
 //! - Let interrupt tasks wait for bus ownership without masking the interrupts needed
 //!   to finish other work.
 //!
-//! See [Concurrent display and touch](../../../docs/boards/lilygo-t5-s3-pro-touch.md#concurrent-display-and-touch).
+//! See [shared bus ownership](../../../docs/platform/shared-bus.md).
 
 use core::ops::{Deref, DerefMut};
 use embassy_sync::{
@@ -14,11 +14,14 @@ use embassy_sync::{
     semaphore::{FairSemaphore, Semaphore, SemaphoreReleaser},
 };
 
+/// Exclusive access with a bounded queue of asynchronous clients.
+/// The backend selects the raw mutex and the maximum number of queued waiters.
 pub struct Arbitrated<M: RawMutex, T, const N: usize> {
     value: Mutex<M, T>,
     permits: FairSemaphore<M, N>,
 }
 
+/// Exclusive access that releases the value before it wakes the next client.
 pub struct Guard<'a, M: RawMutex, T, const N: usize> {
     // Release the value before the permit wakes the next client.
     value: MutexGuard<'a, M, T>,
@@ -33,15 +36,25 @@ impl<M: RawMutex, T, const N: usize> Arbitrated<M, T, N> {
         }
     }
 
+    /// Wait in arrival order for exclusive access.
+    /// Canceling the future releases its queue slot.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the number of queued waiters exceeds `N`.
     pub async fn lock(&self) -> Guard<'_, M, T, N> {
         let permit = self.permits.acquire(1).await.expect("bus wait queue full");
         self.guard(permit)
     }
 
+    /// Acquire immediately without bypassing clients already in the queue.
     pub fn try_lock(&self) -> Option<Guard<'_, M, T, N>> {
         self.permits.try_acquire(1).map(|permit| self.guard(permit))
     }
 
+    /// Retry synchronous acquisition while the caller permits another attempt.
+    /// The callback owns pacing and the retry budget. It must let the current owner progress.
+    /// Do not block an executor that must poll the current owner to release its guard.
     pub fn lock_blocking(&self, mut retry: impl FnMut() -> bool) -> Option<Guard<'_, M, T, N>> {
         loop {
             if let Some(guard) = self.try_lock() {
@@ -80,3 +93,6 @@ impl<M: RawMutex, T, const N: usize> DerefMut for Guard<'_, M, T, N> {
         &mut self.value
     }
 }
+
+#[cfg(test)]
+mod tests;

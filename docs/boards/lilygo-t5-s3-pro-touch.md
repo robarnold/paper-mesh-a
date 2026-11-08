@@ -35,6 +35,7 @@ A low level that remains pending triggers another interrupt.
 The driver does not change the controller configuration or poll it during idle periods.
 
 An asynchronous mutex protects I2C0. Interrupts remain enabled during bus transactions.
+The platform [bus arbitration helper](../platform/shared-bus.md) queues clients and wakes the next waiter after ownership ends.
 Display control operations release the mutex after each transaction.
 Pixel transfers use LCD DMA and RMT without the I2C mutex.
 Touch reports therefore proceed during display scans.

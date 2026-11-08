@@ -11,6 +11,7 @@
 
 use embedded_graphics::{pixelcolor::Gray4, prelude::*};
 
+pub mod bus;
 pub mod composition;
 pub mod discovery;
 pub mod display;
