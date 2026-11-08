@@ -11,11 +11,7 @@ use core::{
     cell::RefCell,
     sync::atomic::{AtomicBool, AtomicU32, Ordering},
 };
-use embassy_futures::select::select;
-use embassy_sync::{
-    blocking_mutex::{Mutex, raw::CriticalSectionRawMutex},
-    signal::Signal,
-};
+use embassy_sync::blocking_mutex::{Mutex, raw::CriticalSectionRawMutex};
 use embassy_time::{Duration, Instant, Timer, with_timeout};
 use esp_hal::{
     gpio::{Event, Flex, InputConfig, Pull},
@@ -38,16 +34,7 @@ mod wake;
 const POWER_OFF_PREPARATION_TIMEOUT: Duration = Duration::from_secs(6);
 const POWER_OFF_FAULT_RESET_MS: u64 = 1_000;
 
-#[derive(Clone, Copy)]
-pub enum Service {
-    Gnss,
-}
-
-static REQUESTED: AtomicBool = AtomicBool::new(false);
-static REGISTERED: AtomicU32 = AtomicU32::new(0);
-static PAUSED: AtomicU32 = AtomicU32::new(0);
-static FAILED: AtomicBool = AtomicBool::new(false);
-static SIGNALS: [Signal<CriticalSectionRawMutex, ()>; 1] = [const { Signal::new() }; 1];
+static TRANSITION_ACTIVE: AtomicBool = AtomicBool::new(false);
 static WAKE_BITS: AtomicU32 = AtomicU32::new(0);
 static PIN: Mutex<CriticalSectionRawMutex, RefCell<Option<Flex<'static>>>> =
     Mutex::new(RefCell::new(None));
@@ -74,43 +61,13 @@ pub fn initialize(
     }
 }
 
-pub fn register(service: Service) {
-    REGISTERED.fetch_or(1 << service as u32, Ordering::AcqRel);
-}
-pub fn requested() -> bool {
-    REQUESTED.load(Ordering::Acquire)
-}
-pub fn fail() {
-    FAILED.store(true, Ordering::Release);
+/// Exclude new system operations while a power transition owns the hardware.
+pub fn is_transition_active() -> bool {
+    TRANSITION_ACTIVE.load(Ordering::Acquire)
 }
 
-pub async fn request(service: Service) {
-    while !requested() {
-        SIGNALS[service as usize].wait().await;
-    }
-}
-
-pub async fn checkpoint(service: Service) {
-    if !requested() {
-        return;
-    }
-    let bit = 1 << service as u32;
-    PAUSED.fetch_or(bit, Ordering::AcqRel);
-    while requested() {
-        SIGNALS[service as usize].wait().await;
-    }
-    PAUSED.fetch_and(!bit, Ordering::AcqRel);
-}
-
-pub async fn delay(service: Service, milliseconds: u64) {
-    select(Timer::after_millis(milliseconds), request(service)).await;
-}
-
-fn notify(paused: bool) {
-    REQUESTED.store(paused, Ordering::Release);
-    for signal in &SIGNALS {
-        signal.signal(());
-    }
+fn set_transition_active(active: bool) {
+    TRANSITION_ACTIVE.store(active, Ordering::Release);
 }
 
 pub fn interrupt() {
@@ -168,12 +125,6 @@ async fn prepare(
         .will_suspend(deadline_ms)
         .await
         .map_err(|_| SuspendError::Preparation)?;
-    while PAUSED.load(Ordering::Acquire) != REGISTERED.load(Ordering::Acquire) {
-        Timer::after_millis(1).await;
-    }
-    if FAILED.load(Ordering::Acquire) {
-        return Err(SuspendError::Preparation);
-    }
     {
         let mut bus = bus.lock().await;
         expander::quiet_unused(&mut *bus).map_err(|_| SuspendError::Preparation)?;
@@ -223,7 +174,7 @@ async fn restore_participant(
 
 pub(crate) async fn reset_after_power_off_fault(reason: &str) -> ! {
     log::error!("power off: {}; waiting for reset recovery", reason);
-    notify(true);
+    set_transition_active(true);
     let mut armed =
         crate::recovery::arm(crate::recovery::Owner::PowerOff, POWER_OFF_FAULT_RESET_MS);
     // Keep workers stopped. Normal startup restores hardware under the boot watchdog.
@@ -245,16 +196,14 @@ impl Controller {
     ) -> Result<(), paper_mesh_platform::power_off::PowerOffError> {
         use crate::recovery::{self, Owner};
         use paper_mesh_platform::power_off::PowerOffError;
-        if requested()
-            || PAUSED.load(Ordering::Acquire) != 0
+        if is_transition_active()
             || crate::discovery::is_active()
             || crate::display_worker::is_refreshing()
             || !recovery::arm(Owner::PowerOff, 15_000)
         {
             return Err(PowerOffError::Busy);
         }
-        FAILED.store(false, Ordering::Release);
-        notify(true);
+        set_transition_active(true);
         let mut controls_attempted = false;
         let mut controls_confirmed = false;
         let preparation_deadline = (Instant::now() + POWER_OFF_PREPARATION_TIMEOUT).as_millis();
@@ -263,12 +212,6 @@ impl Controller {
                 .will_power_off(preparation_deadline)
                 .await
                 .map_err(|_| PowerOffError::Preparation)?;
-            while PAUSED.load(Ordering::Acquire) != REGISTERED.load(Ordering::Acquire) {
-                Timer::after_millis(1).await;
-            }
-            if FAILED.load(Ordering::Acquire) {
-                return Err(PowerOffError::Preparation);
-            }
             // Also clear retained controls when display startup or recovery failed.
             controls_attempted = true;
             crate::display::establish_controls_off(bus).map_err(|_| PowerOffError::Preparation)?;
@@ -363,7 +306,7 @@ impl Controller {
         request: SuspendRequest,
         participant: &mut impl SuspendParticipant,
     ) -> Result<SuspendReport, SuspendError> {
-        if requested() || PAUSED.load(Ordering::Acquire) != 0 || crate::discovery::is_active() {
+        if is_transition_active() || crate::discovery::is_active() {
             return Err(SuspendError::Busy);
         }
         if request.duration_ms > 3_600_000 {
@@ -372,10 +315,9 @@ impl Controller {
         if !self.recovery.arm(15_000) {
             return Err(SuspendError::Busy);
         }
-        FAILED.store(false, Ordering::Release);
         WAKE_BITS.store(0, Ordering::Release);
         trace::mark(trace::Stage::Preparing);
-        notify(true);
+        set_transition_active(true);
         let result = self.suspend_once(bus, request, participant).await;
         let entered_sleep = result.as_ref().is_ok_and(|report| report.entered_sleep);
         disarm();
@@ -393,7 +335,7 @@ impl Controller {
                 Timer::after_secs(1).await;
             }
         }
-        notify(false);
+        set_transition_active(false);
         trace::mark(if result.is_ok() {
             trace::Stage::Complete
         } else {

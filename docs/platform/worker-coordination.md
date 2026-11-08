@@ -60,7 +60,7 @@ Callers must not cancel a checkpoint and bypass a pending pause request.
 The [firmware runtime](../../firmware/src/main.rs) creates one channel with `CriticalSectionRawMutex` and splits it during startup.
 It gives `PauseControl` to `FirmwareClock` and `PauseWorker` to the RTC task.
 The runtime retains that clock handle for cached reads and lifecycle calls.
-The [RTC module](../../firmware/src/rtc/mod.rs) has no dependency on the firmware suspend registry.
+The [RTC module](../../firmware/src/rtc/mod.rs) receives pause requests only through this endpoint.
 
 Before acknowledging a checkpoint, the worker releases the I2C guard and publishes its synchronization state.
 The clock handle then invalidates cached UTC while the worker remains paused.
@@ -76,7 +76,7 @@ This request does not claim that the worker has already stopped.
 
 The [USB lifecycle handle](../../crates/esp-adapters/src/usb/lifecycle.rs) owns four pause controllers.
 USB startup supplies their worker endpoints to the device, HID, log, and command tasks.
-These workers no longer use the global suspend registry.
+Each task receives its own pause endpoint.
 The reply transport remains a separate capability. Sending a reply does not require lifecycle ownership.
 
 Preparation requests the three endpoint workers first and waits for all acknowledgements.
@@ -138,19 +138,39 @@ It cancels uncertain contacts until an empty report confirms release, then resum
 Suspend cancellation follows the same restoration path. Power-off preparation leaves the worker paused until reset or power removal.
 The module retains its firmware wake hooks. Lifecycle coordination does not replace interrupt routing or wake-source policy.
 
+## GNSS integration
+
+The [GNSS module](../../firmware/src/gnss/mod.rs) returns a lifecycle handle when the shared bus is available.
+Its worker runs on an interrupt executor. Its pause endpoint does not depend on a system service registry.
+The read-only location capability remains separate from lifecycle ownership.
+
+Preparation cancels UART reception and releases its RX wake lock.
+The worker retains an idle transmitter because HAL sleep preparation requires UART1 clocks.
+It also disables the receiver supply, releases the bus, and publishes an unavailable receiver observation.
+It publishes both hardware results before acknowledging the pause.
+The lifecycle handle reads those results only after acknowledgement, so an earlier result cannot approve a new preparation.
+
+UART setup or supply shutdown failure prevents the power transition.
+Suspend cancellation releases the worker to restart the receiver. Power-off failure keeps it paused for reset recovery.
+Restoration permits receiver initialization but does not establish a fresh location or UTC observation.
+The worker keeps its existing supply retry and receiver acquisition behavior.
+
 ## Runtime composition
 
-The [runtime service handles](../../firmware/src/lifecycle.rs) combine RTC, USB, button polling, and available touch-input and power-observation lifecycle capabilities.
+The [runtime service handles](../../firmware/src/lifecycle.rs) combine RTC, USB, button polling, and available touch-input, power-observation, and GNSS lifecycle capabilities.
 The hardware suspend coordinator still accepts one generic participant and has no dependency on the selected lifecycle handles.
-The runtime prepares USB, touch input, button polling, power observations, then the RTC. Restoration uses the reverse order.
+The runtime prepares USB, touch input, button polling, power observations, RTC, then GNSS. Restoration uses the reverse order.
+GNSS prepares last so its hardware failure leaves the other workers paused and cached UTC invalidated.
 It passes the same coordinator deadline to each service.
 Cancellation restores all present handles because preparation can stop at any await.
-The current implementations are infallible. General error aggregation and dependency planning remain separate work.
+GNSS preparation can fail. The other current participants are infallible.
+The aggregate returns the GNSS preparation error. General error aggregation and dependency planning remain separate work.
 
 Reset recovery requests all present services to pause without waiting for acknowledgement.
 This path does not claim safe device detachment. The watchdog returns through normal startup.
-GNSS still uses the global `Service` registry.
-The system coordinator waits for that worker in addition to the runtime participant.
+All cooperative worker pauses use explicit handles. There is no global worker registry.
+The coordinator retains a system transition flag to exclude discovery and new control operations.
+That admission flag does not notify workers or acknowledge preparation.
 Display-core parking is a hardware execution barrier and remains distinct from a cooperative worker pause.
 
 ## Implementation and verification
@@ -162,6 +182,7 @@ No lock is held across an await, and the channel requires no heap allocation.
 
 Tests cover both request orderings, canceled waits, revoked acknowledgements, rapid release and re-request, independent channels, and endpoint wakeups.
 USB lifecycle tests cover endpoint ordering, partial cancellation, session invalidation, and reset pause requests.
+GNSS lifecycle tests cover hardware failure combinations, acknowledgement ordering, retries, incomplete cancellation, and retained pauses after power-off failure.
 Firmware checks verify runtime integration. These checks do not establish physical sleep or wake reliability.
 
 The [platform manifest](../../crates/platform/Cargo.toml) pins the synchronization dependency.

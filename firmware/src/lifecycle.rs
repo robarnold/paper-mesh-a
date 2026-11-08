@@ -7,10 +7,11 @@
 //!
 //! See [worker coordination](../../docs/platform/worker-coordination.md#runtime-composition).
 
-use core::convert::Infallible;
 use paper_mesh_platform::{power_off::PowerOffParticipant, suspend::SuspendParticipant};
 
 pub struct Services {
+    /// Absent when shared-bus initialization prevented receiver startup.
+    pub gnss: Option<crate::gnss::GnssLifecycle>,
     pub clock: crate::rtc::FirmwareClock,
     pub usb: crate::usb::UsbLifecycle,
     pub button_polling: crate::buttons::ButtonPollingLifecycle,
@@ -22,6 +23,9 @@ pub struct Services {
 
 impl Services {
     pub fn request_pause(&mut self) {
+        if let Some(gnss) = &mut self.gnss {
+            gnss.request_pause();
+        }
         self.clock.request_pause();
         self.usb.request_pause();
         if let Some(touch_input) = &mut self.touch_input {
@@ -35,7 +39,7 @@ impl Services {
 }
 
 impl SuspendParticipant for Services {
-    type Error = Infallible;
+    type Error = crate::gnss::PreparationError;
 
     async fn will_suspend(&mut self, deadline_ms: u64) -> Result<(), Self::Error> {
         self.usb.will_suspend(deadline_ms).await?;
@@ -46,10 +50,17 @@ impl SuspendParticipant for Services {
         if let Some(observation) = &mut self.power_observation {
             observation.will_suspend(deadline_ms).await?;
         }
-        self.clock.will_suspend(deadline_ms).await
+        self.clock.will_suspend(deadline_ms).await?;
+        if let Some(gnss) = &mut self.gnss {
+            gnss.will_suspend(deadline_ms).await?;
+        }
+        Ok(())
     }
 
     async fn did_resume(&mut self, deadline_ms: u64) -> Result<(), Self::Error> {
+        if let Some(gnss) = &mut self.gnss {
+            gnss.did_resume(deadline_ms).await?;
+        }
         self.clock.did_resume(deadline_ms).await?;
         if let Some(observation) = &mut self.power_observation {
             observation.did_resume(deadline_ms).await?;
@@ -58,10 +69,14 @@ impl SuspendParticipant for Services {
         if let Some(touch_input) = &mut self.touch_input {
             touch_input.did_resume(deadline_ms).await?;
         }
-        self.usb.did_resume(deadline_ms).await
+        self.usb.did_resume(deadline_ms).await?;
+        Ok(())
     }
 
     async fn did_cancel_suspend(&mut self, deadline_ms: u64) -> Result<(), Self::Error> {
+        if let Some(gnss) = &mut self.gnss {
+            gnss.did_cancel_suspend(deadline_ms).await?;
+        }
         self.clock.did_cancel_suspend(deadline_ms).await?;
         if let Some(observation) = &mut self.power_observation {
             observation.did_cancel_suspend(deadline_ms).await?;
@@ -70,12 +85,13 @@ impl SuspendParticipant for Services {
         if let Some(touch_input) = &mut self.touch_input {
             touch_input.did_cancel_suspend(deadline_ms).await?;
         }
-        self.usb.did_cancel_suspend(deadline_ms).await
+        self.usb.did_cancel_suspend(deadline_ms).await?;
+        Ok(())
     }
 }
 
 impl PowerOffParticipant for Services {
-    type Error = Infallible;
+    type Error = crate::gnss::PreparationError;
 
     async fn will_power_off(&mut self, deadline_ms: u64) -> Result<(), Self::Error> {
         self.usb.will_power_off(deadline_ms).await?;
@@ -86,6 +102,10 @@ impl PowerOffParticipant for Services {
         if let Some(observation) = &mut self.power_observation {
             observation.will_power_off(deadline_ms).await?;
         }
-        self.clock.will_power_off(deadline_ms).await
+        self.clock.will_power_off(deadline_ms).await?;
+        if let Some(gnss) = &mut self.gnss {
+            gnss.will_power_off(deadline_ms).await?;
+        }
+        Ok(())
     }
 }

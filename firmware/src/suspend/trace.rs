@@ -103,11 +103,10 @@ pub fn connection_line() -> heapless::String<192> {
     let mut line = heapless::String::new();
     let _ = writeln!(
         line,
-        "INFO suspend: previous={}; current={}; paused=0x{:x}; registered=0x{:x}; reset={:?}",
+        "INFO suspend: previous={}; current={}; transition_active={}; reset={:?}",
         label(PREVIOUS.load(Ordering::Acquire)),
         label(retained().load(Ordering::Acquire)),
-        super::PAUSED.load(Ordering::Acquire),
-        super::REGISTERED.load(Ordering::Acquire),
+        super::is_transition_active(),
         esp_hal::rtc_cntl::reset_reason(esp_hal::system::Cpu::ProCpu)
     );
     line

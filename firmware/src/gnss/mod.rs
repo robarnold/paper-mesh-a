@@ -8,10 +8,12 @@
 //! See [Transport and power](../../../docs/boards/lilygo-t5-s3-pro-gnss.md#transport-and-power).
 
 mod gsv;
+mod lifecycle;
+pub use lifecycle::{GnssLifecycle, PreparationError};
 mod power;
 mod receiver;
 
-use core::cell::RefCell;
+use core::cell::{Cell, RefCell};
 use embassy_futures::select::{Either, select};
 use embassy_sync::{
     blocking_mutex::{Mutex, raw::CriticalSectionRawMutex},
@@ -27,6 +29,7 @@ use esp_hal::{
 use esp_rtos::embassy::InterruptExecutor;
 use log::{error, info};
 use paper_mesh_platform::location::{Location, LocationAvailability, LocationSnapshot};
+use paper_mesh_platform::worker::{Pause, PauseWorker};
 use receiver::Receiver;
 use static_cell::{ConstStaticCell, StaticCell};
 
@@ -37,6 +40,8 @@ static RECEIVER: ConstStaticCell<Receiver> = ConstStaticCell::new(Receiver::INIT
 static STATE: Mutex<CriticalSectionRawMutex, RefCell<LocationSnapshot>> =
     Mutex::new(RefCell::new(LocationSnapshot::new()));
 static CHANGED: Signal<CriticalSectionRawMutex, ()> = Signal::new();
+static PAUSE: StaticCell<Pause<CriticalSectionRawMutex>> = StaticCell::new();
+static PREPARATION: lifecycle::PreparationReport = Mutex::new(Cell::new(Ok(())));
 
 pub struct FirmwareLocation;
 
@@ -69,12 +74,17 @@ pub fn start(
     rx: peripherals::GPIO44<'static>,
     tx: peripherals::GPIO43<'static>,
     interrupt: peripherals::FROM_CPU_INTR3<'static>,
-) {
+) -> GnssLifecycle {
+    let (pause, worker_pause) = PAUSE.init(Pause::new()).split();
     // The interrupt executor services UART input during application rendering.
     EXECUTOR
         .init(InterruptExecutor::new(interrupt))
         .start(Priority::Priority1)
-        .spawn(worker(bus, uart, rx, tx).unwrap());
+        .spawn(worker(bus, uart, rx, tx, worker_pause).unwrap());
+    GnssLifecycle {
+        pause,
+        report: &PREPARATION,
+    }
 }
 
 pub fn fault() {
@@ -95,34 +105,31 @@ async fn worker(
     mut peripheral: peripherals::UART1<'static>,
     mut rx: peripherals::GPIO44<'static>,
     mut tx: peripherals::GPIO43<'static>,
+    mut pause: PauseWorker<'static, CriticalSectionRawMutex>,
 ) {
-    use crate::suspend::{self, Service};
-    suspend::register(Service::Gnss);
     let receiver = RECEIVER.take();
     loop {
-        if suspend::requested() {
+        if pause.is_requested() {
             // HAL sleep polls every UART transmitter. Keep UART1 clocked after RX drops,
             // or that poll cannot finish. This idle driver has no pins or RX wake lock.
             let idle_uart = UartTx::new(peripheral.reborrow(), config(9_600));
-            if idle_uart.is_err() {
-                suspend::fail();
-            }
             let result = {
                 let mut bus = bus.lock().await;
                 power::disable(&mut *bus)
             };
-            if result.is_err() {
-                suspend::fail();
-            }
             receiver.uart_error();
             publish(receiver.snapshot);
-            suspend::checkpoint(Service::Gnss).await;
+            lifecycle::publish_preparation(&PREPARATION, idle_uart.is_ok(), result.is_ok());
+            if let Err(error) = PREPARATION.lock(Cell::get) {
+                error!("GNSS: preparation failed: {:?}", error);
+            }
+            pause.checkpoint().await;
             drop(idle_uart);
         }
         if let Err(error) = enable_power(bus).await {
             error!("GNSS: supply enable failed: {:?}", error);
             fault();
-            suspend::delay(Service::Gnss, 1_000).await;
+            select(Timer::after_millis(1_000), pause.requested()).await;
             continue;
         }
         let uart = match Uart::new(peripheral.reborrow(), config(9_600)) {
@@ -130,13 +137,13 @@ async fn worker(
             Err(error) => {
                 error!("GNSS: UART configuration failed: {:?}", error);
                 fault();
-                suspend::delay(Service::Gnss, 1_000).await;
+                select(Timer::after_millis(1_000), pause.requested()).await;
                 continue;
             }
         };
         *receiver = Receiver::INITIAL;
         info!("GNSS: auxiliary supply enabled; core=0; RX44/TX43");
-        select(suspend::request(Service::Gnss), receive(uart, receiver)).await;
+        select(pause.requested(), receive(uart, receiver)).await;
         // Cancellation drops UART RX and its wake lock before the pause acknowledgement.
     }
 }

@@ -87,14 +87,17 @@ pub struct PauseWorker<'a, M: RawMutex> {
 }
 
 impl<M: RawMutex> PauseWorker<'_, M> {
+    /// Observe whether preparation is requested, without acknowledging resource release.
+    pub fn is_requested(&self) -> bool {
+        self.shared
+            .state
+            .lock(|state| state.get() != State::Running)
+    }
+
     /// Wait for a pause request. Callers can race this future against their normal work deadline.
     /// Dropping this wait does not consume the request or acknowledge a pause.
     pub async fn requested(&mut self) {
-        while self
-            .shared
-            .state
-            .lock(|state| state.get() == State::Running)
-        {
+        while !self.is_requested() {
             self.shared.worker_changed.wait().await;
         }
     }

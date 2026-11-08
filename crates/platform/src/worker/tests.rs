@@ -14,6 +14,20 @@ fn poll<F: Future>(future: Pin<&mut F>) -> Poll<F::Output> {
     future.poll(&mut Context::from_waker(Waker::noop()))
 }
 
+// Observing a request does not acknowledge it, and release clears the observation.
+#[test]
+fn request_observation_does_not_acknowledge() {
+    let mut channel = Pause::<NoopRawMutex>::new();
+    let (mut control, worker) = channel.split();
+    assert!(!worker.is_requested());
+    control.request_pause();
+    assert!(worker.is_requested());
+    assert!(poll(core::pin::pin!(control.pause())).is_pending());
+    assert!(worker.is_requested());
+    control.resume();
+    assert!(!worker.is_requested());
+}
+
 // A pause request cannot complete until the worker reaches its safe checkpoint.
 #[test]
 fn pause_waits_for_worker_and_resume_releases_it() {

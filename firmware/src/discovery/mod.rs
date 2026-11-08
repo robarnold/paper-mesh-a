@@ -56,7 +56,7 @@ pub struct FirmwareDiscovery;
 
 impl Discovery for FirmwareDiscovery {
     fn start(&mut self, request: ScanRequest, now_ms: u64) -> Result<ScanSource, ScanError> {
-        if crate::suspend::requested() {
+        if crate::suspend::is_transition_active() {
             return Err(ScanError::Busy);
         }
         let source = STATE.lock(|state| state.borrow_mut().start(request, now_ms))?;

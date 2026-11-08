@@ -166,10 +166,11 @@ fn initialize(
                 power_observation: None,
                 button_polling,
                 touch_input: None,
+                gnss: None,
             },
         );
     };
-    gnss::start(
+    let gnss = gnss::start(
         bus,
         peripherals.UART1,
         peripherals.GPIO44,
@@ -233,6 +234,7 @@ fn initialize(
             power_observation: Some(power_observation),
             button_polling,
             touch_input,
+            gnss: Some(gnss),
         },
     )
 }

@@ -9,6 +9,8 @@
 
 #[path = "../../firmware/src/gnss/gsv.rs"]
 mod gsv;
+#[path = "../../firmware/src/gnss/lifecycle.rs"]
+mod lifecycle;
 #[path = "../../firmware/src/gnss/power.rs"]
 mod power;
 #[path = "../../firmware/src/gnss/receiver.rs"]

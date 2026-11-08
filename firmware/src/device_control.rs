@@ -58,7 +58,7 @@ fn check(
         bus_available: bus.is_some(),
         display_in_flight: display_worker::in_flight(),
         display_blocked: display_recovery::blocked(),
-        power_requested: suspend::requested(),
+        power_requested: suspend::is_transition_active(),
         watchdog_idle: recovery::idle(),
     }
     .validate()
