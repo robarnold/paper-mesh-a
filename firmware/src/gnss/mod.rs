@@ -14,6 +14,7 @@ mod power;
 mod receiver;
 
 use core::cell::{Cell, RefCell};
+use embassy_executor::SendSpawner;
 use embassy_futures::select::{Either, select};
 use embassy_sync::{
     blocking_mutex::{Mutex, raw::CriticalSectionRawMutex},
@@ -21,12 +22,9 @@ use embassy_sync::{
 };
 use embassy_time::{Instant, Timer};
 use esp_hal::{
-    Blocking,
-    interrupt::Priority,
-    peripherals,
+    Blocking, peripherals,
     uart::{Config, RxConfig, Uart, UartTx},
 };
-use esp_rtos::embassy::InterruptExecutor;
 use log::{error, info};
 use paper_mesh_platform::location::{Location, LocationAvailability, LocationSnapshot};
 use paper_mesh_platform::worker::{Pause, PauseWorker};
@@ -35,7 +33,6 @@ use static_cell::{ConstStaticCell, StaticCell};
 
 use crate::bus::Bus;
 
-static EXECUTOR: StaticCell<InterruptExecutor<3>> = StaticCell::new();
 static RECEIVER: ConstStaticCell<Receiver> = ConstStaticCell::new(Receiver::INITIAL);
 static STATE: Mutex<CriticalSectionRawMutex, RefCell<LocationSnapshot>> =
     Mutex::new(RefCell::new(LocationSnapshot::new()));
@@ -69,18 +66,14 @@ fn config(baud: u32) -> Config {
 }
 
 pub fn start(
+    spawner: SendSpawner,
     bus: &'static Bus,
     uart: peripherals::UART1<'static>,
     rx: peripherals::GPIO44<'static>,
     tx: peripherals::GPIO43<'static>,
-    interrupt: peripherals::FROM_CPU_INTR3<'static>,
 ) -> GnssLifecycle {
     let (pause, worker_pause) = PAUSE.init(Pause::new()).split();
-    // The interrupt executor services UART input during application rendering.
-    EXECUTOR
-        .init(InterruptExecutor::new(interrupt))
-        .start(Priority::Priority1)
-        .spawn(worker(bus, uart, rx, tx, worker_pause).unwrap());
+    spawner.spawn(worker(bus, uart, rx, tx, worker_pause).unwrap());
     GnssLifecycle {
         pause,
         report: &PREPARATION,

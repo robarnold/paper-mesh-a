@@ -30,6 +30,7 @@ The two existing PSRAM buffers remain sufficient. No frame copies occur during o
 GPIO3 uses the existing GT911 low-level interrupt mode from register `0x804D`.
 The GPIO handler records the interrupt time, disables that interrupt, and signals the touch worker.
 The worker uses a priority-2 interrupt executor on core 0.
+The [firmware runtime](../platform/runtime.md#firmware-execution-placement) owns this executor and supplies its spawner to touch startup.
 It reads and acknowledges the report, then enables the GPIO interrupt after a 1 ms delay.
 A low level that remains pending triggers another interrupt.
 The driver does not change the controller configuration or poll it during idle periods.

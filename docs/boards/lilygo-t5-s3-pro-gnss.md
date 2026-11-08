@@ -7,6 +7,9 @@ The [location contract](../services/location.md) defines its portable observatio
 
 ## Transport and power
 
+The [firmware runtime](../platform/runtime.md#firmware-execution-placement) supplies the GNSS worker's interrupt-executor spawner.
+It selects core 0 and priority 1 so UART consumption can proceed during synchronous application rendering.
+
 [`firmware/src/gnss`](../../firmware/src/gnss/mod.rs) enables PCA9535 `IO0_0` through the shared I2C mutex.
 It sets the port 0 output latch before it selects the output direction.
 It preserves other port 0 bits and all display controls on port 1.

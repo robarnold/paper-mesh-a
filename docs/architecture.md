@@ -23,6 +23,8 @@ The toolkit has no dependency on a particular application.
 Both shared crates use `no_std` without heap allocation.
 The root workspace also builds the simulator and tests the chip and host protocols.
 Firmware stays outside that workspace to isolate Xtensa settings and ESP dependency features.
+Firmware owns [execution placement](platform/runtime.md#firmware-execution-placement), including executor storage, core assignment, and software-interrupt priorities.
+Adapters receive spawners or expose worker futures. Shared GPIO routing remains in the touch module pending a separate boundary change.
 Its manifest uses path dependencies for the application, platform, and adapter crates.
 The ESP adapter crate participates in native checks with hardware features disabled. Firmware enables its `esp32s3` feature explicitly.
 

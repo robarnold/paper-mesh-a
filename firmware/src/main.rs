@@ -21,6 +21,7 @@ mod display;
 mod display_inspection;
 mod display_recovery;
 mod display_worker;
+mod execution;
 mod gnss;
 mod lifecycle;
 mod power;
@@ -37,7 +38,7 @@ use embassy_executor::Spawner;
 use embassy_futures::select::{Either, select, select4};
 use embassy_time::{Duration, Instant, Timer, with_timeout};
 use esp_backtrace as _;
-use esp_hal::{clock::CpuClock, system::Stack, timer::timg::TimerGroup};
+use esp_hal::{clock::CpuClock, timer::timg::TimerGroup};
 use log::{error, info};
 use paper_mesh_app::App;
 use paper_mesh_platform::touchpad::{TouchpadHost, TouchpadSession};
@@ -60,8 +61,6 @@ const POWER_OBSERVATION_INTERVAL: Duration = Duration::from_secs(2);
 static RTC_STATE: StaticCell<ClockState> = StaticCell::new();
 
 static APP: ConstStaticCell<App> = ConstStaticCell::new(App::unstarted());
-static DISPLAY_STACK: ConstStaticCell<Stack<8192>> = ConstStaticCell::new(Stack::new());
-static DISPLAY_EXECUTOR: StaticCell<esp_rtos::embassy::Executor> = StaticCell::new();
 
 // This metadata describes the ESP image format.
 // It does not add an ESP-IDF application runtime.
@@ -91,6 +90,12 @@ fn initialize(
 ) {
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::_240MHz);
     let peripherals = esp_hal::init(config);
+    let mut execution = execution::Execution::new(
+        peripherals.CPU_CTRL,
+        peripherals.FROM_CPU_INTR1,
+        peripherals.FROM_CPU_INTR2,
+        peripherals.FROM_CPU_INTR3,
+    );
     let (clock, rtc_worker) = RTC_STATE.init(ClockState::new(RTC_POLICY)).split();
     let suspend = suspend::initialize(peripherals.GPIO38, peripherals.LPWR, peripherals.RTC_TIMER);
     display_recovery::boot();
@@ -178,12 +183,13 @@ fn initialize(
             },
         );
     };
+    let gnss_spawner = execution.start_gnss();
     let gnss = gnss::start(
+        gnss_spawner,
         bus,
         peripherals.UART1,
         peripherals.GPIO44,
         peripherals.GPIO43,
-        peripherals.FROM_CPU_INTR3,
     );
     spawner.spawn(
         rtc::worker(
@@ -216,23 +222,15 @@ fn initialize(
         error!("display: updates blocked; disconnect USB and hold BOOT for 3 seconds to power off");
         None
     };
+    let touch_spawner = execution.start_touch();
     let touch_input = touch::start(
+        touch_spawner,
         bus,
         peripherals.GPIO9,
         peripherals.GPIO3,
         peripherals.IO_MUX,
-        peripherals.FROM_CPU_INTR2,
     );
-    esp_rtos::start_second_core(
-        peripherals.CPU_CTRL,
-        peripherals.FROM_CPU_INTR1,
-        DISPLAY_STACK.take(),
-        || {
-            DISPLAY_EXECUTOR
-                .init(esp_rtos::embassy::Executor::new())
-                .run(|spawner| spawner.spawn(display_worker::worker().unwrap()));
-        },
-    );
+    execution.start_display(|spawner| spawner.spawn(display_worker::worker().unwrap()));
     (
         panel.map(display_worker::Client::new),
         Some(bus),

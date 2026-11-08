@@ -15,6 +15,7 @@ use core::{
     cell::RefCell,
     sync::atomic::{AtomicBool, Ordering},
 };
+use embassy_executor::SendSpawner;
 use embassy_futures::select::{Either, select};
 use embassy_sync::{
     blocking_mutex::{Mutex, raw::CriticalSectionRawMutex},
@@ -28,11 +29,9 @@ use esp_hal::{
     delay::Delay,
     gpio::{Event as GpioEvent, Flex, InputConfig, Io, Level, Output, OutputConfig},
     i2c::master::I2c,
-    interrupt::Priority,
     peripherals,
     system::Cpu,
 };
-use esp_rtos::embassy::InterruptExecutor;
 use log::{error, info};
 use paper_mesh_gt911::{CONFIG_BYTES, Event, Frame, Gt911};
 use paper_mesh_platform::worker::{Pause, PauseWorker};
@@ -49,7 +48,6 @@ static WAKE_ARMED: AtomicBool = AtomicBool::new(false);
 static WAKE_READY: AtomicBool = AtomicBool::new(false);
 static CHANGED: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 static EVENTS: Channel<CriticalSectionRawMutex, Sample, 32> = Channel::new();
-static EXECUTOR: StaticCell<InterruptExecutor<2>> = StaticCell::new();
 static INPUT_PAUSE: StaticCell<Pause<CriticalSectionRawMutex>> = StaticCell::new();
 static STATS: Mutex<CriticalSectionRawMutex, RefCell<Statistics>> =
     Mutex::new(RefCell::new(Statistics::new()));
@@ -103,21 +101,18 @@ pub async fn changed() {
 }
 
 pub fn start(
+    spawner: SendSpawner,
     bus: &'static Bus,
     reset: peripherals::GPIO9<'static>,
     interrupt: peripherals::GPIO3<'static>,
     io_mux: peripherals::IO_MUX<'static>,
-    software_interrupt: peripherals::FROM_CPU_INTR2<'static>,
 ) -> Option<TouchInputLifecycle> {
     assert!(Cpu::current() == Cpu::ProCpu);
     Io::new(io_mux).set_interrupt_handler(interrupt_handler);
     let (touch, pin) = Touch::new(&mut bus.try_lock().unwrap(), reset, interrupt)?;
     PIN.lock(|slot| slot.borrow_mut().replace(pin));
     let (pause, worker_pause) = INPUT_PAUSE.init(Pause::new()).split();
-    EXECUTOR
-        .init(InterruptExecutor::new(software_interrupt))
-        .start(Priority::Priority2)
-        .spawn(worker(touch, bus, worker_pause).unwrap());
+    spawner.spawn(worker(touch, bus, worker_pause).unwrap());
     Some(TouchInputLifecycle { pause })
 }
 
