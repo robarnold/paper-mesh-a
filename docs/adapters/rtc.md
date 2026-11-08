@@ -7,6 +7,11 @@
 The [PCF8563 driver](../../crates/pcf8563/src/lib.rs) accesses calendar registers through `embedded-hal` I2C.
 It implements the platform `Rtc` contract and contains no ESP peripherals or executor dependencies.
 The caller supplies the I2C handle and schedules device access.
+
+The PCF8563 has a fixed seven-bit I2C address of `0x51`, independent of the board.
+The [datasheet][rtc] gives `0xA2` for writes and `0xA3` for reads. These bytes include the read/write bit.
+The driver keeps this address constant because the chip does not support address selection.
+
 The driver can retain an owned handle or borrow a bus for a single operation group.
 The platform [synchronization service](../services/time.md#calendar-synchronization) uses the contract without a dependency on this driver.
 Firmware connects the service to this device and supplies its policy.

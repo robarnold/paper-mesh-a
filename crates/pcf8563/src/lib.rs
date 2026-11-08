@@ -13,13 +13,14 @@ use embedded_hal::i2c::I2c;
 use paper_mesh_platform::rtc::{InvalidTimeReason, Rtc, RtcError};
 use paper_mesh_platform::time::{Date, Time, UtcDateTime};
 
-const ADDRESS: u8 = 0x51;
+// The PCF8563 has a fixed seven-bit address. The bus supplies the read/write bit.
+const I2C_ADDRESS: u8 = 0x51;
 const STOP: u8 = 0x20;
 
 /// Read all calendar fields in one transaction to prevent mixed rollover values.
 pub fn read<I: I2c>(bus: &mut I) -> Result<UtcDateTime, RtcError<I::Error>> {
     let mut registers = [0; 9];
-    bus.write_read(ADDRESS, &[0], &mut registers)
+    bus.write_read(I2C_ADDRESS, &[0], &mut registers)
         .map_err(RtcError::Access)?;
     decode(registers).map_err(RtcError::InvalidTime)
 }
@@ -67,9 +68,10 @@ pub fn set<I: I2c>(bus: &mut I, datetime: UtcDateTime) -> Result<(), RtcError<I:
     if !(2000..=2099).contains(&datetime.year()) {
         return Err(RtcError::UnsupportedDate);
     }
-    bus.write(ADDRESS, &[0, STOP]).map_err(RtcError::Access)?;
+    bus.write(I2C_ADDRESS, &[0, STOP])
+        .map_err(RtcError::Access)?;
     bus.write(
-        ADDRESS,
+        I2C_ADDRESS,
         &[
             2,
             encode(datetime.second()),
@@ -82,7 +84,7 @@ pub fn set<I: I2c>(bus: &mut I, datetime: UtcDateTime) -> Result<(), RtcError<I:
         ],
     )
     .map_err(RtcError::Access)?;
-    bus.write(ADDRESS, &[0, 0]).map_err(RtcError::Access)?;
+    bus.write(I2C_ADDRESS, &[0, 0]).map_err(RtcError::Access)?;
     let observed = match read(bus) {
         Ok(observed) => observed,
         Err(RtcError::InvalidTime(_)) => return Err(RtcError::VerificationFailed),
