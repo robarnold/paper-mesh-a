@@ -12,7 +12,7 @@ use paper_mesh_platform::{power_off::PowerOffParticipant, suspend::SuspendPartic
 pub struct Services {
     /// Absent when shared-bus initialization prevented receiver startup.
     pub gnss: Option<crate::gnss::GnssLifecycle>,
-    pub clock: crate::rtc::FirmwareClock,
+    pub clock: paper_mesh_esp_adapters::rtc::RtcClock,
     pub usb: crate::usb::UsbLifecycle,
     pub button_polling: crate::buttons::ButtonPollingLifecycle,
     /// Absent when the shared bus or touch controller could not initialize.

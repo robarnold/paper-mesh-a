@@ -13,7 +13,7 @@ The toolkit has no dependency on a particular application.
 | [`crates/platform`](../crates/platform/src/lib.rs) | Application toolkit and portable contracts | None |
 | [`crates/pcf8563`](../crates/pcf8563/src/lib.rs) | PCF8563 calendar access through I2C | Platform calendar contract |
 | [`firmware/src/main.rs`](../firmware/src/main.rs) | Hardware startup and connection of the application to services | Application, platform, and hardware adapters |
-| [`crates/esp-adapters`](../crates/esp-adapters/README.md) | ESP USB transport and lifecycle handles | Platform and HID protocol |
+| [`crates/esp-adapters`](../crates/esp-adapters/README.md) | ESP USB transport, RTC clock, and lifecycle handles | Platform, HID protocol, and PCF8563 driver |
 | [`firmware/src`](../firmware/src/main.rs) adapters | Hardware services, drivers, buffers, and resource control | Platform and chip drivers |
 | [`simulator/src/lib.rs`](../simulator/src/lib.rs) | Native services and deterministic application execution | Application and platform |
 | [`simulator/src/main.rs`](../simulator/src/main.rs) | HTTP transport and wall-clock pacing | Simulator and platform |
@@ -29,7 +29,8 @@ The ESP adapter crate participates in native checks with hardware features disab
 The platform owns calendar synchronization through its `Rtc` contract.
 The PCF8563 crate implements that contract without ESP peripherals or executor dependencies.
 The platform has no dependency on the PCF8563 crate.
-Firmware retains the RTC worker, shared bus ownership, scheduling, and suspend coordination.
+The ESP adapter crate owns RTC clock reads, lifecycle handling, and the polling loop.
+Firmware retains synchronization policy, state storage, shared bus ownership, task startup, and system suspend coordination.
 The platform supplies [bus arbitration](platform/shared-bus.md) for asynchronous and synchronous clients without hardware dependencies.
 Firmware selects the bus driver, pins, storage, raw mutex, and queue capacity.
 The platform supplies a [worker pause channel](platform/worker-coordination.md) with separate controller and worker endpoints.
@@ -56,7 +57,7 @@ It selects connection diagnostics and encodes command errors outside the USB tra
 USB retains buffers, endpoint settings, worker ownership, and lifecycle coordination.
 Runtime configuration supplies the protocol request limit, which USB validates against its fixed buffer capacity.
 ROM download and display inspection handlers depend on the platform contract instead of the USB module.
-The [ESP adapter crate](../crates/esp-adapters/README.md) owns USB hardware, session tracking, and service lifecycle coordination.
+The [ESP adapter crate](../crates/esp-adapters/README.md) owns USB hardware, session tracking, the RTC clock, and their service lifecycle coordination.
 Firmware retains board configuration, command dispatch, diagnostic providers, and system power coordination.
 
 ```mermaid

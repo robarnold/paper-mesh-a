@@ -15,3 +15,6 @@ extern crate std;
 
 #[cfg(any(feature = "esp32s3", test))]
 pub mod usb;
+
+#[cfg(feature = "esp32s3")]
+pub mod rtc;

@@ -1667,6 +1667,7 @@ dependencies = [
  "heapless 0.9.3",
  "log",
  "paper-mesh-hid-touchpad",
+ "paper-mesh-pcf8563",
  "paper-mesh-platform",
  "static_cell",
 ]
@@ -1697,7 +1698,6 @@ dependencies = [
  "paper-mesh-esp-adapters",
  "paper-mesh-gt911",
  "paper-mesh-hid-touchpad",
- "paper-mesh-pcf8563",
  "paper-mesh-platform",
  "serde_json",
  "static_cell",

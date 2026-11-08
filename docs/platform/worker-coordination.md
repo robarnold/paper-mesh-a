@@ -60,9 +60,10 @@ Callers must not cancel a checkpoint and bypass a pending pause request.
 The [firmware runtime](../../firmware/src/main.rs) supplies synchronization policy when it initializes `ClockState` in static storage.
 This state contains the calendar cache and one pause channel with `CriticalSectionRawMutex`.
 Its exclusive `split` returns a clock handle and a worker endpoint that share the same cache and policy.
-It gives `PauseControl` to `FirmwareClock` and `PauseWorker` to `ClockWorker`, which the runtime passes to the RTC task.
+It gives `PauseControl` to `RtcClock` and `PauseWorker` to `ClockWorker`, which the runtime passes to the RTC task.
 The runtime retains that clock handle for cached reads and lifecycle calls.
-The [RTC module](../../firmware/src/rtc/mod.rs) receives pause requests only through this endpoint.
+The [RTC adapter](../../crates/esp-adapters/src/rtc.rs) receives pause requests only through this endpoint.
+The firmware task runs the adapter loop with its concrete bus type. The adapter accepts the bus queue capacity as a const parameter.
 If bus initialization fails, the clock still supplies monotonic time. Its unpopulated calendar cache returns no UTC.
 
 Before acknowledging a checkpoint, the worker releases the I2C guard and publishes its synchronization state.

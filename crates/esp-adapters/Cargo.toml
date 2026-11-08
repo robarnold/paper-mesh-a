@@ -10,11 +10,12 @@ default = []
 esp32s3 = [
     "dep:embassy-executor", "dep:embassy-futures", "dep:embassy-time",
     "dep:embassy-usb", "dep:esp-hal", "dep:heapless", "dep:log",
-    "dep:paper-mesh-hid-touchpad", "dep:static_cell",
+    "dep:paper-mesh-hid-touchpad", "dep:paper-mesh-pcf8563", "dep:static_cell",
 ]
 
 [dependencies]
 paper-mesh-platform = { path = "../platform" }
+paper-mesh-pcf8563 = { path = "../pcf8563", optional = true }
 embassy-sync = "=0.8.0"
 paper-mesh-hid-touchpad = { path = "../hid-touchpad", optional = true }
 embassy-executor = { version = "=0.10.0", features = ["log"], optional = true }

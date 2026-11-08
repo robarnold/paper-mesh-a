@@ -14,7 +14,26 @@ The driver keeps this address constant because the chip does not support address
 
 The driver can retain an owned handle or borrow a bus for a single operation group.
 The platform [synchronization service](../services/time.md#calendar-synchronization) uses the contract without a dependency on this driver.
-Firmware connects the service to this device and supplies its policy.
+The ESP clock adapter connects the service to this device. Firmware supplies its policy.
+
+## ESP clock integration
+
+The [ESP clock adapter](../../crates/esp-adapters/src/rtc.rs) implements the platform clock, suspend, and power-off capabilities.
+It combines the PCF8563 driver with the platform synchronization service and Embassy monotonic time.
+The hardware feature selects ESP dependencies. The PCF8563 driver and synchronization algorithm remain separate from ESP hardware.
+
+The runtime initializes `ClockState` with its policy, then splits matching `RtcClock` and `ClockWorker` endpoints.
+It owns static storage and supplies a location callback. The adapter has no dependency on the GNSS implementation.
+The runtime also owns bus initialization, pins, frequency, timeout, and queue capacity.
+
+`ClockWorker::run` accepts the shared ESP I2C bus with its caller-selected queue capacity.
+The [firmware task](../../firmware/src/rtc.rs) supplies the concrete type and executor task entry point.
+The adapter owns the polling loop and waits for deadlines selected by the platform synchronization service.
+This separates executor selection from service timing without another scheduling policy.
+
+The [pause protocol](../platform/worker-coordination.md#rtc-integration) requires completed access and cache publication before acknowledgement.
+Suspend restoration invalidates cached UTC before worker release. Power-off preparation leaves the retained hardware counter running.
+Clock reads never acquire the I2C bus. Before the first successful poll, calendar reads return no UTC.
 
 ## Calendar access
 

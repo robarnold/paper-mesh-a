@@ -7,7 +7,8 @@
 This board uses the [PCF8563 calendar adapter](../adapters/rtc.md).
 That document defines device access and calendar validity.
 The platform [time service](../services/time.md#calendar-synchronization) defines synchronization and cache behavior.
-The [firmware worker](../../firmware/src/rtc/mod.rs) connects the adapter to the shared I2C bus and suspend coordination.
+The [firmware task](../../firmware/src/rtc.rs) runs the [ESP clock adapter](../adapters/rtc.md#esp-clock-integration) with the shared I2C bus.
+Runtime lifecycle composition connects the clock handle to suspend coordination.
 The [runtime](../../firmware/src/main.rs) selects synchronization policy and owns the cache and pause storage.
 Clock and worker endpoints share that configured state. The worker does not select age limits or correction thresholds.
 The [board profile](lilygo-t5-s3-pro.md#shared-buses-power-domains-and-wake-routing) describes shared resources.

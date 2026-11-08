@@ -4,8 +4,9 @@
 //!
 //! - Connect the shared bus clock to GPS synchronization so valid retained time
 //!   remains available between receiver reports.
+//! - Receive policy, storage, and bus capacity from the runtime so board choices stay outside the adapter.
 //!
-//! See [T5 S3 Pro real-time clock](../../../docs/boards/lilygo-t5-s3-pro-rtc.md).
+//! See [ESP clock integration](../../../docs/adapters/rtc.md#esp-clock-integration).
 
 use paper_mesh_pcf8563::Pcf8563;
 use paper_mesh_platform::rtc::synchronization as service;
@@ -24,10 +25,11 @@ use paper_mesh_platform::{
     worker::{Pause, PauseControl, PauseWorker},
 };
 
-use crate::bus::Bus;
+use esp_hal::{Blocking, i2c::master::I2c};
+use paper_mesh_platform::bus::Arbitrated;
 use service::{Policy, Service};
 
-/// Runtime-owned calendar cache and pause channel.
+/// Runtime-owned calendar cache and pause channel. Initialize once, then split before spawning the worker.
 pub struct ClockState {
     service: Mutex<CriticalSectionRawMutex, RefCell<Service>>,
     pause: Pause<CriticalSectionRawMutex>,
@@ -42,10 +44,10 @@ impl ClockState {
     }
 
     /// Give the clock and worker matching state and unique pause endpoints.
-    pub fn split(&'static mut self) -> (FirmwareClock, ClockWorker) {
+    pub fn split(&'static mut self) -> (RtcClock, ClockWorker) {
         let (control, worker) = self.pause.split();
         (
-            FirmwareClock {
+            RtcClock {
                 state: &self.service,
                 pause: control,
             },
@@ -57,7 +59,7 @@ impl ClockState {
     }
 }
 
-pub struct FirmwareClock {
+pub struct RtcClock {
     state: &'static Mutex<CriticalSectionRawMutex, RefCell<Service>>,
     pause: PauseControl<'static, CriticalSectionRawMutex>,
 }
@@ -68,7 +70,7 @@ pub struct ClockWorker {
     pause: PauseWorker<'static, CriticalSectionRawMutex>,
 }
 
-impl Clock for FirmwareClock {
+impl Clock for RtcClock {
     fn now_ms(&self) -> u64 {
         Instant::now().as_millis()
     }
@@ -79,7 +81,7 @@ impl Clock for FirmwareClock {
     }
 }
 
-impl FirmwareClock {
+impl RtcClock {
     /// Request a worker pause before reset recovery without claiming it has completed.
     pub fn request_pause(&mut self) {
         self.pause.request_pause();
@@ -98,7 +100,7 @@ impl FirmwareClock {
     }
 }
 
-impl SuspendParticipant for FirmwareClock {
+impl SuspendParticipant for RtcClock {
     type Error = core::convert::Infallible;
 
     async fn will_suspend(&mut self, _deadline_ms: u64) -> Result<(), Self::Error> {
@@ -117,7 +119,7 @@ impl SuspendParticipant for FirmwareClock {
     }
 }
 
-impl PowerOffParticipant for FirmwareClock {
+impl PowerOffParticipant for RtcClock {
     type Error = core::convert::Infallible;
 
     async fn will_power_off(&mut self, _deadline_ms: u64) -> Result<(), Self::Error> {
@@ -127,30 +129,37 @@ impl PowerOffParticipant for FirmwareClock {
     }
 }
 
-#[embassy_executor::task]
-pub async fn worker(bus: &'static Bus, location: fn(u64) -> LocationSnapshot, worker: ClockWorker) {
-    let ClockWorker { state, mut pause } = worker;
-    let mut faulted = false;
-    loop {
-        pause.checkpoint().await;
-        // Lifecycle callbacks can invalidate the cache while the worker is paused.
-        let mut service = state.lock(|state| *state.borrow());
-        let result = {
-            let mut bus = bus.lock().await;
-            let now_ms = Instant::now().as_millis();
-            service.poll(&mut Pcf8563::new(&mut *bus), location(now_ms), now_ms)
-        };
-        state.lock(|state| *state.borrow_mut() = service);
-        if let Err(error) = &result
-            && !faulted
-        {
-            error!("RTC: access failed: {:?}", error);
+impl ClockWorker {
+    /// Run on the caller's executor with its shared ESP I2C bus and location source.
+    /// The queue capacity remains a runtime choice. This future owns the worker endpoint.
+    pub async fn run<const N: usize>(
+        self,
+        bus: &'static Arbitrated<CriticalSectionRawMutex, I2c<'static, Blocking>, N>,
+        location: fn(u64) -> LocationSnapshot,
+    ) -> ! {
+        let ClockWorker { state, mut pause } = self;
+        let mut faulted = false;
+        loop {
+            pause.checkpoint().await;
+            // Lifecycle callbacks can invalidate the cache while the worker is paused.
+            let mut service = state.lock(|state| *state.borrow());
+            let result = {
+                let mut bus = bus.lock().await;
+                let now_ms = Instant::now().as_millis();
+                service.poll(&mut Pcf8563::new(&mut *bus), location(now_ms), now_ms)
+            };
+            state.lock(|state| *state.borrow_mut() = service);
+            if let Err(error) = &result
+                && !faulted
+            {
+                error!("RTC: access failed: {:?}", error);
+            }
+            faulted = result.is_err();
+            select(
+                Timer::at(Instant::from_millis(service.next_deadline_ms())),
+                pause.requested(),
+            )
+            .await;
         }
-        faulted = result.is_err();
-        select(
-            Timer::at(Instant::from_millis(service.next_deadline_ms())),
-            pause.requested(),
-        )
-        .await;
     }
 }

@@ -63,7 +63,7 @@ After a verified write, the service reads calendar time again for its cached sam
 The caller supplies the polling interval, observation age limits, correction threshold, and supported years through `Policy`.
 The service supplies the next monotonic polling deadline, including after access failures.
 Late polls schedule one future poll without a burst of catch-up work.
-The [firmware worker](../../firmware/src/rtc/mod.rs) supplies the existing configuration and waits until that deadline through Embassy.
+The runtime supplies synchronization policy. The [ESP clock adapter](../../crates/esp-adapters/src/rtc.rs) waits until the service deadline through Embassy.
 The service does not own a bus or select an executor.
 The correction threshold does not establish an accuracy bound.
 

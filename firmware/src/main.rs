@@ -43,7 +43,7 @@ use paper_mesh_app::App;
 use paper_mesh_platform::touchpad::{TouchpadHost, TouchpadSession};
 use paper_mesh_platform::{Clock, Display, location::Location, rotation::PortraitDisplay};
 
-use rtc::FirmwareClock;
+use paper_mesh_esp_adapters::rtc::{ClockState, RtcClock};
 use static_cell::{ConstStaticCell, StaticCell};
 
 const RTC_POLICY: paper_mesh_platform::rtc::synchronization::Policy =
@@ -55,7 +55,7 @@ const RTC_POLICY: paper_mesh_platform::rtc::synchronization::Policy =
         first_year: 2000,
         last_year: 2099,
     };
-static RTC_STATE: StaticCell<rtc::ClockState> = StaticCell::new();
+static RTC_STATE: StaticCell<ClockState> = StaticCell::new();
 
 static APP: ConstStaticCell<App> = ConstStaticCell::new(App::unstarted());
 static DISPLAY_STACK: ConstStaticCell<Stack<8192>> = ConstStaticCell::new(Stack::new());
@@ -89,7 +89,7 @@ fn initialize(
 ) {
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::_240MHz);
     let peripherals = esp_hal::init(config);
-    let (clock, rtc_worker) = RTC_STATE.init(rtc::ClockState::new(RTC_POLICY)).split();
+    let (clock, rtc_worker) = RTC_STATE.init(ClockState::new(RTC_POLICY)).split();
     let suspend = suspend::initialize(peripherals.GPIO38, peripherals.LPWR, peripherals.RTC_TIMER);
     display_recovery::boot();
     assert!(recovery::arm(recovery::Owner::Boot, 15_000));
@@ -369,7 +369,7 @@ async fn run_app(
     }
 }
 
-fn log_heartbeat(uptime: u64, clock: &FirmwareClock, location: &mut impl Location) {
+fn log_heartbeat(uptime: u64, clock: &RtcClock, location: &mut impl Location) {
     info!("heartbeat: uptime={}s; utc={:?}", uptime, clock.now_utc());
     info!("touch: stats={:?}", touch::statistics());
     let snapshot = location.snapshot(clock.now_ms());
