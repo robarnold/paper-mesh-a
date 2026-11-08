@@ -1,0 +1,33 @@
+[package]
+name = "paper-mesh-esp-adapters"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+publish = false
+
+[features]
+default = []
+esp32s3 = [
+    "dep:embassy-executor", "dep:embassy-futures", "dep:embassy-time",
+    "dep:embassy-usb", "dep:esp-hal", "dep:heapless", "dep:log",
+    "dep:paper-mesh-hid-touchpad", "dep:static_cell",
+]
+
+[dependencies]
+paper-mesh-platform = { path = "../platform" }
+embassy-sync = "=0.8.0"
+paper-mesh-hid-touchpad = { path = "../hid-touchpad", optional = true }
+embassy-executor = { version = "=0.10.0", features = ["log"], optional = true }
+embassy-futures = { version = "=0.1.2", optional = true }
+embassy-time = { version = "=0.5.1", features = ["log"], optional = true }
+embassy-usb = { version = "=0.6.0", default-features = false, features = ["log"], optional = true }
+esp-hal = { version = "=1.2.2", features = ["esp32s3", "log-04", "unstable"], optional = true }
+heapless = { version = "=0.9.3", optional = true }
+log = { version = "=0.4.35", optional = true }
+static_cell = { version = "=2.1.1", optional = true }
+
+[lints.clippy]
+wildcard_imports = "deny"
+enum_glob_use = "deny"
+mem_forget = "deny"
+large_stack_frames = "deny"

@@ -74,7 +74,7 @@ This request does not claim that the worker has already stopped.
 
 ## USB integration
 
-The [USB lifecycle handle](../../firmware/src/usb/lifecycle.rs) owns four pause controllers.
+The [USB lifecycle handle](../../crates/esp-adapters/src/usb/lifecycle.rs) owns four pause controllers.
 USB startup supplies their worker endpoints to the device, HID, log, and command tasks.
 These workers no longer use the global suspend registry.
 The reply transport remains a separate capability. Sending a reply does not require lifecycle ownership.

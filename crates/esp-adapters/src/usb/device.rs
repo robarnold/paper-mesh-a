@@ -5,12 +5,12 @@
 //! - Expose touchpad reports and diagnostic logs through one composite device because
 //!   both functions share the internal USB PHY.
 //!
-//! See [LILYGO USB touchpad and diagnostics](../../docs/boards/lilygo-t5-s3-pro-usb.md).
+//! See [ESP USB adapter](../../../../docs/adapters/usb.md).
 
-mod control;
-mod lifecycle;
-pub use lifecycle::UsbLifecycle;
-use lifecycle::Worker;
+use super::{
+    control,
+    lifecycle::{UsbLifecycle, Worker},
+};
 use paper_mesh_platform::worker::Pause;
 
 use paper_mesh_platform::transport::{
@@ -81,7 +81,7 @@ static STATUS: AtomicU32 = AtomicU32::new(0);
 static GENERATION: AtomicU32 = AtomicU32::new(0);
 static ACTIVE: AtomicBool = AtomicBool::new(false);
 static CHANGED: Signal<CriticalSectionRawMutex, ()> = Signal::new();
-static RESTART: Signal<CriticalSectionRawMutex, ()> = Signal::new();
+pub(super) static RESTART: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 static FRAMES: Channel<CriticalSectionRawMutex, (u32, HostFrame), 16> = Channel::new();
 static LOGS: Channel<CriticalSectionRawMutex, heapless::String<192>, 32> = Channel::new();
 struct Reply {
@@ -134,7 +134,7 @@ impl TouchpadHost for FirmwareTouchpad {
 pub async fn changed() {
     CHANGED.wait().await;
 }
-fn change(status: u32) {
+pub(super) fn change(status: u32) {
     STATUS.store(status, Ordering::Release);
     let previous = GENERATION.fetch_add(1, Ordering::AcqRel);
     REPLIES.clear();

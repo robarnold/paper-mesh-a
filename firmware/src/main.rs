@@ -30,7 +30,7 @@ mod rtc;
 mod scan_demo;
 mod suspend;
 mod touch;
-mod usb;
+use paper_mesh_esp_adapters::usb;
 mod usb_protocol;
 
 use embassy_executor::Spawner;

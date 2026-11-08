@@ -1655,6 +1655,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "paper-mesh-esp-adapters"
+version = "0.1.0"
+dependencies = [
+ "embassy-executor",
+ "embassy-futures",
+ "embassy-sync 0.8.0",
+ "embassy-time",
+ "embassy-usb",
+ "esp-hal",
+ "heapless 0.9.3",
+ "log",
+ "paper-mesh-hid-touchpad",
+ "paper-mesh-platform",
+ "static_cell",
+]
+
+[[package]]
 name = "paper-mesh-firmware"
 version = "0.1.0"
 dependencies = [
@@ -1677,6 +1694,7 @@ dependencies = [
  "log",
  "paper-mesh-app",
  "paper-mesh-ed047tc1",
+ "paper-mesh-esp-adapters",
  "paper-mesh-gt911",
  "paper-mesh-hid-touchpad",
  "paper-mesh-pcf8563",

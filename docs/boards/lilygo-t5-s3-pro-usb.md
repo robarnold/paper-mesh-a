@@ -7,7 +7,7 @@
 The [firmware runtime](../../firmware/src/main.rs) supplies USB identity, the HID descriptor, and command dispatch through `usb::Config`.
 The descriptor must match the logical coordinates submitted by the runtime.
 Its static lifetime lets the USB stack retain it without a copy or heap allocation.
-The [USB module](../../firmware/src/usb.rs) owns endpoint settings, buffers, workers, and lifecycle coordination.
+The [USB adapter](../adapters/usb.md) owns endpoint settings, buffers, workers, and lifecycle coordination.
 The command callback receives complete request bytes or a framing error with the issuing session identity.
 Firmware encodes JSON errors and selects the diagnostic providers in startup configuration.
 USB calls the fixed provider list in order and sends each bounded line through its connection checks.

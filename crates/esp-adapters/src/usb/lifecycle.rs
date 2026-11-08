@@ -5,8 +5,10 @@
 //! - Stop endpoint operations before device detachment so canceled writes cannot use disabled endpoints.
 //! - Keep pause requests active until restoration or reset, including after canceled preparation.
 //!
-//! See [worker coordination](../../../docs/platform/worker-coordination.md#usb-integration).
+//! See [worker coordination](../../../../docs/platform/worker-coordination.md#usb-integration).
 
+#[cfg(not(test))]
+use super::{RESTART, change};
 use core::convert::Infallible;
 #[cfg(not(test))]
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex as PauseMutex;
@@ -17,6 +19,8 @@ use paper_mesh_platform::{
     suspend::SuspendParticipant,
     worker::{PauseControl, PauseWorker},
 };
+#[cfg(test)]
+use tests::{RESTART, change};
 
 pub(super) type Worker = PauseWorker<'static, PauseMutex>;
 type Control = PauseControl<'static, PauseMutex>;
@@ -49,8 +53,8 @@ impl UsbLifecycle {
 
     fn restore(&mut self) {
         // Invalidate sessions even when preparation stopped before device detachment.
-        super::change(0);
-        super::RESTART.signal(());
+        change(0);
+        RESTART.signal(());
         self.device.resume();
         self.hid.resume();
         self.logs.resume();
@@ -84,3 +88,6 @@ impl PowerOffParticipant for UsbLifecycle {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests;

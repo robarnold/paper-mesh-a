@@ -13,6 +13,7 @@ The toolkit has no dependency on a particular application.
 | [`crates/platform`](../crates/platform/src/lib.rs) | Application toolkit and portable contracts | None |
 | [`crates/pcf8563`](../crates/pcf8563/src/lib.rs) | PCF8563 calendar access through I2C | Platform calendar contract |
 | [`firmware/src/main.rs`](../firmware/src/main.rs) | Hardware startup and connection of the application to services | Application, platform, and hardware adapters |
+| [`crates/esp-adapters`](../crates/esp-adapters/README.md) | ESP USB transport and lifecycle handles | Platform and HID protocol |
 | [`firmware/src`](../firmware/src/main.rs) adapters | Hardware services, drivers, buffers, and resource control | Platform and chip drivers |
 | [`simulator/src/lib.rs`](../simulator/src/lib.rs) | Native services and deterministic application execution | Application and platform |
 | [`simulator/src/main.rs`](../simulator/src/main.rs) | HTTP transport and wall-clock pacing | Simulator and platform |
@@ -23,6 +24,7 @@ Both shared crates use `no_std` without heap allocation.
 The root workspace also builds the simulator and tests the chip and host protocols.
 Firmware stays outside that workspace to isolate Xtensa settings and ESP dependency features.
 Its manifest uses path dependencies for the application, platform, and adapter crates.
+The ESP adapter crate participates in native checks with hardware features disabled. Firmware enables its `esp32s3` feature explicitly.
 
 The platform owns calendar synchronization through its `Rtc` contract.
 The PCF8563 crate implements that contract without ESP peripherals or executor dependencies.
@@ -51,7 +53,8 @@ It selects connection diagnostics and encodes command errors outside the USB tra
 USB retains buffers, endpoint settings, worker ownership, and lifecycle coordination.
 Runtime configuration supplies the protocol request limit, which USB validates against its fixed buffer capacity.
 ROM download and display inspection handlers depend on the platform contract instead of the USB module.
-USB hardware, session tracking, and lifecycle coordination remain in firmware.
+The [ESP adapter crate](../crates/esp-adapters/README.md) owns USB hardware, session tracking, and service lifecycle coordination.
+Firmware retains board configuration, command dispatch, diagnostic providers, and system power coordination.
 
 ```mermaid
 flowchart TD

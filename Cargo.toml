@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/pcf8563", "crates/app", "crates/platform", "crates/ed047tc1", "crates/gt911", "crates/hid-touchpad", "simulator"]
+members = ["crates/esp-adapters", "crates/pcf8563", "crates/app", "crates/platform", "crates/ed047tc1", "crates/gt911", "crates/hid-touchpad", "simulator"]
 # Keep the Xtensa toolchain, target settings, and dependency features isolated.
 exclude = ["firmware"]
 resolver = "3"

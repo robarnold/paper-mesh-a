@@ -5,12 +5,9 @@
 //! - Poll worker checkpoints separately to expose premature device detachment.
 //! - Substitute session callbacks so cancellation can verify connection invalidation.
 //!
-//! See [USB coordination](../../docs/platform/worker-coordination.md#usb-integration).
+//! See [USB coordination](../../../../../docs/platform/worker-coordination.md#usb-integration).
 
-#[allow(dead_code)]
-#[path = "../../firmware/src/usb/lifecycle.rs"]
-mod lifecycle;
-
+use super::{UsbLifecycle, Worker};
 use core::{
     cell::Cell,
     future::Future,
@@ -18,25 +15,25 @@ use core::{
     task::{Context, Poll, Waker},
 };
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
-use lifecycle::{UsbLifecycle, Worker};
 use paper_mesh_platform::{
     power_off::PowerOffParticipant, suspend::SuspendParticipant, worker::Pause,
 };
+use std::{boxed::Box, thread_local};
 
 thread_local! {
     static INVALIDATIONS: Cell<usize> = const { Cell::new(0) };
     static RESTARTS: Cell<usize> = const { Cell::new(0) };
 }
 
-fn change(status: u32) {
+pub(super) fn change(status: u32) {
     assert_eq!(status, 0);
     INVALIDATIONS.set(INVALIDATIONS.get() + 1);
 }
 
-struct Restart;
-static RESTART: Restart = Restart;
+pub(super) struct Restart;
+pub(super) static RESTART: Restart = Restart;
 impl Restart {
-    fn signal(&self, (): ()) {
+    pub(super) fn signal(&self, (): ()) {
         RESTARTS.set(RESTARTS.get() + 1);
     }
 }

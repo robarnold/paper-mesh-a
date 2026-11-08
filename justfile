@@ -43,6 +43,7 @@ simulator-snapshot: _require-container
 # Cargo must run here to load firmware/.cargo/config.toml and the esp toolchain.
 firmware-check: _require-container
     cd firmware && cargo clippy --locked --all-targets --all-features -- -D warnings
+    cd firmware && cargo clippy --locked -p paper-mesh-esp-adapters --lib -- -D warnings
 
 firmware-demo-check: _require-container
     cd firmware && cargo build --locked --release --features radio-scan-demo

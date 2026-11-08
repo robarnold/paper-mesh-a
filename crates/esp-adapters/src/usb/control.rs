@@ -5,7 +5,7 @@
 //! - Invalidate a pending reset reply on disconnect so a different host session
 //!   cannot acknowledge it.
 //!
-//! See [Enter ROM download mode](../../../docs/boards/lilygo-t5-s3-pro-usb.md#enter-rom-download-mode).
+//! See [Reply transport](../../../../docs/services/connectivity.md#reply-transport).
 
 use paper_mesh_platform::transport::SessionId;
 
@@ -100,3 +100,6 @@ impl State {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;
