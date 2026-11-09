@@ -4,16 +4,20 @@
 //!
 //! - Preserve contact identities across touch reports and cancel uncertain sequences
 //!   so a missed sample cannot complete a gesture.
+//! - Box the worker future once during preparation so its bus capacity does not determine the public task type.
 //!
-//! See [LILYGO touch input and interrupts](../../docs/boards/lilygo-t5-s3-pro-touch.md).
+//! See [ESP touch integration](../../../docs/adapters/touch.md).
 
 mod input_lifecycle;
 pub use input_lifecycle::TouchInputLifecycle;
 
+use crate::interrupt::GpioInterruptHandler;
+use alloc::boxed::Box;
 use core::{
     cell::RefCell,
     sync::atomic::{AtomicBool, Ordering},
 };
+use core::{future::Future, pin::Pin};
 use embassy_executor::{SendSpawner, SpawnError};
 use embassy_futures::select::{Either, select};
 use embassy_sync::{
@@ -32,13 +36,13 @@ use esp_hal::{
     system::Cpu,
 };
 use log::{error, info};
-use paper_mesh_esp_adapters::interrupt::GpioInterruptHandler;
 use paper_mesh_gt911::{CONFIG_BYTES, Event, Frame, Gt911};
 use paper_mesh_platform::worker::{Pause, PauseWorker};
 use paper_mesh_platform::{TouchEvent, input::contacts::TouchFrame, rotation::PortraitRotation};
 use static_cell::StaticCell;
 
-use crate::bus::Bus;
+use paper_mesh_platform::bus::Arbitrated;
+type Bus<const N: usize> = Arbitrated<CriticalSectionRawMutex, I2c<'static, Blocking>, N>;
 
 /// Runtime connections for touch geometry, logical HOME input, wake capture, and diagnostics.
 pub struct Config {
@@ -127,20 +131,24 @@ pub struct Prepared {
 
 #[must_use]
 pub struct Workers {
-    touch: Touch,
-    bus: &'static Bus,
-    pause: PauseWorker<'static, CriticalSectionRawMutex>,
+    future: Pin<Box<dyn Future<Output = ()> + Send + 'static>>,
 }
 
 impl Workers {
+    /// Launch all prepared touch work on the selected executor.
     pub fn spawn(self, spawner: SendSpawner) -> Result<(), SpawnError> {
-        spawner.spawn(worker(self.touch, self.bus, self.pause)?);
+        spawner.spawn(worker(self)?);
         Ok(())
     }
 }
 
-pub fn prepare(
-    bus: &'static Bus,
+#[embassy_executor::task]
+async fn worker(workers: Workers) {
+    workers.future.await;
+}
+
+pub fn prepare<const N: usize>(
+    bus: &'static Bus<N>,
     reset: peripherals::GPIO9<'static>,
     interrupt: peripherals::GPIO3<'static>,
     settings: Config,
@@ -153,9 +161,7 @@ pub fn prepare(
     Some(Prepared {
         interrupt: GpioInterruptHandler::new(interrupt_handler),
         workers: Workers {
-            touch,
-            bus,
-            pause: worker_pause,
+            future: Box::pin(run(touch, bus, worker_pause)),
         },
         lifecycle: TouchInputLifecycle { pause },
     })
@@ -361,14 +367,13 @@ impl Touch {
     }
 }
 
-#[embassy_executor::task]
-async fn worker(
+async fn run<const N: usize>(
     mut touch: Touch,
-    bus: &'static Bus,
+    bus: &'static Bus<N>,
     mut pause: PauseWorker<'static, CriticalSectionRawMutex>,
 ) {
     assert!(Cpu::current() == Cpu::ProCpu);
-    info!("touch: interrupt worker started; core=0; GPIO3 low level; priority=2");
+    info!("touch: worker started; core=0; GPIO3 low level");
     loop {
         arm_interrupt();
         let irq = match select(pause.requested(), IRQ.wait()).await {

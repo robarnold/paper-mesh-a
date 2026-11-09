@@ -9,11 +9,14 @@ publish = false
 default = []
 esp32s3 = [
     "dep:embassy-executor", "dep:embassy-futures", "dep:embassy-time",
+    "dep:embedded-graphics", "dep:paper-mesh-gt911",
     "dep:embassy-usb", "dep:esp-hal", "dep:heapless", "dep:log",
     "dep:paper-mesh-hid-touchpad", "dep:paper-mesh-pcf8563", "dep:static_cell",
 ]
 
 [dependencies]
+embedded-graphics = { version = "=0.8.2", optional = true }
+paper-mesh-gt911 = { path = "../gt911", optional = true }
 paper-mesh-platform = { path = "../platform" }
 paper-mesh-pcf8563 = { path = "../pcf8563", optional = true }
 embassy-sync = "=0.8.0"

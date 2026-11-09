@@ -12,8 +12,12 @@ use crate::{Contact, TouchEvent};
 
 pub const MAX_CONTACTS: usize = 5;
 
+/// One timestamped observation of contact changes in the consumer's logical coordinate space.
+/// Unmentioned contacts remain active. Cancel invalidates the complete contact sequence.
+/// See the [contact-frame contract](../../../../docs/services/input.md#contact-frame-contract).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TouchFrame {
+    /// Observation time on the runtime monotonic clock, before queued delivery.
     pub at_ms: u64,
     events: [Option<TouchEvent>; MAX_CONTACTS * 2],
     len: usize,

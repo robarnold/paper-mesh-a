@@ -34,7 +34,8 @@ Other adapters retain their existing spawner or worker-future interfaces.
 Adapters own worker membership, resources, and launch order. Firmware selects the spawner without knowledge of individual workers.
 All workers in the current contract share one local spawner. Per-worker executor selection is outside this contract.
 Workers are async tasks, not necessarily OS threads. Several workers can share one executor and its thread.
-Concrete worker types retain their resource types and `Send` restrictions without allocation or type erasure.
+USB retains concrete worker resources without allocation or type erasure. Touch boxes its worker future once to hide the bus capacity from task storage.
+Both preserve the `Send` restrictions required by their selected spawner.
 The interface does not assign priorities or describe peripheral interrupt bindings.
 
 | Work | Execution context | Reason |
@@ -44,7 +45,7 @@ The interface does not assign priorities or describe peripheral interrupt bindin
 | GNSS input | Interrupt executor on core 0, priority 1 | UART consumption must progress during synchronous application rendering |
 | Display refresh | Thread-mode executor on core 1 | Synchronous panel scans must not stop core 0 input processing |
 
-The runtime starts touch and GNSS executors on core 0 and supplies their `SendSpawner` handles to the adapters.
+The runtime starts touch and GNSS executors on core 0. It supplies their `SendSpawner` handles to the adapters.
 A spawner identifies an executor. Sending the handle does not move that executor to the caller's core.
 If touch initialization fails, its executor remains empty. The runtime omits the unavailable touch lifecycle participant.
 Display task creation runs inside the core 1 executor's initialization callback.
@@ -87,7 +88,8 @@ Suspend initialization independently returns its controller and wake registratio
 The runtime enables the assembled registrations before launching touch on the selected interrupt executor.
 Hardware event delivery and worker execution context remain separate choices.
 
-Touch retains a typed `SendSpawner` launch method because the current platform `WorkerSet` contract accepts only a local spawner.
+Touch preparation accepts any supported bus queue capacity and returns workers with a concrete launch type.
+The adapter owns the task and launches it through the selected `SendSpawner`.
 Touch owns its pin configuration and reports wake events through a runtime-supplied interrupt callback.
 The runtime connects that callback to suspend wake capture and supplies a separate query for the retained wake result.
 Worker pause and wake arming remain separate from vector registration.

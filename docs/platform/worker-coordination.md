@@ -132,7 +132,7 @@ The runtime must coordinate touch separately when it needs all input workers sto
 
 ## Touch input integration
 
-The [touch module](../../firmware/src/touch.rs) returns a `TouchInputLifecycle` handle only after successful controller initialization.
+The [touch module](../../crates/esp-adapters/src/touch.rs) returns a `TouchInputLifecycle` handle only after successful controller initialization.
 The runtime omits it when the shared bus or touch controller is unavailable.
 This handle stops contact reports and HOME input from the touch worker.
 

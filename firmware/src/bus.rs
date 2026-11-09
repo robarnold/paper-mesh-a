@@ -20,8 +20,10 @@ use static_cell::StaticCell;
 // The mutex masks interrupts only while it changes its lock state.
 // A guard keeps the bus exclusive while interrupts remain enabled.
 // Seven clients share the bus. Reserve eight independent wait slots.
-pub type Bus = arbitration::Arbitrated<CriticalSectionRawMutex, I2c<'static, Blocking>, 8>;
-pub type BusGuard<'a> = arbitration::Guard<'a, CriticalSectionRawMutex, I2c<'static, Blocking>, 8>;
+const WAIT_SLOTS: usize = 8;
+pub type Bus = arbitration::Arbitrated<CriticalSectionRawMutex, I2c<'static, Blocking>, WAIT_SLOTS>;
+pub type BusGuard<'a> =
+    arbitration::Guard<'a, CriticalSectionRawMutex, I2c<'static, Blocking>, WAIT_SLOTS>;
 static BUS: StaticCell<Bus> = StaticCell::new();
 
 pub fn initialize(

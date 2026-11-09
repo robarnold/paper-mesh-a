@@ -9,17 +9,6 @@ Firmware and simulator profiles assign identities. Applications select bindings 
 Initial samples and recovery synchronize the level without an invented press.
 Backends select debounce intervals from the electrical input requirements.
 
-Detailed lifecycle reports stay planned work.
-The current interface supplies `Touch`, `Release`, and `Cancel` events.
-Each contact has a stable ID and a position. IDs range from 0 through 15.
-`Touch` supplies both initial contact and subsequent movement.
-`Release` retains the last valid position for that ID.
-`Cancel` invalidates all contacts without a successful gesture.
-The platform's `TapGesture` recognizes taps without filtering the raw stream for other consumers.
-`TouchFrame` groups one observation with its timestamp and up to ten contact changes.
-It permits five releases and five replacement contacts in one frame.
-`ContactState` applies a frame atomically and retains up to five active contacts.
-An invalid frame cancels the complete state.
 
 A backend supplies stable control identities, labels, and supported event kinds.
 An identity is separate from an action binding such as back, select, or sleep.
@@ -52,6 +41,38 @@ It receives `Unknown` when the backend cannot identify the cause.
 
 A simulator trace can record an external stimulus that the application cannot
 observe. Backend conformance tests give information about particular boot sequences.
+
+## Contact-frame contract
+
+Adapters supply platform `TouchFrame` values to shared consumers. Chip-specific reports stay behind the adapter boundary.
+The hardware touch adapter and simulator input translation implement this contract. Platform contact state and gesture consumers use it.
+
+Positions must use the logical coordinate space selected by the runtime for those consumers.
+Adapters or runtime coordinate transforms must convert native controller coordinates before delivery to logical consumers.
+`at_ms` records the observation time in milliseconds on the runtime monotonic clock, not wall-clock time or queue delivery time.
+
+The current interface supplies `Touch`, `Release`, and `Cancel` events.
+Each contact has a stable ID and a position. IDs range from 0 through 15.
+`Touch` supplies both initial contact and subsequent movement.
+`Release` retains the last valid position for that ID.
+`Cancel` invalidates all contacts without a successful gesture.
+
+The platform's `TapGesture` recognizes taps without filtering the raw stream for other consumers.
+`TouchFrame` groups one observation with its timestamp and up to ten contact changes.
+It permits five releases and five replacement contacts in one frame.
+`ContactState` applies a frame atomically and retains up to five active contacts.
+An invalid frame cancels the complete state.
+
+A frame contains contact changes, not a complete replacement snapshot. Contacts remain active until release or cancellation.
+Consumers must process a complete frame before publishing aggregate contact state.
+When input continuity is lost, discard pending uncertain frames and deliver cancellation before accepting a new contact sequence.
+A held contact must not become a new press solely because the adapter restarted or recovered from lost input.
+HOME and other independent controls use control observations instead of contact coordinates.
+
+The contract does not prescribe GPIO operations, an executor, interrupt priorities, or a report polling interval.
+Chip-specific timing remains a driver or adapter responsibility.
+Existing GT911 tests cover contact identity and suppression until release. Platform tests cover atomic frame application and cancellation.
+Detailed lifecycle reports stay planned work.
 
 ## System navigation routing
 

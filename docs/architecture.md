@@ -13,7 +13,7 @@ The toolkit has no dependency on a particular application.
 | [`crates/platform`](../crates/platform/src/lib.rs) | Application toolkit and portable contracts | None |
 | [`crates/pcf8563`](../crates/pcf8563/src/lib.rs) | PCF8563 calendar access through I2C | Platform calendar contract |
 | [`firmware/src/main.rs`](../firmware/src/main.rs) | Hardware startup and connection of the application to services | Application, platform, and hardware adapters |
-| [`crates/esp-adapters`](../crates/esp-adapters/README.md) | ESP USB transport, RTC clock, and lifecycle handles | Platform, HID protocol, and PCF8563 driver |
+| [`crates/esp-adapters`](../crates/esp-adapters/README.md) | ESP USB transport, RTC clock, touch input, and lifecycle handles | Platform, HID protocol, PCF8563, and GT911 drivers |
 | [`firmware/src`](../firmware/src/main.rs) adapters | Hardware services, drivers, buffers, and resource control | Platform and chip drivers |
 | [`simulator/src/lib.rs`](../simulator/src/lib.rs) | Native services and deterministic application execution | Application and platform |
 | [`simulator/src/main.rs`](../simulator/src/main.rs) | HTTP transport and wall-clock pacing | Simulator and platform |
@@ -25,7 +25,7 @@ The root workspace also builds the simulator and tests the chip and host protoco
 Firmware stays outside that workspace to isolate Xtensa settings and ESP dependency features.
 Firmware owns [interrupt routing](platform/runtime.md#interrupt-ownership) and dispatches adapter GPIO callbacks through the shared vector.
 Firmware owns [execution placement](platform/runtime.md#firmware-execution-placement), including executor storage, core assignment, and software-interrupt priorities.
-Adapters receive spawners or expose worker futures. Shared GPIO routing remains in the touch module pending a separate boundary change.
+Adapters receive spawners or expose worker futures. Firmware owns shared GPIO routing through adapter-supplied registrations.
 Its manifest uses path dependencies for the application, platform, and adapter crates.
 The ESP adapter crate participates in native checks with hardware features disabled. Firmware enables its `esp32s3` feature explicitly.
 
@@ -60,11 +60,14 @@ It selects connection diagnostics and encodes command errors outside the USB tra
 USB retains buffers, endpoint settings, worker ownership, and lifecycle coordination.
 Runtime configuration supplies the protocol request limit, which USB validates against its fixed buffer capacity.
 ROM download and display inspection handlers depend on the platform contract instead of the USB module.
-The [ESP adapter crate](../crates/esp-adapters/README.md) owns USB hardware, session tracking, the RTC clock, and their service lifecycle coordination.
+The [ESP adapter crate](../crates/esp-adapters/README.md) owns USB hardware, session tracking, the RTC clock, touch input, and their lifecycle coordination.
 USB preparation returns its lifecycle handle and a worker set that implements the platform contract. Firmware selects its spawner through `Execution::spawn`.
 Firmware retains board configuration, command dispatch, diagnostic providers, and system power coordination.
-Touch remains in firmware but receives geometry, HOME delivery, wake coordination, and refresh diagnostics through runtime configuration.
-Its remaining firmware dependency is the concrete shared bus type.
+Touch adapters produce platform `TouchFrame` values under the [contact-frame contract](services/input.md#contact-frame-contract).
+GT911 register access stays in the chip driver. The ESP adapter converts reports and handles contact continuity, GPIO, and event delivery.
+The [touch adapter](adapters/touch.md) receives geometry, HOME delivery, wake coordination, and refresh diagnostics through runtime configuration.
+Touch preparation accepts a shared ESP bus with runtime-selected queue capacity. The adapter owns its task, while firmware selects the spawner.
+One boxed worker future hides the capacity from the task type without changing bus arbitration.
 
 ```mermaid
 flowchart TD

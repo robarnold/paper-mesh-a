@@ -31,7 +31,7 @@ mod rtc;
 #[cfg(feature = "radio-scan-demo")]
 mod scan_demo;
 mod suspend;
-mod touch;
+use paper_mesh_esp_adapters::touch;
 use paper_mesh_esp_adapters::usb;
 mod usb_protocol;
 

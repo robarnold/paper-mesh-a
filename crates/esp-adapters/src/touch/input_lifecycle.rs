@@ -5,7 +5,7 @@
 //! - Await interrupt cleanup and queue clearing before the coordinator arms touch wake.
 //! - Keep wake-source policy in the system coordinator.
 //!
-//! See [touch input coordination](../../../docs/platform/worker-coordination.md#touch-input-integration).
+//! See [touch input coordination](../../../../docs/platform/worker-coordination.md#touch-input-integration).
 
 use core::convert::Infallible;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;

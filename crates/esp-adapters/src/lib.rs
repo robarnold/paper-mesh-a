@@ -20,3 +20,6 @@ pub mod usb;
 
 #[cfg(feature = "esp32s3")]
 pub mod rtc;
+
+#[cfg(feature = "esp32s3")]
+pub mod touch;

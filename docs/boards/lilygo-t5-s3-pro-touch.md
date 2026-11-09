@@ -6,7 +6,8 @@
 
 [`crates/gt911`](../../crates/gt911/src/lib.rs) implements the GT911 report protocol.
 The [crate guide](../../crates/gt911/README.md) records protocol references and test scope.
-[`firmware/src/touch.rs`](../../firmware/src/touch.rs) adapts reports to the shared touch contract.
+The [ESP touch adapter](../adapters/touch.md) converts reports into platform `TouchFrame` values.
+It also supplies GPIO, reset, worker execution, and event delivery.
 The driver probes both documented addresses and checks the product identity.
 If neither probe succeeds, it applies the documented reset sequence and selects address `0x5D`.
 It records the existing configuration through USB without configuration writes.
