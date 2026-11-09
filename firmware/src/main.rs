@@ -23,6 +23,7 @@ mod display_recovery;
 mod display_worker;
 mod execution;
 mod gnss;
+mod interrupts;
 mod lifecycle;
 mod power;
 mod recovery;
@@ -98,7 +99,12 @@ fn initialize(
         peripherals.FROM_CPU_INTR3,
     );
     let (clock, rtc_worker) = RTC_STATE.init(ClockState::new(RTC_POLICY)).split();
-    let suspend = suspend::initialize(peripherals.GPIO38, peripherals.LPWR, peripherals.RTC_TIMER);
+    let suspend::Prepared {
+        controller: suspend,
+        interrupt: wake_interrupt,
+    } = suspend::initialize(peripherals.GPIO38, peripherals.LPWR, peripherals.RTC_TIMER);
+    let mut interrupts = interrupts::Interrupts::new(peripherals.IO_MUX);
+    interrupts.register(wake_interrupt);
     display_recovery::boot();
     assert!(recovery::arm(recovery::Owner::Boot, 15_000));
     let bus_result = bus::initialize(peripherals.I2C0, peripherals.GPIO39, peripherals.GPIO40);
@@ -172,6 +178,7 @@ fn initialize(
         .ok();
     let button_polling = buttons::start_polling(spawner, bus, peripherals.GPIO0);
     let Some(bus) = bus else {
+        interrupts.enable();
         return (
             None,
             None,
@@ -225,14 +232,18 @@ fn initialize(
         error!("display: updates blocked; disconnect USB and hold BOOT for 3 seconds to power off");
         None
     };
-    let touch_spawner = execution.start_touch();
-    let touch_input = touch::start(
-        touch_spawner,
-        bus,
-        peripherals.GPIO9,
-        peripherals.GPIO3,
-        peripherals.IO_MUX,
-    );
+    let touch = touch::prepare(bus, peripherals.GPIO9, peripherals.GPIO3);
+    if let Some(touch) = &touch {
+        interrupts.register(touch.interrupt);
+    }
+    interrupts.enable();
+    let touch_input = touch.map(|touch| {
+        touch
+            .workers
+            .spawn(execution.start_touch())
+            .expect("touch worker startup failed");
+        touch.lifecycle
+    });
     execution.start_display(|spawner| spawner.spawn(display_worker::worker().unwrap()));
     (
         panel.map(display_worker::Client::new),

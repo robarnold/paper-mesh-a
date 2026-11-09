@@ -23,6 +23,7 @@ The toolkit has no dependency on a particular application.
 Both shared crates use `no_std` without heap allocation.
 The root workspace also builds the simulator and tests the chip and host protocols.
 Firmware stays outside that workspace to isolate Xtensa settings and ESP dependency features.
+Firmware owns [interrupt routing](platform/runtime.md#interrupt-ownership) and dispatches adapter GPIO callbacks through the shared vector.
 Firmware owns [execution placement](platform/runtime.md#firmware-execution-placement), including executor storage, core assignment, and software-interrupt priorities.
 Adapters receive spawners or expose worker futures. Shared GPIO routing remains in the touch module pending a separate boundary change.
 Its manifest uses path dependencies for the application, platform, and adapter crates.

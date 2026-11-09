@@ -15,7 +15,7 @@ use core::{
     cell::RefCell,
     sync::atomic::{AtomicBool, Ordering},
 };
-use embassy_executor::SendSpawner;
+use embassy_executor::{SendSpawner, SpawnError};
 use embassy_futures::select::{Either, select};
 use embassy_sync::{
     blocking_mutex::{Mutex, raw::CriticalSectionRawMutex},
@@ -27,12 +27,13 @@ use embedded_graphics::prelude::Point;
 use esp_hal::{
     Blocking,
     delay::Delay,
-    gpio::{Event as GpioEvent, Flex, InputConfig, Io, Level, Output, OutputConfig},
+    gpio::{Event as GpioEvent, Flex, InputConfig, Level, Output, OutputConfig},
     i2c::master::I2c,
     peripherals,
     system::Cpu,
 };
 use log::{error, info};
+use paper_mesh_esp_adapters::interrupt::GpioInterruptHandler;
 use paper_mesh_gt911::{CONFIG_BYTES, Event, Frame, Gt911};
 use paper_mesh_platform::worker::{Pause, PauseWorker};
 use paper_mesh_platform::{TouchEvent, input::contacts::TouchFrame, rotation::PortraitRotation};
@@ -100,25 +101,49 @@ pub async fn changed() {
     CHANGED.wait().await;
 }
 
-pub fn start(
-    spawner: SendSpawner,
+/// Prepared touch resources. Register the interrupt before launching the worker.
+#[must_use]
+pub struct Prepared {
+    pub interrupt: GpioInterruptHandler,
+    pub workers: Workers,
+    pub lifecycle: TouchInputLifecycle,
+}
+
+#[must_use]
+pub struct Workers {
+    touch: Touch,
+    bus: &'static Bus,
+    pause: PauseWorker<'static, CriticalSectionRawMutex>,
+}
+
+impl Workers {
+    pub fn spawn(self, spawner: SendSpawner) -> Result<(), SpawnError> {
+        spawner.spawn(worker(self.touch, self.bus, self.pause)?);
+        Ok(())
+    }
+}
+
+pub fn prepare(
     bus: &'static Bus,
     reset: peripherals::GPIO9<'static>,
     interrupt: peripherals::GPIO3<'static>,
-    io_mux: peripherals::IO_MUX<'static>,
-) -> Option<TouchInputLifecycle> {
+) -> Option<Prepared> {
     assert!(Cpu::current() == Cpu::ProCpu);
-    Io::new(io_mux).set_interrupt_handler(interrupt_handler);
     let (touch, pin) = Touch::new(&mut bus.try_lock().unwrap(), reset, interrupt)?;
     PIN.lock(|slot| slot.borrow_mut().replace(pin));
     let (pause, worker_pause) = INPUT_PAUSE.init(Pause::new()).split();
-    spawner.spawn(worker(touch, bus, worker_pause).unwrap());
-    Some(TouchInputLifecycle { pause })
+    Some(Prepared {
+        interrupt: GpioInterruptHandler::new(interrupt_handler),
+        workers: Workers {
+            touch,
+            bus,
+            pause: worker_pause,
+        },
+        lifecycle: TouchInputLifecycle { pause },
+    })
 }
 
-#[esp_hal::handler]
 fn interrupt_handler() {
-    crate::suspend::interrupt();
     PIN.lock(|slot| {
         if let Some(pin) = slot.borrow_mut().as_mut()
             && pin.is_interrupt_set()

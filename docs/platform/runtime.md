@@ -69,10 +69,33 @@ The current touch worker performs synchronous I2C reads in interrupt context. Th
 A long poll can delay lower-priority interrupts and ordinary thread execution. Worst-case poll duration remains unverified.
 Moving this work to scheduled threads requires a latency review because the main cooperative executor also performs synchronous application rendering.
 
-Peripheral routing remains a separate responsibility from executor placement.
-HAL driver initialization can bind interrupts on the core where initialization occurs.
-The touch module still installs the shared GPIO handler and dispatches suspend wake events.
-Central executor ownership does not change that handler, pin routing, or peripheral interrupt configuration.
+### Interrupt ownership
+
+Peripheral routing remains separate from executor placement.
+A [GPIO callback descriptor](../../crates/esp-adapters/src/interrupt.rs) declares work for the shared GPIO interrupt source without installing its vector.
+Each callback checks its own pins, acknowledges owned events, and tolerates calls with no pending event.
+Callbacks run in interrupt context. They must not wait or perform device transactions.
+
+The firmware [interrupt module](../../firmware/src/interrupts.rs) owns IO_MUX, vector installation, core selection, and bounded callback storage.
+It accepts registrations without naming clients. Registration order determines dispatch order, and capacity exhaustion fails during startup.
+The runtime registers suspend wake capture first, then touch if preparation succeeds.
+It enables delivery on core 0 before launching the touch worker and keeps the existing default handler priority.
+Every vector entry calls all registered callbacks because multiple pins can be pending together.
+
+Touch preparation returns its interrupt registration, worker resources, and lifecycle handle together. It does not install a vector or launch work.
+Suspend initialization independently returns its controller and wake registration. Wake delivery remains installed when touch or shared-bus initialization fails.
+The runtime enables the assembled registrations before launching touch on the selected interrupt executor.
+Hardware event delivery and worker execution context remain separate choices.
+
+Touch retains a typed `SendSpawner` launch method because the current platform `WorkerSet` contract accepts only a local spawner.
+Touch still owns its pin configuration and forwards touch wake events to the suspend coordinator.
+Worker pause and wake arming remain separate from vector registration.
+
+This first interface covers callbacks for the shared GPIO vector only. It does not redirect HAL-managed USB or UART handlers.
+HAL driver initialization can bind those interrupts on the core where initialization occurs.
+Moving a worker therefore does not establish that its peripheral interrupt moves with it.
+Executor software interrupts remain owned by `Execution`. They are not GPIO callback registrations.
+Native checks cannot establish physical interrupt delivery or sleep reliability.
 
 ## Current application loop
 

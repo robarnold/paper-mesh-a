@@ -44,20 +44,28 @@ pub struct Controller {
     recovery: recovery::Recovery,
 }
 
+pub struct Prepared {
+    pub controller: Controller,
+    pub interrupt: paper_mesh_esp_adapters::interrupt::GpioInterruptHandler,
+}
+
 pub fn initialize(
     pin: GPIO38<'static>,
     lpwr: LPWR<'static>,
     rtc_timer: RTC_TIMER<'static>,
-) -> Controller {
+) -> Prepared {
     // Keep the application wake lock until preparation completes.
     WakeLock::acquire();
     let mut pin = Flex::new(pin);
     pin.set_input_enable(true);
     pin.apply_input_config(&InputConfig::default().with_pull(Pull::Up));
     PIN.lock(|slot| *slot.borrow_mut() = Some(pin));
-    Controller {
-        low_power: LowPower::new(lpwr),
-        recovery: recovery::Recovery::new(Rtc::new(rtc_timer).rwdt),
+    Prepared {
+        controller: Controller {
+            low_power: LowPower::new(lpwr),
+            recovery: recovery::Recovery::new(Rtc::new(rtc_timer).rwdt),
+        },
+        interrupt: paper_mesh_esp_adapters::interrupt::GpioInterruptHandler::new(interrupt),
     }
 }
 
@@ -70,7 +78,7 @@ fn set_transition_active(active: bool) {
     TRANSITION_ACTIVE.store(active, Ordering::Release);
 }
 
-pub fn interrupt() {
+fn interrupt() {
     if crate::buttons::take_boot_interrupt(false) {
         record(wake::BOOT);
     }

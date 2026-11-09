@@ -9,6 +9,8 @@
 //!
 //! See [adapter boundaries](../README.md).
 
+pub mod interrupt;
+
 extern crate alloc;
 #[cfg(test)]
 extern crate std;
