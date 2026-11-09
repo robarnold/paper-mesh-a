@@ -10,7 +10,6 @@
 mod input_lifecycle;
 pub use input_lifecycle::TouchInputLifecycle;
 
-use crate::display::NATIVE_SCREEN_SIZE;
 use core::{
     cell::RefCell,
     sync::atomic::{AtomicBool, Ordering},
@@ -41,8 +40,25 @@ use static_cell::StaticCell;
 
 use crate::bus::Bus;
 
-const ROTATION: PortraitRotation = PortraitRotation::new(NATIVE_SCREEN_SIZE);
-static PIN: Mutex<CriticalSectionRawMutex, RefCell<Option<Flex<'static>>>> =
+/// Runtime connections for touch geometry, logical HOME input, wake capture, and diagnostics.
+pub struct Config {
+    pub rotation: PortraitRotation,
+    /// Called from the touch worker. None cancels uncertain HOME input.
+    pub did_observe_home: fn(Option<bool>, u64),
+    /// Called in GPIO interrupt context. Must not wait or access devices.
+    pub did_wake: fn(),
+    /// Read the retained wake result after lifecycle restoration.
+    pub was_wake_source: fn() -> bool,
+    /// Read display activity for diagnostics without waiting.
+    pub is_display_refreshing: fn() -> bool,
+}
+
+struct InterruptPin {
+    pin: Flex<'static>,
+    did_wake: fn(),
+}
+
+static PIN: Mutex<CriticalSectionRawMutex, RefCell<Option<InterruptPin>>> =
     Mutex::new(RefCell::new(None));
 static IRQ: Signal<CriticalSectionRawMutex, Instant> = Signal::new();
 static WAKE_ARMED: AtomicBool = AtomicBool::new(false);
@@ -127,10 +143,12 @@ pub fn prepare(
     bus: &'static Bus,
     reset: peripherals::GPIO9<'static>,
     interrupt: peripherals::GPIO3<'static>,
+    settings: Config,
 ) -> Option<Prepared> {
     assert!(Cpu::current() == Cpu::ProCpu);
-    let (touch, pin) = Touch::new(&mut bus.try_lock().unwrap(), reset, interrupt)?;
-    PIN.lock(|slot| slot.borrow_mut().replace(pin));
+    let did_wake = settings.did_wake;
+    let (touch, pin) = Touch::new(&mut bus.try_lock().unwrap(), reset, interrupt, settings)?;
+    PIN.lock(|slot| slot.borrow_mut().replace(InterruptPin { pin, did_wake }));
     let (pause, worker_pause) = INPUT_PAUSE.init(Pause::new()).split();
     Some(Prepared {
         interrupt: GpioInterruptHandler::new(interrupt_handler),
@@ -145,14 +163,14 @@ pub fn prepare(
 
 fn interrupt_handler() {
     PIN.lock(|slot| {
-        if let Some(pin) = slot.borrow_mut().as_mut()
+        if let Some(InterruptPin { pin, did_wake }) = slot.borrow_mut().as_mut()
             && pin.is_interrupt_set()
         {
             let now = Instant::now();
             pin.unlisten();
             pin.clear_interrupt();
             if WAKE_ARMED.load(Ordering::Acquire) {
-                crate::suspend::touch_interrupt();
+                did_wake();
             } else {
                 IRQ.signal(now);
             }
@@ -164,7 +182,7 @@ pub fn arm_wake() -> Result<(), paper_mesh_platform::suspend::SuspendError> {
     use paper_mesh_platform::suspend::SuspendError;
     PIN.lock(|slot| {
         let mut slot = slot.borrow_mut();
-        let pin = slot.as_mut().ok_or(SuspendError::Unsupported)?;
+        let pin = &mut slot.as_mut().ok_or(SuspendError::Unsupported)?.pin;
         if !WAKE_READY.load(Ordering::Acquire) || pin.is_low() {
             return Err(SuspendError::WakeActive);
         }
@@ -178,7 +196,7 @@ pub fn arm_wake() -> Result<(), paper_mesh_platform::suspend::SuspendError> {
 pub fn disarm_wake() -> bool {
     PIN.lock(|slot| {
         let armed = WAKE_ARMED.swap(false, Ordering::AcqRel);
-        if let Some(pin) = slot.borrow_mut().as_mut()
+        if let Some(InterruptPin { pin, .. }) = slot.borrow_mut().as_mut()
             && armed
         {
             let pending = pin.is_interrupt_set();
@@ -194,7 +212,7 @@ pub fn disarm_wake() -> bool {
 fn arm_interrupt() {
     PIN.lock(|slot| {
         let mut slot = slot.borrow_mut();
-        let pin = slot.as_mut().unwrap();
+        let pin = &mut slot.as_mut().unwrap().pin;
         pin.clear_interrupt();
         // A pending low level triggers immediately, including after a bus wait.
         pin.listen(GpioEvent::LowLevel);
@@ -202,6 +220,7 @@ fn arm_interrupt() {
 }
 
 pub struct Touch {
+    settings: Config,
     driver: Gt911,
     _reset: Output<'static>,
     failed: bool,
@@ -213,6 +232,7 @@ impl Touch {
         bus: &mut I2c<'static, Blocking>,
         reset: peripherals::GPIO9<'static>,
         interrupt: peripherals::GPIO3<'static>,
+        settings: Config,
     ) -> Option<(Self, Flex<'static>)> {
         let mut reset = Output::new(reset, Level::High, OutputConfig::default());
         let mut interrupt = Flex::new(interrupt);
@@ -248,7 +268,11 @@ impl Touch {
             error!("touch: GT911 not detected at 0x5d or 0x14");
             return None;
         };
-        if !matches!((driver.width, driver.height), (540, 960) | (960, 540)) {
+        let portrait = settings.rotation.size();
+        let dimensions = (u32::from(driver.width), u32::from(driver.height));
+        if dimensions != (portrait.width, portrait.height)
+            && dimensions != (portrait.height, portrait.width)
+        {
             error!(
                 "touch: unsupported geometry {}x{}",
                 driver.width, driver.height
@@ -278,6 +302,7 @@ impl Touch {
         }
         Some((
             Self {
+                settings,
                 driver,
                 _reset: reset,
                 failed: false,
@@ -291,7 +316,7 @@ impl Touch {
         let result = self.driver.poll(bus);
         if let Some(pressed) = self.driver.take_key_state() {
             self.home_pressed = pressed;
-            crate::buttons::home(Some(pressed), Instant::now().as_millis());
+            (self.settings.did_observe_home)(Some(pressed), Instant::now().as_millis());
         }
         let report = match result {
             Ok(event) => {
@@ -299,7 +324,7 @@ impl Touch {
                 event?
             }
             Err(error) => {
-                crate::buttons::home(None, Instant::now().as_millis());
+                (self.settings.did_observe_home)(None, Instant::now().as_millis());
                 STATS.lock(|stats| stats.borrow_mut().errors += 1);
                 if self.failed {
                     return None;
@@ -315,14 +340,16 @@ impl Touch {
             frame.push(match event {
                 Event::Touch(contact) | Event::Release(contact) => {
                     let point = Point::new(i32::from(contact.x), i32::from(contact.y));
-                    let native = if self.driver.width == 540 {
-                        ROTATION
-                            .to_native(point)
-                            .expect("validated portrait contact")
-                    } else {
-                        point
-                    };
-                    ROTATION.touch_to_portrait(match event {
+                    let native =
+                        if u32::from(self.driver.width) == self.settings.rotation.size().width {
+                            self.settings
+                                .rotation
+                                .to_native(point)
+                                .expect("validated portrait contact")
+                        } else {
+                            point
+                        };
+                    self.settings.rotation.touch_to_portrait(match event {
                         Event::Touch(_) => TouchEvent::touch(contact.id, native),
                         _ => TouchEvent::release(contact.id, native),
                     })
@@ -347,7 +374,7 @@ async fn worker(
         let irq = match select(pause.requested(), IRQ.wait()).await {
             Either::First(()) => {
                 PIN.lock(|slot| {
-                    if let Some(pin) = slot.borrow_mut().as_mut() {
+                    if let Some(InterruptPin { pin, .. }) = slot.borrow_mut().as_mut() {
                         pin.unlisten();
                         pin.clear_interrupt();
                     }
@@ -356,8 +383,12 @@ async fn worker(
                 let contacts_idle = touch.driver.contacts_idle();
                 WAKE_READY.store(contacts_idle && !touch.home_pressed, Ordering::Release);
                 pause.checkpoint().await;
-                let pending = PIN.lock(|slot| slot.borrow().as_ref().is_some_and(Flex::is_low));
-                if !contacts_idle || pending || crate::suspend::touch_woke() {
+                let pending = PIN.lock(|slot| {
+                    slot.borrow()
+                        .as_ref()
+                        .is_some_and(|state| state.pin.is_low())
+                });
+                if !contacts_idle || pending || (touch.settings.was_wake_source)() {
                     // Consume contacts from suspend until an empty report confirms release.
                     touch.driver.cancel();
                 }
@@ -369,7 +400,7 @@ async fn worker(
         let wait_start = Instant::now();
         let mut guard = bus.lock().await;
         let bus_wait_us = wait_start.elapsed().as_micros();
-        let during_refresh = crate::display_worker::is_refreshing();
+        let during_refresh = (touch.settings.is_display_refreshing)();
         let frame = touch.poll(&mut guard, irq.as_millis());
         drop(guard);
         let service_us = irq.elapsed().as_micros();

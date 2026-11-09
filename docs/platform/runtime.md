@@ -88,7 +88,8 @@ The runtime enables the assembled registrations before launching touch on the se
 Hardware event delivery and worker execution context remain separate choices.
 
 Touch retains a typed `SendSpawner` launch method because the current platform `WorkerSet` contract accepts only a local spawner.
-Touch still owns its pin configuration and forwards touch wake events to the suspend coordinator.
+Touch owns its pin configuration and reports wake events through a runtime-supplied interrupt callback.
+The runtime connects that callback to suspend wake capture and supplies a separate query for the retained wake result.
 Worker pause and wake arming remain separate from vector registration.
 
 This first interface covers callbacks for the shared GPIO vector only. It does not redirect HAL-managed USB or UART handlers.

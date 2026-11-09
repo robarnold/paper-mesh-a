@@ -232,7 +232,20 @@ fn initialize(
         error!("display: updates blocked; disconnect USB and hold BOOT for 3 seconds to power off");
         None
     };
-    let touch = touch::prepare(bus, peripherals.GPIO9, peripherals.GPIO3);
+    let touch = touch::prepare(
+        bus,
+        peripherals.GPIO9,
+        peripherals.GPIO3,
+        touch::Config {
+            rotation: paper_mesh_platform::rotation::PortraitRotation::new(
+                display::NATIVE_SCREEN_SIZE,
+            ),
+            did_observe_home: buttons::home,
+            did_wake: suspend::touch_interrupt,
+            was_wake_source: suspend::touch_woke,
+            is_display_refreshing: display_worker::is_refreshing,
+        },
+    );
     if let Some(touch) = &touch {
         interrupts.register(touch.interrupt);
     }

@@ -18,7 +18,11 @@ Home comes from the controller key report independently of coordinates. The firs
 Pen input stays unimplemented.
 
 [Goodix Programming Guide Rev.10][gt911-guide], sections 3.3, 4.2, and 5, defines identity, reset timing, and report handling.
-The adapter converts the fitted portrait coordinates through the shared native-to-portrait transform.
+The runtime supplies the native-to-portrait transform used to validate geometry and convert contacts.
+It connects HOME observations, touch wake capture, retained wake results, and refresh diagnostics through explicit callbacks.
+The adapter does not import the button, display, or suspend modules.
+The wake callback runs in GPIO interrupt context. It must not wait or access devices.
+HOME observations and refresh diagnostics run in the touch worker. Lifecycle restoration reads the retained wake result before contact processing resumes.
 
 ## Concurrent display and touch
 

@@ -63,6 +63,8 @@ ROM download and display inspection handlers depend on the platform contract ins
 The [ESP adapter crate](../crates/esp-adapters/README.md) owns USB hardware, session tracking, the RTC clock, and their service lifecycle coordination.
 USB preparation returns its lifecycle handle and a worker set that implements the platform contract. Firmware selects its spawner through `Execution::spawn`.
 Firmware retains board configuration, command dispatch, diagnostic providers, and system power coordination.
+Touch remains in firmware but receives geometry, HOME delivery, wake coordination, and refresh diagnostics through runtime configuration.
+Its remaining firmware dependency is the concrete shared bus type.
 
 ```mermaid
 flowchart TD
