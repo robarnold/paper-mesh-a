@@ -36,6 +36,9 @@ Link to that rule from other documents.
 
 ## Code comments and module documentation
 
+Give each public struct a brief Rust documentation comment that explains its purpose and responsibility.
+Include structs with restricted visibility, such as `pub(crate)` and `pub(super)`.
+
 Use inline comments to explain why the code makes a choice.
 Name the constraint it satisfies or the failure it prevents. Omit comments that only restate the operation.
 

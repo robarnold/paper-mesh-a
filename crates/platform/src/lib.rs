@@ -11,6 +11,7 @@
 
 use embedded_graphics::{pixelcolor::Gray4, prelude::*};
 
+pub mod acquisition;
 pub mod bus;
 pub mod composition;
 pub mod discovery;
@@ -19,6 +20,7 @@ pub mod input;
 pub mod location;
 pub mod power;
 pub mod power_off;
+pub mod readiness;
 pub mod rotation;
 pub mod rtc;
 pub mod suspend;

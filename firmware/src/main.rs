@@ -22,6 +22,7 @@ mod display_inspection;
 mod display_recovery;
 mod display_worker;
 mod execution;
+mod features;
 mod gnss;
 mod interrupts;
 mod lifecycle;
@@ -59,6 +60,8 @@ const RTC_POLICY: paper_mesh_platform::rtc::synchronization::Policy =
     };
 const POWER_OBSERVATION_INTERVAL: Duration = Duration::from_secs(2);
 
+static TOUCH_READINESS: StaticCell<paper_mesh_esp_adapters::readiness::GpioReadiness> =
+    StaticCell::new();
 static RTC_STATE: StaticCell<ClockState> = StaticCell::new();
 
 static APP: ConstStaticCell<App> = ConstStaticCell::new(App::unstarted());
@@ -232,25 +235,35 @@ fn initialize(
         error!("display: updates blocked; disconnect USB and hold BOOT for 3 seconds to power off");
         None
     };
-    let touch = touch::prepare(
-        bus,
+    let touch = touch::Touch::initialize(
+        &mut bus.try_lock().unwrap(),
         peripherals.GPIO9,
-        peripherals.GPIO3,
+        esp_hal::gpio::Flex::new(peripherals.GPIO3),
         touch::Config {
             rotation: paper_mesh_platform::rotation::PortraitRotation::new(
                 display::NATIVE_SCREEN_SIZE,
             ),
             did_observe_home: buttons::home,
-            did_wake: suspend::touch_interrupt,
-            was_wake_source: suspend::touch_woke,
+            cancel_after_resume: features::touch_wake::cancel_after_resume,
             is_display_refreshing: display_worker::is_refreshing,
         },
     );
-    if let Some(touch) = &touch {
-        interrupts.register(touch.interrupt);
-    }
+    let touch = touch.map(|(device, pin)| {
+        let provider =
+            TOUCH_READINESS.init(paper_mesh_esp_adapters::readiness::GpioReadiness::new(
+                pin,
+                esp_hal::gpio::Level::Low,
+                suspend::touch_interrupt,
+            ));
+        let (readiness, wake, interrupt) = provider.split();
+        features::touch_wake::initialize(wake);
+        interrupts.register(interrupt);
+        (device, readiness)
+    });
     interrupts.enable();
-    let touch_input = touch.map(|touch| {
+    let touch_input = touch.map(|(device, mut readiness)| {
+        readiness.start_capture();
+        let touch = touch::prepare(bus, device, readiness);
         touch
             .workers
             .spawn(execution.start_touch())

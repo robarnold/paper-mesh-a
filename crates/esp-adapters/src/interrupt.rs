@@ -12,16 +12,37 @@
 /// It runs in interrupt context and must not wait or perform device transactions.
 #[derive(Clone, Copy)]
 pub struct GpioInterruptHandler {
-    callback: fn(),
+    callback: Callback,
 }
 
 impl GpioInterruptHandler {
     pub const fn new(callback: fn()) -> Self {
-        Self { callback }
+        Self {
+            callback: Callback::Function(callback),
+        }
+    }
+
+    pub const fn for_client(client: &'static dyn GpioInterruptClient) -> Self {
+        Self {
+            callback: Callback::Client(client),
+        }
     }
 
     /// Dispatch even when another client caused the interrupt. The callback must tolerate no pending event.
     pub fn handle(&self) {
-        (self.callback)();
+        match self.callback {
+            Callback::Function(callback) => callback(),
+            Callback::Client(client) => client.handle_interrupt(),
+        }
     }
+}
+
+/// A runtime-owned GPIO source with stable storage for callback dispatch.
+pub trait GpioInterruptClient: Sync {
+    fn handle_interrupt(&self);
+}
+#[derive(Clone, Copy)]
+enum Callback {
+    Function(fn()),
+    Client(&'static dyn GpioInterruptClient),
 }

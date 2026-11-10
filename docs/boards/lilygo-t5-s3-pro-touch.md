@@ -7,7 +7,7 @@
 [`crates/gt911`](../../crates/gt911/src/lib.rs) implements the GT911 report protocol.
 The [crate guide](../../crates/gt911/README.md) records protocol references and test scope.
 The [ESP touch adapter](../adapters/touch.md) converts reports into platform `TouchFrame` values.
-It also supplies GPIO, reset, worker execution, and event delivery.
+It also supplies reset, worker execution, and event delivery. Firmware connects GPIO3 through the reusable readiness provider.
 The driver probes both documented addresses and checks the product identity.
 If neither probe succeeds, it applies the documented reset sequence and selects address `0x5D`.
 It records the existing configuration through USB without configuration writes.
@@ -33,10 +33,11 @@ Completion returns ownership and any error to core 0.
 The two existing PSRAM buffers remain sufficient. No frame copies occur during ownership transfer.
 
 GPIO3 uses the existing GT911 low-level interrupt mode from register `0x804D`.
-The GPIO handler records the interrupt time, disables that interrupt, and signals the touch worker.
+The GPIO readiness provider records interrupt observation time, disables that interrupt, and notifies the touch worker.
+It also observes an already-active level without requiring a new edge.
 The worker uses a priority-2 interrupt executor on core 0.
 The [firmware runtime](../platform/runtime.md#firmware-execution-placement) owns this executor and supplies its spawner to touch startup.
-It reads and acknowledges the report, then enables the GPIO interrupt after a 1 ms delay.
+The worker reads and acknowledges the report, then waits for readiness again after a 1 ms delay.
 A low level that remains pending triggers another interrupt.
 The driver does not change the controller configuration or poll it during idle periods.
 

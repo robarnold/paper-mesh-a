@@ -5,12 +5,13 @@ The `esp32s3` feature exposes the [USB adapter](../../docs/adapters/usb.md), [RT
 Firmware supplies device configuration, command dispatch, diagnostics, an executor, and an allocator.
 USB preparation returns a typed worker set. Firmware selects a local spawner for the set before using the lifecycle handle.
 The adapters do not depend on firmware or the application.
+The reusable [GPIO readiness provider](../../docs/adapters/gpio-readiness.md) separates acquisition notifications from reset, wake control, and worker execution.
 Touch converts GT911 reports into the platform [contact-frame contract](../../docs/services/input.md#contact-frame-contract).
 The RTC adapter receives synchronization policy, state storage, the shared ESP I2C bus, and location observations from the runtime.
 The runtime selects RTC and touch executors and bus queue capacity.
 RTC exposes a worker future for a runtime task. Touch owns its task and boxes its worker future once during preparation.
 
-Default features are empty. Native workspace checks run the adapter's session and lifecycle unit tests without ESP dependencies.
+Default features are empty. Native workspace checks run the adapter's session, lifecycle, and readiness unit tests without ESP dependencies.
 Firmware explicitly enables `esp32s3` and builds the adapter with its Xtensa target configuration.
 The two workspaces retain separate lockfiles. The native lockfile records optional hardware dependencies without compiling them.
 

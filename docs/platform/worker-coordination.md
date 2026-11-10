@@ -132,19 +132,9 @@ The runtime must coordinate touch separately when it needs all input workers sto
 
 ## Touch input integration
 
-The [touch module](../../crates/esp-adapters/src/touch.rs) returns a `TouchInputLifecycle` handle only after successful controller initialization.
-The runtime omits it when the shared bus or touch controller is unavailable.
-This handle stops contact reports and HOME input from the touch worker.
-
-The worker waits for a pause request or a controller interrupt.
-A pause request takes precedence when both are ready. A report already in progress finishes and releases the bus before preparation.
-Before acknowledgement, the worker disables normal touch interrupts, clears queued reports, and records whether contacts and HOME are idle.
-The system coordinator then decides whether touch can serve as a wake source.
-
-After release, the worker checks the contact state, pending pin level, and captured touch wake reason.
-It cancels uncertain contacts until an empty report confirms release, then resumes normal interrupt handling.
-Suspend cancellation follows the same restoration path. Power-off preparation leaves the worker paused until reset or power removal.
-The module retains its firmware wake hooks. Lifecycle coordination does not replace interrupt routing or wake-source policy.
+The touch adapter uses [acquisition control](readiness.md#acquisition-control) to await driver quiescence before logical input preparation.
+Its lifecycle participant restores logical state before releasing acquisition admission.
+The [touch adapter documentation](../adapters/touch.md#readiness-and-suspend) defines contact cleanup, canceled preparation, and wake integration.
 
 ## GNSS integration
 

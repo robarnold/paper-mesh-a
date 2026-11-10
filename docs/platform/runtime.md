@@ -79,19 +79,20 @@ Callbacks run in interrupt context. They must not wait or perform device transac
 
 The firmware [interrupt module](../../firmware/src/interrupts.rs) owns IO_MUX, vector installation, core selection, and bounded callback storage.
 It accepts registrations without naming clients. Registration order determines dispatch order, and capacity exhaustion fails during startup.
-The runtime registers suspend wake capture first, then touch if preparation succeeds.
+The runtime registers suspend wake capture first, then the GPIO readiness provider if touch initialization succeeds.
 It enables delivery on core 0 before launching the touch worker and keeps the existing default handler priority.
 Every vector entry calls all registered callbacks because multiple pins can be pending together.
 
-Touch preparation returns its interrupt registration, worker resources, and lifecycle handle together. It does not install a vector or launch work.
+The GPIO readiness provider returns separate signal, wake, and interrupt capabilities.
+The runtime starts capture after enabling interrupt delivery. Touch preparation accepts the signal and returns workers and a lifecycle handle.
 Suspend initialization independently returns its controller and wake registration. Wake delivery remains installed when touch or shared-bus initialization fails.
 The runtime enables the assembled registrations before launching touch on the selected interrupt executor.
 Hardware event delivery and worker execution context remain separate choices.
 
 Touch preparation accepts any supported bus queue capacity and returns workers with a concrete launch type.
 The adapter owns the task and launches it through the selected `SendSpawner`.
-Touch owns its pin configuration and reports wake events through a runtime-supplied interrupt callback.
-The runtime connects that callback to suspend wake capture and supplies a separate query for the retained wake result.
+The [readiness provider](../adapters/gpio-readiness.md) owns ordinary GPIO delivery and reports wake capture through a runtime-supplied callback.
+The runtime connects its separate wake handle to suspend and supplies restoration observations to touch.
 Worker pause and wake arming remain separate from vector registration.
 
 This first interface covers callbacks for the shared GPIO vector only. It does not redirect HAL-managed USB or UART handlers.

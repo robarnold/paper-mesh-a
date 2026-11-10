@@ -23,3 +23,6 @@ pub mod rtc;
 
 #[cfg(feature = "esp32s3")]
 pub mod touch;
+
+#[cfg(any(feature = "esp32s3", test))]
+pub mod readiness;

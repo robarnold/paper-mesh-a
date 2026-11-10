@@ -101,15 +101,11 @@ pub fn touch_interrupt() {
     record(wake::TOUCH);
 }
 
-pub fn touch_woke() -> bool {
-    WAKE_BITS.load(Ordering::Acquire) & wake::TOUCH != 0
-}
-
 fn disarm() {
     if crate::buttons::take_boot_interrupt(true) {
         record(wake::BOOT);
     }
-    if paper_mesh_esp_adapters::touch::disarm_wake() {
+    if crate::features::touch_wake::finish() {
         record(wake::TOUCH);
     }
     PIN.lock(|slot| {
@@ -150,7 +146,7 @@ async fn prepare(
     }
     crate::buttons::arm_boot_wake()?;
     if touch_wake {
-        paper_mesh_esp_adapters::touch::arm_wake()?;
+        crate::features::touch_wake::arm()?;
     }
     PIN.lock(|slot| {
         let mut slot = slot.borrow_mut();

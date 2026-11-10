@@ -29,6 +29,9 @@ Adapters receive spawners or expose worker futures. Firmware owns shared GPIO ro
 Its manifest uses path dependencies for the application, platform, and adapter crates.
 The ESP adapter crate participates in native checks with hardware features disabled. Firmware enables its `esp32s3` feature explicitly.
 
+Firmware [features](../firmware/src/features.rs) compose adapter capabilities with runtime policy.
+Each integration has its own submodule. Adapter mechanisms remain separate from these firmware connections.
+
 The platform owns calendar synchronization through its `Rtc` contract.
 The PCF8563 crate implements that contract without ESP peripherals or executor dependencies.
 The platform has no dependency on the PCF8563 crate.
@@ -43,7 +46,8 @@ The runtime supplies that handle to the suspend controller through the generic c
 The handle also implements the independent [power-off participant contract](services/power.md#power-off-participants).
 The runtime supplies this capability separately to the power-off coordinator.
 Power-off faults use watchdog reset and the normal startup checks before workers restart.
-RTC, USB, button-polling, touch-input, power-observation, and GNSS workers use explicit pause handles.
+RTC, USB, button-polling, power-observation, and GNSS workers use explicit pause handles.
+Touch uses [acquisition control](platform/readiness.md#acquisition-control) to separate driver quiescence from logical input preparation.
 The runtime combines their lifecycle handles in [service composition](../firmware/src/lifecycle.rs).
 The hardware coordinator remains independent of the selected adapters.
 The coordinator retains a system admission flag, but no global worker registry.
@@ -64,7 +68,9 @@ The [ESP adapter crate](../crates/esp-adapters/README.md) owns USB hardware, ses
 USB preparation returns its lifecycle handle and a worker set that implements the platform contract. Firmware selects its spawner through `Execution::spawn`.
 Firmware retains board configuration, command dispatch, diagnostic providers, and system power coordination.
 Touch adapters produce platform `TouchFrame` values under the [contact-frame contract](services/input.md#contact-frame-contract).
-GT911 register access stays in the chip driver. The ESP adapter converts reports and handles contact continuity, GPIO, and event delivery.
+GT911 register access stays in the chip driver. The ESP touch adapter converts reports and handles contact continuity and event delivery.
+A reusable [GPIO readiness provider](adapters/gpio-readiness.md) supplies acquisition notifications and owns pin masking, acknowledgement, and rearming.
+Firmware connects its signal, wake handle, and interrupt registration without a separate board crate.
 The [touch adapter](adapters/touch.md) receives geometry, HOME delivery, wake coordination, and refresh diagnostics through runtime configuration.
 Touch preparation accepts a shared ESP bus with runtime-selected queue capacity. The adapter owns its task, while firmware selects the spawner.
 One boxed worker future hides the capacity from the task type without changing bus arbitration.

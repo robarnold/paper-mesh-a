@@ -11,7 +11,6 @@
 mod input_lifecycle;
 pub use input_lifecycle::TouchInputLifecycle;
 
-use crate::interrupt::GpioInterruptHandler;
 use alloc::boxed::Box;
 use core::{
     cell::RefCell,
@@ -19,7 +18,6 @@ use core::{
 };
 use core::{future::Future, pin::Pin};
 use embassy_executor::{SendSpawner, SpawnError};
-use embassy_futures::select::{Either, select};
 use embassy_sync::{
     blocking_mutex::{Mutex, raw::CriticalSectionRawMutex},
     channel::Channel,
@@ -30,14 +28,15 @@ use embedded_graphics::prelude::Point;
 use esp_hal::{
     Blocking,
     delay::Delay,
-    gpio::{Event as GpioEvent, Flex, InputConfig, Level, Output, OutputConfig},
+    gpio::{Flex, InputConfig, Level, Output, OutputConfig},
     i2c::master::I2c,
     peripherals,
     system::Cpu,
 };
 use log::{error, info};
 use paper_mesh_gt911::{CONFIG_BYTES, Event, Frame, Gt911};
-use paper_mesh_platform::worker::{Pause, PauseWorker};
+use paper_mesh_platform::acquisition::{Acquisition, Reader};
+use paper_mesh_platform::readiness::Readiness;
 use paper_mesh_platform::{TouchEvent, input::contacts::TouchFrame, rotation::PortraitRotation};
 use static_cell::StaticCell;
 
@@ -49,27 +48,72 @@ pub struct Config {
     pub rotation: PortraitRotation,
     /// Called from the touch worker. None cancels uncertain HOME input.
     pub did_observe_home: fn(Option<bool>, u64),
-    /// Called in GPIO interrupt context. Must not wait or access devices.
-    pub did_wake: fn(),
-    /// Read the retained wake result after lifecycle restoration.
-    pub was_wake_source: fn() -> bool,
+    /// Consume retained wake capture and inspect current input activity during lifecycle restoration.
+    pub cancel_after_resume: fn() -> bool,
     /// Read display activity for diagnostics without waiting.
     pub is_display_refreshing: fn() -> bool,
 }
 
-struct InterruptPin {
-    pin: Flex<'static>,
-    did_wake: fn(),
-}
-
-static PIN: Mutex<CriticalSectionRawMutex, RefCell<Option<InterruptPin>>> =
-    Mutex::new(RefCell::new(None));
-static IRQ: Signal<CriticalSectionRawMutex, Instant> = Signal::new();
-static WAKE_ARMED: AtomicBool = AtomicBool::new(false);
 static WAKE_READY: AtomicBool = AtomicBool::new(false);
 static CHANGED: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 static EVENTS: Channel<CriticalSectionRawMutex, Sample, 32> = Channel::new();
-static INPUT_PAUSE: StaticCell<Pause<CriticalSectionRawMutex>> = StaticCell::new();
+static ACQUISITION: StaticCell<Acquisition<CriticalSectionRawMutex>> = StaticCell::new();
+static INPUT_STATE: StaticCell<InputState> = StaticCell::new();
+
+// The worker takes the device out only for an acquisition cycle, then returns it before waiting again.
+// Lifecycle code may inspect it only after acquisition quiescence has been acknowledged.
+struct InputState {
+    device: Mutex<CriticalSectionRawMutex, RefCell<Option<Touch>>>,
+}
+impl InputState {
+    fn new(device: Touch) -> Self {
+        Self {
+            device: Mutex::new(RefCell::new(Some(device))),
+        }
+    }
+    fn take(&self) -> Touch {
+        self.device.lock(|device| {
+            device
+                .borrow_mut()
+                .take()
+                .expect("touch device already acquired")
+        })
+    }
+    fn put(&self, device: Touch) {
+        self.device.lock(|slot| {
+            let mut slot = slot.borrow_mut();
+            assert!(slot.is_none());
+            *slot = Some(device);
+        });
+    }
+    fn prepare_suspend(&self) {
+        self.device.lock(|device| {
+            let device = device.borrow();
+            let device = device
+                .as_ref()
+                .expect("touch cleanup requires acquisition quiescence");
+            EVENTS.clear();
+            WAKE_READY.store(
+                device.driver.contacts_idle() && !device.home_pressed,
+                Ordering::Release,
+            );
+        });
+    }
+    fn restore(&self) {
+        self.device.lock(|device| {
+            let mut device = device.borrow_mut();
+            let device = device
+                .as_mut()
+                .expect("touch restoration requires acquisition quiescence");
+            // Consume wake observation even when contacts were already held so capture is not reused later.
+            let wake = (device.settings.cancel_after_resume)();
+            if !device.driver.contacts_idle() || wake {
+                device.driver.cancel();
+            }
+            WAKE_READY.store(false, Ordering::Release);
+        });
+    }
+}
 static STATS: Mutex<CriticalSectionRawMutex, RefCell<Statistics>> =
     Mutex::new(RefCell::new(Statistics::new()));
 
@@ -121,10 +165,9 @@ pub async fn changed() {
     CHANGED.wait().await;
 }
 
-/// Prepared touch resources. Register the interrupt before launching the worker.
+/// Prepared touch resources. Register the readiness provider before launching the worker.
 #[must_use]
 pub struct Prepared {
-    pub interrupt: GpioInterruptHandler,
     pub workers: Workers,
     pub lifecycle: TouchInputLifecycle,
 }
@@ -147,82 +190,28 @@ async fn worker(workers: Workers) {
     workers.future.await;
 }
 
-pub fn prepare<const N: usize>(
+pub fn prepare<const N: usize, R: Readiness + Send + 'static>(
     bus: &'static Bus<N>,
-    reset: peripherals::GPIO9<'static>,
-    interrupt: peripherals::GPIO3<'static>,
-    settings: Config,
-) -> Option<Prepared> {
-    assert!(Cpu::current() == Cpu::ProCpu);
-    let did_wake = settings.did_wake;
-    let (touch, pin) = Touch::new(&mut bus.try_lock().unwrap(), reset, interrupt, settings)?;
-    PIN.lock(|slot| slot.borrow_mut().replace(InterruptPin { pin, did_wake }));
-    let (pause, worker_pause) = INPUT_PAUSE.init(Pause::new()).split();
-    Some(Prepared {
-        interrupt: GpioInterruptHandler::new(interrupt_handler),
+    touch: Touch,
+    readiness: R,
+) -> Prepared {
+    let (control, reader) = ACQUISITION.init(Acquisition::new()).split(readiness);
+    let state = INPUT_STATE.init(InputState::new(touch));
+    Prepared {
         workers: Workers {
-            future: Box::pin(run(touch, bus, worker_pause)),
+            future: Box::pin(run(state, bus, reader)),
         },
-        lifecycle: TouchInputLifecycle { pause },
-    })
+        lifecycle: TouchInputLifecycle {
+            control,
+            state,
+            prepared: false,
+        },
+    }
 }
 
-fn interrupt_handler() {
-    PIN.lock(|slot| {
-        if let Some(InterruptPin { pin, did_wake }) = slot.borrow_mut().as_mut()
-            && pin.is_interrupt_set()
-        {
-            let now = Instant::now();
-            pin.unlisten();
-            pin.clear_interrupt();
-            if WAKE_ARMED.load(Ordering::Acquire) {
-                did_wake();
-            } else {
-                IRQ.signal(now);
-            }
-        }
-    });
-}
-
-pub fn arm_wake() -> Result<(), paper_mesh_platform::suspend::SuspendError> {
-    use paper_mesh_platform::suspend::SuspendError;
-    PIN.lock(|slot| {
-        let mut slot = slot.borrow_mut();
-        let pin = &mut slot.as_mut().ok_or(SuspendError::Unsupported)?.pin;
-        if !WAKE_READY.load(Ordering::Acquire) || pin.is_low() {
-            return Err(SuspendError::WakeActive);
-        }
-        pin.clear_interrupt();
-        WAKE_ARMED.store(true, Ordering::Release);
-        pin.listen(GpioEvent::LowLevel);
-        Ok(())
-    })
-}
-
-pub fn disarm_wake() -> bool {
-    PIN.lock(|slot| {
-        let armed = WAKE_ARMED.swap(false, Ordering::AcqRel);
-        if let Some(InterruptPin { pin, .. }) = slot.borrow_mut().as_mut()
-            && armed
-        {
-            let pending = pin.is_interrupt_set();
-            pin.unlisten();
-            pin.clear_interrupt();
-            pending
-        } else {
-            false
-        }
-    })
-}
-
-fn arm_interrupt() {
-    PIN.lock(|slot| {
-        let mut slot = slot.borrow_mut();
-        let pin = &mut slot.as_mut().unwrap().pin;
-        pin.clear_interrupt();
-        // A pending low level triggers immediately, including after a bus wait.
-        pin.listen(GpioEvent::LowLevel);
-    });
+/// Contact policy for wake admission. The runtime separately arms the electrical wake source.
+pub fn wake_ready() -> bool {
+    WAKE_READY.load(Ordering::Acquire)
 }
 
 pub struct Touch {
@@ -234,14 +223,14 @@ pub struct Touch {
 }
 
 impl Touch {
-    pub fn new(
+    pub fn initialize(
         bus: &mut I2c<'static, Blocking>,
         reset: peripherals::GPIO9<'static>,
-        interrupt: peripherals::GPIO3<'static>,
+        mut interrupt: Flex<'static>,
         settings: Config,
     ) -> Option<(Self, Flex<'static>)> {
+        assert!(Cpu::current() == Cpu::ProCpu);
         let mut reset = Output::new(reset, Level::High, OutputConfig::default());
-        let mut interrupt = Flex::new(interrupt);
         interrupt.set_input_enable(true);
         interrupt.apply_input_config(&InputConfig::default());
         Delay::new().delay_millis(100);
@@ -367,41 +356,17 @@ impl Touch {
     }
 }
 
-async fn run<const N: usize>(
-    mut touch: Touch,
+async fn run<const N: usize, R: Readiness + Send>(
+    state: &'static InputState,
     bus: &'static Bus<N>,
-    mut pause: PauseWorker<'static, CriticalSectionRawMutex>,
+    mut reader: Reader<'static, CriticalSectionRawMutex, R>,
 ) {
     assert!(Cpu::current() == Cpu::ProCpu);
-    info!("touch: worker started; core=0; GPIO3 low level");
+    info!("touch: worker started; core=0");
     loop {
-        arm_interrupt();
-        let irq = match select(pause.requested(), IRQ.wait()).await {
-            Either::First(()) => {
-                PIN.lock(|slot| {
-                    if let Some(InterruptPin { pin, .. }) = slot.borrow_mut().as_mut() {
-                        pin.unlisten();
-                        pin.clear_interrupt();
-                    }
-                });
-                EVENTS.clear();
-                let contacts_idle = touch.driver.contacts_idle();
-                WAKE_READY.store(contacts_idle && !touch.home_pressed, Ordering::Release);
-                pause.checkpoint().await;
-                let pending = PIN.lock(|slot| {
-                    slot.borrow()
-                        .as_ref()
-                        .is_some_and(|state| state.pin.is_low())
-                });
-                if !contacts_idle || pending || (touch.settings.was_wake_source)() {
-                    // Consume contacts from suspend until an empty report confirms release.
-                    touch.driver.cancel();
-                }
-                IRQ.reset();
-                continue;
-            }
-            Either::Second(irq) => irq,
-        };
+        let ready = reader.wait().await;
+        let irq = Instant::from_micros(ready.at_us);
+        let mut touch = state.take();
         let wait_start = Instant::now();
         let mut guard = bus.lock().await;
         let bus_wait_us = wait_start.elapsed().as_micros();
@@ -439,8 +404,9 @@ async fn run<const N: usize>(
             }
             CHANGED.signal(());
         }
+        state.put(touch);
         // Goodix Rev.10, section 5: allow 1 ms before a report retry.
-        // The next level interrupt also catches reports that arrive during this delay.
+        // The next readiness wait observes data that becomes active during this delay.
         Timer::after_millis(1).await;
     }
 }
