@@ -4,47 +4,72 @@
 //!
 //! - Require a valid sentence before selecting a baud rate so noise cannot establish
 //!   receiver activity.
+//! - Borrow large satellite storage so every receiver has configuration without a large construction temporary on the worker stack.
 //!
 //! See [LILYGO GNSS adapter](../../../docs/boards/lilygo-t5-s3-pro-gnss.md).
 
-use super::gsv::Gsv;
+use super::{config::Config, gsv::Gsv};
 use paper_mesh_platform::location::{
     Coordinates, LocationAvailability, LocationObservation, LocationSnapshot, MotionObservation,
     ReceiverActivity, UtcObservation, UtcTime,
 };
 use paper_mesh_platform::time::Date;
 
-pub const PROBE_MS: u64 = 4_000;
-pub const SILENCE_MS: u64 = 10_000;
-const BAUD_RATES: [u32; 2] = [9_600, 38_400];
+/// Large satellite aggregation storage borrowed by a configured receiver.
+/// Firmware keeps this in static memory to avoid constructing it on the worker stack.
+pub struct ReceiverStorage {
+    gsv: Gsv,
+}
 
-pub struct Receiver {
+impl ReceiverStorage {
+    pub const EMPTY: Self = Self { gsv: Gsv::EMPTY };
+}
+
+/// Bounded sentence decoder with required configuration and borrowed satellite storage.
+pub struct Receiver<'a> {
+    config: Config,
     frame: [u8; 128],
     length: usize,
     collecting: bool,
     rate: usize,
     deadline_ms: u64,
-    gsv: Gsv,
+    gsv: &'a mut Gsv,
     pub snapshot: LocationSnapshot,
 }
 
-impl Receiver {
-    pub const INITIAL: Self = Self {
-        frame: [0; 128],
-        length: 0,
-        collecting: false,
-        rate: 0,
-        deadline_ms: PROBE_MS,
-        gsv: Gsv::EMPTY,
-        snapshot: LocationSnapshot::new(),
-    };
+impl<'a> Receiver<'a> {
+    /// Borrow satellite storage and initialize a configured receiver without a large stack temporary.
+    pub fn new(storage: &'a mut ReceiverStorage, config: Config) -> Self {
+        storage.gsv.clear();
+        Self {
+            config,
+            frame: [0; 128],
+            length: 0,
+            collecting: false,
+            rate: 0,
+            deadline_ms: config.probe_ms.get(),
+            gsv: &mut storage.gsv,
+            snapshot: LocationSnapshot::new(),
+        }
+    }
+
+    /// Discard prior acquisition state while retaining configuration and storage ownership.
+    pub fn reset(&mut self) {
+        self.frame.fill(0);
+        self.length = 0;
+        self.collecting = false;
+        self.rate = 0;
+        self.deadline_ms = self.config.probe_ms.get();
+        self.gsv.clear();
+        self.snapshot = LocationSnapshot::new();
+    }
 
     pub fn start_at(&mut self, now_ms: u64) {
-        self.deadline_ms = now_ms.saturating_add(PROBE_MS);
+        self.deadline_ms = now_ms.saturating_add(self.config.probe_ms.get());
     }
 
     pub fn baud(&self) -> u32 {
-        BAUD_RATES[self.rate]
+        self.config.baud_rates.at(self.rate).get()
     }
     pub fn deadline_ms(&self) -> u64 {
         self.gsv
@@ -93,7 +118,7 @@ impl Receiver {
                 }
                 self.gsv.expire(now_ms);
                 self.snapshot.satellites = self.gsv.observation();
-                self.deadline_ms = now_ms.saturating_add(SILENCE_MS);
+                self.deadline_ms = now_ms.saturating_add(self.config.silence_ms.get());
                 return true;
             }
         } else if self.collecting {
@@ -121,7 +146,7 @@ impl Receiver {
         self.snapshot.satellites = None;
     }
 
-    /// After silence, both baud rates remain available for automatic recovery.
+    /// After silence, all configured baud rates remain available for automatic recovery.
     pub fn advance(&mut self, now_ms: u64) -> bool {
         let expired = self.gsv.expire(now_ms);
         if expired {
@@ -130,7 +155,11 @@ impl Receiver {
         if now_ms < self.deadline_ms {
             return expired;
         }
-        self.rate = (self.rate + 1) % BAUD_RATES.len();
+        self.rate = if self.rate == self.config.baud_rates.remaining.len() {
+            0
+        } else {
+            self.rate + 1
+        };
         self.collecting = false;
         self.length = 0;
         self.gsv.clear();
@@ -141,7 +170,7 @@ impl Receiver {
             self.snapshot.motion = None;
             self.snapshot.utc = None;
         }
-        self.deadline_ms = now_ms.saturating_add(PROBE_MS);
+        self.deadline_ms = now_ms.saturating_add(self.config.probe_ms.get());
         true
     }
 }

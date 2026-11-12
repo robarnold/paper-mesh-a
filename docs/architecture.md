@@ -56,6 +56,8 @@ GNSS reports hardware preparation failures through its lifecycle handle.
 The worker reads shared synchronization state after each pause so lifecycle invalidation reaches its next poll.
 Runtime configuration supplies polling intervals, observation age limits, correction thresholds, and calendar range to the synchronization service.
 Startup supplies location observations through a callback, so the RTC worker does not depend on the GNSS adapter.
+Firmware supplies GNSS baud candidates and acquisition timing through an explicit configuration value.
+Receiver decoding and UART execution consume this configuration. Auxiliary-rail control remains in firmware.
 
 The platform defines the [reply transport contract](services/connectivity.md#reply-transport) and [bounded request framing](services/connectivity.md#request-framing).
 Firmware selects frame capacity and owns JSON parsing and command routing.

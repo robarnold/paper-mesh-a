@@ -7,6 +7,12 @@
 //!
 //! See [LILYGO GNSS adapter](../../docs/boards/lilygo-t5-s3-pro-gnss.md).
 
+#[path = "../../firmware/src/gnss/config.rs"]
+#[expect(
+    dead_code,
+    reason = "The firmware worker consumes retry_ms; these tests exercise the receiver."
+)]
+mod config;
 #[path = "../../firmware/src/gnss/gsv.rs"]
 mod gsv;
 #[path = "../../firmware/src/gnss/lifecycle.rs"]
@@ -16,19 +22,32 @@ mod power;
 #[path = "../../firmware/src/gnss/receiver.rs"]
 mod receiver;
 
+use core::num::{NonZeroU32, NonZeroU64};
 use embedded_hal::i2c::{ErrorKind, ErrorType, I2c, Operation};
 use paper_mesh_platform::location::{
     Coordinates, Location, LocationAvailability, LocationSnapshot, SatelliteSystem, UtcTime,
 };
 use paper_mesh_platform::time::{Date, Month};
-use receiver::{PROBE_MS, Receiver, SILENCE_MS};
+use receiver::{Receiver, ReceiverStorage};
+
+const PROBE_MS: u64 = 4_000;
+const SILENCE_MS: u64 = 10_000;
+const CONFIG: config::Config = config::Config {
+    baud_rates: config::BaudRates {
+        first: NonZeroU32::new(9_600).unwrap(),
+        remaining: &[NonZeroU32::new(38_400).unwrap()],
+    },
+    probe_ms: NonZeroU64::new(PROBE_MS).unwrap(),
+    silence_ms: NonZeroU64::new(SILENCE_MS).unwrap(),
+    retry_ms: NonZeroU64::new(1_000).unwrap(),
+};
 
 fn sentence(body: &str) -> Vec<u8> {
     let checksum = body.bytes().fold(0, |sum, byte| sum ^ byte);
     format!("${body}*{checksum:02X}\r\n").into_bytes()
 }
 
-fn feed(receiver: &mut Receiver, bytes: &[u8], time: u64) -> usize {
+fn feed(receiver: &mut Receiver<'_>, bytes: &[u8], time: u64) -> usize {
     bytes
         .iter()
         .filter(|byte| receiver.feed(**byte, time))
@@ -43,7 +62,8 @@ fn vendor_rmc_example_decodes_across_arbitrary_uart_chunks() {
     // Quectel L76K protocol specification V1.1, section 2.2.1, page 11.
     let bytes = b"$GNRMC,071556.000,A,3149.29103,N,11706.92916,E,0.00,0.00,250420,,,A,V*09\r\n";
     for split in 0..bytes.len() {
-        let mut receiver = Receiver::INITIAL;
+        let mut storage = ReceiverStorage::EMPTY;
+        let mut receiver = Receiver::new(&mut storage, CONFIG);
         feed(&mut receiver, &bytes[..split], 10);
         assert_eq!(feed(&mut receiver, &bytes[split..], 20), 1);
         let motion = receiver.snapshot.motion.unwrap();
@@ -64,7 +84,8 @@ fn vendor_rmc_example_decodes_across_arbitrary_uart_chunks() {
 
 #[test]
 fn rmc_date_validation_never_reuses_a_previous_date() {
-    let mut receiver = Receiver::INITIAL;
+    let mut storage = ReceiverStorage::EMPTY;
+    let mut receiver = Receiver::new(&mut storage, CONFIG);
     for (date, expected) in [
         (
             "290224",
@@ -101,7 +122,8 @@ fn rmc_date_validation_never_reuses_a_previous_date() {
 fn rmc_converts_knots_and_accepts_optional_fields_and_talkers() {
     for talker in ["GP", "GN", "GL", "GA", "GB", "BD", "GQ", "GI"] {
         for suffix in [",,,A,V", ",,,D", ",,"] {
-            let mut receiver = Receiver::INITIAL;
+            let mut storage = ReceiverStorage::EMPTY;
+            let mut receiver = Receiver::new(&mut storage, CONFIG);
             let body = RMC.replace("GN", talker).replace(",,,A,V", suffix);
             feed(&mut receiver, &sentence(&body), 12);
             let motion = receiver.snapshot.motion.unwrap();
@@ -123,7 +145,8 @@ fn rmc_converts_knots_and_accepts_optional_fields_and_talkers() {
         ("4294968", "4294968", None, None),
         ("999999999999", "999999999999", None, None),
     ] {
-        let mut receiver = Receiver::INITIAL;
+        let mut storage = ReceiverStorage::EMPTY;
+        let mut receiver = Receiver::new(&mut storage, CONFIG);
         let body = RMC.replace("10.00,315.25", &format!("{speed},{course}"));
         feed(&mut receiver, &sentence(&body), 1);
         let motion = receiver.snapshot.motion.unwrap();
@@ -143,7 +166,8 @@ fn rmc_invalid_status_and_non_satellite_modes_clear_previous_values() {
         ("A", "M"),
         ("A", ""),
     ] {
-        let mut receiver = Receiver::INITIAL;
+        let mut storage = ReceiverStorage::EMPTY;
+        let mut receiver = Receiver::new(&mut storage, CONFIG);
         feed(&mut receiver, &sentence(RMC), 1);
         let body = RMC
             .replace(",A,", &format!(",{status},"))
@@ -156,7 +180,8 @@ fn rmc_invalid_status_and_non_satellite_modes_clear_previous_values() {
         assert_eq!(motion.observed_at_ms, 2);
     }
     for (status, mode) in [("D", "D"), ("A", "F"), ("A", "R")] {
-        let mut receiver = Receiver::INITIAL;
+        let mut storage = ReceiverStorage::EMPTY;
+        let mut receiver = Receiver::new(&mut storage, CONFIG);
         let body = RMC
             .replace(",A,", &format!(",{status},"))
             .replace(",,,A,V", &format!(",,,{mode},V"));
@@ -168,7 +193,8 @@ fn rmc_invalid_status_and_non_satellite_modes_clear_previous_values() {
 
 #[test]
 fn utc_rejects_invalid_time_without_discarding_motion_and_accepts_midnight() {
-    let mut receiver = Receiver::INITIAL;
+    let mut storage = ReceiverStorage::EMPTY;
+    let mut receiver = Receiver::new(&mut storage, CONFIG);
     for (time, expected) in [
         ("235959.999", UtcTime::new(23, 59, 59)),
         ("000000", UtcTime::new(0, 0, 0)),
@@ -196,7 +222,8 @@ fn utc_rejects_invalid_time_without_discarding_motion_and_accepts_midnight() {
 
 #[test]
 fn malformed_rmc_cannot_refresh_observations_and_transport_faults_clear_them() {
-    let mut receiver = Receiver::INITIAL;
+    let mut storage = ReceiverStorage::EMPTY;
+    let mut receiver = Receiver::new(&mut storage, CONFIG);
     feed(&mut receiver, &sentence(RMC), 10);
     let previous = receiver.snapshot;
     for body in [
@@ -223,7 +250,7 @@ fn malformed_rmc_cannot_refresh_observations_and_transport_faults_clear_them() {
     assert_eq!(receiver.snapshot.utc, None);
 }
 
-impl Location for Receiver {
+impl Location for Receiver<'_> {
     fn snapshot(&mut self, _now_ms: u64) -> LocationSnapshot {
         self.snapshot
     }
@@ -232,7 +259,8 @@ impl Location for Receiver {
 #[test]
 fn gga_and_other_messages_cannot_keep_motion_or_utc_current() {
     use paper_mesh_app::location::{LocationScreen, ReceiverStatus};
-    let mut receiver = Receiver::INITIAL;
+    let mut storage = ReceiverStorage::EMPTY;
+    let mut receiver = Receiver::new(&mut storage, CONFIG);
     let mut screen = LocationScreen::new();
     screen.open();
     feed(&mut receiver, &sentence(RMC), 100);
@@ -259,7 +287,8 @@ fn vendor_gga_example_decodes_across_arbitrary_uart_chunks() {
     // Quectel L76K protocol specification V1.1, section 2.2.2, page 13.
     let bytes = b"$GNGGA,071556.000,3149.29103,N,11706.92916,E,1,21,0.7,75.7,M,-5.0,M,,*69\r\n";
     for split in 0..bytes.len() {
-        let mut receiver = Receiver::INITIAL;
+        let mut storage = ReceiverStorage::EMPTY;
+        let mut receiver = Receiver::new(&mut storage, CONFIG);
         assert_eq!(feed(&mut receiver, &bytes[..split], 10), 0);
         assert_eq!(feed(&mut receiver, &bytes[split..], 20), 1);
         let observation = receiver.snapshot.observation.unwrap();
@@ -287,7 +316,8 @@ fn coordinates_keep_hemispheres_zero_and_boundary_values() {
             (-90_000_000, -180_000_000),
         ),
     ] {
-        let mut receiver = Receiver::INITIAL;
+        let mut storage = ReceiverStorage::EMPTY;
+        let mut receiver = Receiver::new(&mut storage, CONFIG);
         let body = format!("GPGGA,000000,{latitude},{ns},{longitude},{ew},1,08,1.0,0,M,0,M,,");
         assert_eq!(feed(&mut receiver, &sentence(&body), 5), 1);
         assert_eq!(
@@ -300,7 +330,8 @@ fn coordinates_keep_hemispheres_zero_and_boundary_values() {
 #[test]
 fn absent_and_non_satellite_fixes_clear_previous_coordinates() {
     for quality in [0, 3, 6, 7, 8] {
-        let mut receiver = Receiver::INITIAL;
+        let mut storage = ReceiverStorage::EMPTY;
+        let mut receiver = Receiver::new(&mut storage, CONFIG);
         feed(&mut receiver, &sentence(FIX), 1);
         let body = format!("GNGGA,071557,,,,,{quality},00,,,,,,,");
         assert_eq!(feed(&mut receiver, &sentence(&body), 2), 1);
@@ -314,7 +345,8 @@ fn absent_and_non_satellite_fixes_clear_previous_coordinates() {
 
 #[test]
 fn elevation_accepts_signed_meters_and_clears_invalid_or_missing_values() {
-    let mut receiver = Receiver::INITIAL;
+    let mut storage = ReceiverStorage::EMPTY;
+    let mut receiver = Receiver::new(&mut storage, CONFIG);
     for (text, unit, expected) in [
         ("75.7", "M", Some(75_700)),
         ("-430.5", "M", Some(-430_500)),
@@ -352,7 +384,8 @@ fn elevation_accepts_signed_meters_and_clears_invalid_or_missing_values() {
 
 #[test]
 fn malformed_reports_cannot_refresh_a_previous_fix() {
-    let mut receiver = Receiver::INITIAL;
+    let mut storage = ReceiverStorage::EMPTY;
+    let mut receiver = Receiver::new(&mut storage, CONFIG);
     feed(&mut receiver, &sentence(FIX), 10);
     let previous = receiver.snapshot;
     for body in [
@@ -394,7 +427,8 @@ fn vendor_gsv_groups_publish_only_after_completion_and_without_a_fix() {
         b"$GPGSV,3,3,12,29,48,275,42,30,20,069,38,193,69,062,42,195,46,160,42,0*6A\r\n",
     ];
     for split in 0..lines[0].len() {
-        let mut receiver = Receiver::INITIAL;
+        let mut storage = ReceiverStorage::EMPTY;
+        let mut receiver = Receiver::new(&mut storage, CONFIG);
         feed(&mut receiver, &lines[0][..split], 100);
         feed(&mut receiver, &lines[0][split..], 110);
         assert_eq!(receiver.snapshot.satellites, None);
@@ -415,7 +449,8 @@ fn vendor_gsv_groups_publish_only_after_completion_and_without_a_fix() {
 
 #[test]
 fn satellite_counts_deduplicate_signals_and_keep_constellations_separate() {
-    let mut receiver = Receiver::INITIAL;
+    let mut storage = ReceiverStorage::EMPTY;
+    let mut receiver = Receiver::new(&mut storage, CONFIG);
     for (body, time) in [
         (
             "GPGSV,2,1,05,01,45,180,10,02,30,090,,03,20,100,00,04,10,050,35,1",
@@ -452,13 +487,15 @@ fn incomplete_malformed_duplicate_and_old_gsv_groups_cannot_publish() {
         "GPGSV,2,2,06,05,10,050,20,06,10,050,21,1",
         "GPGSV,3,3,09,09,10,050,20,1",
     ] {
-        let mut receiver = Receiver::INITIAL;
+        let mut storage = ReceiverStorage::EMPTY;
+        let mut receiver = Receiver::new(&mut storage, CONFIG);
         feed(&mut receiver, &sentence(first), 1);
         feed(&mut receiver, &sentence(bad), 2);
         feed(&mut receiver, &sentence(last), 3);
         assert_eq!(receiver.snapshot.satellites, None, "{bad}");
     }
-    let mut receiver = Receiver::INITIAL;
+    let mut storage = ReceiverStorage::EMPTY;
+    let mut receiver = Receiver::new(&mut storage, CONFIG);
     feed(&mut receiver, &sentence(last), 1);
     assert_eq!(receiver.snapshot.satellites, None);
     feed(&mut receiver, &sentence(first), 2);
@@ -471,7 +508,8 @@ fn incomplete_malformed_duplicate_and_old_gsv_groups_cannot_publish() {
 
 #[test]
 fn satellite_reports_expire_while_other_messages_keep_receiver_active() {
-    let mut receiver = Receiver::INITIAL;
+    let mut storage = ReceiverStorage::EMPTY;
+    let mut receiver = Receiver::new(&mut storage, CONFIG);
     feed(&mut receiver, &sentence("GPGSV,1,1,01,01,45,180,42"), 10);
     feed(&mut receiver, &sentence(FIX), 20);
     feed(
@@ -498,7 +536,8 @@ fn satellite_reports_expire_while_other_messages_keep_receiver_active() {
 
 #[test]
 fn gsv_storage_overflow_is_explicit_and_expires() {
-    let mut receiver = Receiver::INITIAL;
+    let mut storage = ReceiverStorage::EMPTY;
+    let mut receiver = Receiver::new(&mut storage, CONFIG);
     for signal in 0..13 {
         feed(
             &mut receiver,
@@ -517,7 +556,8 @@ fn gsv_storage_overflow_is_explicit_and_expires() {
 
 #[test]
 fn noise_truncation_and_overflow_recover_at_the_next_sentence() {
-    let mut receiver = Receiver::INITIAL;
+    let mut storage = ReceiverStorage::EMPTY;
+    let mut receiver = Receiver::new(&mut storage, CONFIG);
     feed(&mut receiver, b"noise\xff$GNGGA,partial", 1);
     assert_eq!(feed(&mut receiver, &sentence(FIX), 2), 1);
     receiver.feed(b'$', 3);
@@ -536,7 +576,8 @@ fn noise_truncation_and_overflow_recover_at_the_next_sentence() {
 
 #[test]
 fn baud_probes_retry_without_a_fix_and_recover_after_silence() {
-    let mut receiver = Receiver::INITIAL;
+    let mut storage = ReceiverStorage::EMPTY;
+    let mut receiver = Receiver::new(&mut storage, CONFIG);
     receiver.start_at(0);
     assert_eq!(receiver.baud(), 9_600);
     receiver.uart_error();
@@ -651,5 +692,69 @@ fn suspend_supply_shutdown_preserves_other_outputs_and_propagates_errors() {
         assert_eq!(bus.registers, expected);
         power::enable(&mut bus).unwrap();
         assert_eq!(bus.registers, original);
+    }
+}
+
+// Runtime choices must control baud order, wraparound, and deadlines after both noise and valid input.
+#[test]
+fn custom_configuration_controls_acquisition_and_recovery() {
+    const CUSTOM_CONFIG: config::Config = config::Config {
+        baud_rates: config::BaudRates {
+            first: NonZeroU32::new(4_800).unwrap(),
+            remaining: &[
+                NonZeroU32::new(19_200).unwrap(),
+                NonZeroU32::new(115_200).unwrap(),
+            ],
+        },
+        probe_ms: NonZeroU64::new(25).unwrap(),
+        silence_ms: NonZeroU64::new(70).unwrap(),
+        retry_ms: NonZeroU64::new(3).unwrap(),
+    };
+    let config = CUSTOM_CONFIG;
+    let mut storage = ReceiverStorage::EMPTY;
+    let mut receiver = Receiver::new(&mut storage, config);
+    receiver.start_at(100);
+    assert_eq!(receiver.baud(), 4_800);
+    assert_eq!(receiver.deadline_ms(), 125);
+    assert!(!receiver.advance(124));
+    assert!(receiver.advance(125));
+    assert_eq!(receiver.baud(), 19_200);
+    assert_eq!(feed(&mut receiver, &sentence(FIX), 130), 1);
+    assert_eq!(receiver.deadline_ms(), 200);
+    assert!(!receiver.advance(199));
+    assert!(receiver.advance(200));
+    assert_eq!(receiver.baud(), 115_200);
+    assert_eq!(receiver.snapshot.observation, None);
+    assert_eq!(receiver.deadline_ms(), 225);
+    assert!(receiver.advance(225));
+    assert_eq!(receiver.baud(), 4_800);
+    feed(&mut receiver, &sentence(FIX), 230);
+    receiver.reset();
+    receiver.start_at(300);
+    assert_eq!(receiver.baud(), 4_800);
+    assert_eq!(receiver.deadline_ms(), 325);
+    assert_eq!(
+        receiver.snapshot,
+        paper_mesh_platform::location::LocationSnapshot::new()
+    );
+}
+
+// A required first candidate remains usable when there are no additional rates to probe.
+#[test]
+fn single_baud_candidate_retries_without_losing_configuration() {
+    let config = config::Config {
+        baud_rates: config::BaudRates {
+            first: NonZeroU32::new(115_200).unwrap(),
+            remaining: &[],
+        },
+        ..CONFIG
+    };
+    let mut storage = ReceiverStorage::EMPTY;
+    let mut receiver = Receiver::new(&mut storage, config);
+    receiver.start_at(0);
+    for deadline in [PROBE_MS, 2 * PROBE_MS] {
+        assert!(receiver.advance(deadline));
+        assert_eq!(receiver.baud(), 115_200);
+        assert_eq!(receiver.deadline_ms(), deadline + PROBE_MS);
     }
 }

@@ -7,6 +7,8 @@
 //!
 //! See [Transport and power](../../../docs/boards/lilygo-t5-s3-pro-gnss.md#transport-and-power).
 
+mod config;
+pub use config::{BaudRates, Config};
 mod gsv;
 mod lifecycle;
 pub use lifecycle::{GnssLifecycle, PreparationError};
@@ -23,17 +25,18 @@ use embassy_sync::{
 use embassy_time::{Instant, Timer};
 use esp_hal::{
     Blocking, peripherals,
-    uart::{Config, RxConfig, Uart, UartTx},
+    uart::{Config as UartConfig, RxConfig, Uart, UartTx},
 };
 use log::{error, info};
 use paper_mesh_platform::location::{Location, LocationAvailability, LocationSnapshot};
 use paper_mesh_platform::worker::{Pause, PauseWorker};
-use receiver::Receiver;
+use receiver::{Receiver, ReceiverStorage};
 use static_cell::{ConstStaticCell, StaticCell};
 
 use crate::bus::Bus;
 
-static RECEIVER: ConstStaticCell<Receiver> = ConstStaticCell::new(Receiver::INITIAL);
+static RECEIVER_STORAGE: ConstStaticCell<ReceiverStorage> =
+    ConstStaticCell::new(ReceiverStorage::EMPTY);
 static STATE: Mutex<CriticalSectionRawMutex, RefCell<LocationSnapshot>> =
     Mutex::new(RefCell::new(LocationSnapshot::new()));
 static CHANGED: Signal<CriticalSectionRawMutex, ()> = Signal::new();
@@ -57,8 +60,8 @@ fn publish(snapshot: LocationSnapshot) {
     CHANGED.signal(());
 }
 
-fn config(baud: u32) -> Config {
-    Config::default().with_baudrate(baud).with_rx(
+fn uart_config(baud: u32) -> UartConfig {
+    UartConfig::default().with_baudrate(baud).with_rx(
         RxConfig::default()
             .with_fifo_full_threshold(32)
             .with_timeout(10),
@@ -71,9 +74,10 @@ pub fn start(
     uart: peripherals::UART1<'static>,
     rx: peripherals::GPIO44<'static>,
     tx: peripherals::GPIO43<'static>,
+    config: Config,
 ) -> GnssLifecycle {
     let (pause, worker_pause) = PAUSE.init(Pause::new()).split();
-    spawner.spawn(worker(bus, uart, rx, tx, worker_pause).unwrap());
+    spawner.spawn(worker(bus, uart, rx, tx, worker_pause, config).unwrap());
     GnssLifecycle {
         pause,
         report: &PREPARATION,
@@ -99,13 +103,17 @@ async fn worker(
     mut rx: peripherals::GPIO44<'static>,
     mut tx: peripherals::GPIO43<'static>,
     mut pause: PauseWorker<'static, CriticalSectionRawMutex>,
+    config: Config,
 ) {
-    let receiver = RECEIVER.take();
+    let mut receiver = Receiver::new(RECEIVER_STORAGE.take(), config);
     loop {
         if pause.is_requested() {
             // HAL sleep polls every UART transmitter. Keep UART1 clocked after RX drops,
             // or that poll cannot finish. This idle driver has no pins or RX wake lock.
-            let idle_uart = UartTx::new(peripheral.reborrow(), config(9_600));
+            let idle_uart = UartTx::new(
+                peripheral.reborrow(),
+                uart_config(config.baud_rates.first.get()),
+            );
             let result = {
                 let mut bus = bus.lock().await;
                 power::disable(&mut *bus)
@@ -122,26 +130,37 @@ async fn worker(
         if let Err(error) = enable_power(bus).await {
             error!("GNSS: supply enable failed: {:?}", error);
             fault();
-            select(Timer::after_millis(1_000), pause.requested()).await;
+            select(
+                Timer::after_millis(config.retry_ms.get()),
+                pause.requested(),
+            )
+            .await;
             continue;
         }
-        let uart = match Uart::new(peripheral.reborrow(), config(9_600)) {
+        let uart = match Uart::new(
+            peripheral.reborrow(),
+            uart_config(config.baud_rates.first.get()),
+        ) {
             Ok(uart) => uart.with_rx(rx.reborrow()).with_tx(tx.reborrow()),
             Err(error) => {
                 error!("GNSS: UART configuration failed: {:?}", error);
                 fault();
-                select(Timer::after_millis(1_000), pause.requested()).await;
+                select(
+                    Timer::after_millis(config.retry_ms.get()),
+                    pause.requested(),
+                )
+                .await;
                 continue;
             }
         };
-        *receiver = Receiver::INITIAL;
+        receiver.reset();
         info!("GNSS: auxiliary supply enabled; core=0; RX44/TX43");
-        select(pause.requested(), receive(uart, receiver)).await;
+        select(pause.requested(), receive(uart, &mut receiver)).await;
         // Cancellation drops UART RX and its wake lock before the pause acknowledgement.
     }
 }
 
-async fn receive(uart: Uart<'_, Blocking>, receiver: &mut Receiver) {
+async fn receive(uart: Uart<'_, Blocking>, receiver: &mut Receiver<'_>) {
     let mut uart = uart.into_async();
     receiver.start_at(Instant::now().as_millis());
     publish(receiver.snapshot);
@@ -171,7 +190,7 @@ async fn receive(uart: Uart<'_, Blocking>, receiver: &mut Receiver) {
                 }
                 receiver.uart_error();
                 // Reconfiguration clears the FIFO after an error.
-                if uart.apply_config(&config(receiver.baud())).is_err() {
+                if uart.apply_config(&uart_config(receiver.baud())).is_err() {
                     fault();
                     return;
                 }
@@ -184,7 +203,7 @@ async fn receive(uart: Uart<'_, Blocking>, receiver: &mut Receiver) {
         if receiver.advance(Instant::now().as_millis()) {
             if receiver.baud() != previous_baud {
                 info!("GNSS: probe at {} baud", receiver.baud());
-                if uart.apply_config(&config(receiver.baud())).is_err() {
+                if uart.apply_config(&uart_config(receiver.baud())).is_err() {
                     fault();
                     return;
                 }

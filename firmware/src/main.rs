@@ -35,6 +35,7 @@ use paper_mesh_esp_adapters::touch;
 use paper_mesh_esp_adapters::usb;
 mod usb_protocol;
 
+use core::num::{NonZeroU32, NonZeroU64};
 use embassy_executor::Spawner;
 use embassy_futures::select::{Either, select, select4};
 use embassy_time::{Duration, Instant, Timer, with_timeout};
@@ -57,6 +58,15 @@ const RTC_POLICY: paper_mesh_platform::rtc::synchronization::Policy =
         first_year: 2000,
         last_year: 2099,
     };
+const GNSS_CONFIG: gnss::Config = gnss::Config {
+    baud_rates: gnss::BaudRates {
+        first: NonZeroU32::new(9_600).unwrap(),
+        remaining: &[NonZeroU32::new(38_400).unwrap()],
+    },
+    probe_ms: NonZeroU64::new(4_000).unwrap(),
+    silence_ms: NonZeroU64::new(10_000).unwrap(),
+    retry_ms: NonZeroU64::new(1_000).unwrap(),
+};
 const POWER_OBSERVATION_INTERVAL: Duration = Duration::from_secs(2);
 
 static TOUCH_READINESS: StaticCell<paper_mesh_esp_adapters::readiness::GpioReadiness> =
@@ -202,6 +212,7 @@ fn initialize(
         peripherals.UART1,
         peripherals.GPIO44,
         peripherals.GPIO43,
+        GNSS_CONFIG,
     );
     execution
         .spawn(rtc_worker.prepare(bus, |now_ms| gnss::FirmwareLocation.snapshot(now_ms)))

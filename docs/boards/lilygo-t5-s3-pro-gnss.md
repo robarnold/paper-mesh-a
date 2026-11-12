@@ -5,6 +5,21 @@
 This document describes the current receiver adapter.
 The [location contract](../services/location.md) defines its portable observations.
 
+## Configuration
+
+The firmware [entry point](../../firmware/src/main.rs) supplies `GNSS_CONFIG` to the receiver worker.
+The [configuration type](../../firmware/src/gnss/config.rs) contains ordered baud candidates, probe and silence durations, and the hardware retry delay.
+`BaudRates` requires a first candidate and permits additional candidates in static storage.
+Rates use `NonZeroU32`. Durations use `NonZeroU64` milliseconds. These types exclude empty candidate lists and zero values without runtime validation.
+
+Acquisition starts with the first candidate and advances through the list when the probe deadline expires.
+A valid sentence replaces the probe deadline with the silence deadline. Noise does not extend either deadline.
+Resume restarts acquisition with the same configuration. Supply-enable and UART-construction failures use the configured retry delay.
+
+Large satellite storage remains static. `Receiver::new` requires configuration and borrows that storage without constructing a large stack temporary.
+The receiver always has configuration. An in-place reset clears prior observations while retaining configuration and the storage borrow.
+UART FIFO settings, sentence capacities, and satellite-group expiry remain implementation details of their existing modules.
+
 ## Transport and power
 
 The [firmware runtime](../platform/runtime.md#firmware-execution-placement) supplies the GNSS worker's interrupt-executor spawner.
