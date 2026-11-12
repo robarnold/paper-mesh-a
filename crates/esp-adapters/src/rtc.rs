@@ -5,13 +5,16 @@
 //! - Connect the shared bus clock to GPS synchronization so valid retained time
 //!   remains available between receiver reports.
 //! - Receive policy, storage, and bus capacity from the runtime so board choices stay outside the adapter.
+//! - Box the worker future once so the adapter can own task storage without fixing the shared bus capacity.
 //!
 //! See [ESP clock integration](../../../docs/adapters/rtc.md#esp-clock-integration).
 
 use paper_mesh_pcf8563::Pcf8563;
 use paper_mesh_platform::rtc::synchronization as service;
 
-use core::cell::RefCell;
+use alloc::boxed::Box;
+use core::{cell::RefCell, future::Future, pin::Pin};
+use embassy_executor::{SpawnError, Spawner};
 use embassy_futures::select::select;
 use embassy_sync::blocking_mutex::{Mutex, raw::CriticalSectionRawMutex};
 use embassy_time::{Instant, Timer};
@@ -22,7 +25,7 @@ use paper_mesh_platform::{
     power_off::PowerOffParticipant,
     suspend::SuspendParticipant,
     time::UtcDateTime,
-    worker::{Pause, PauseControl, PauseWorker},
+    worker::{Pause, PauseControl, PauseWorker, WorkerSet},
 };
 
 use esp_hal::{Blocking, i2c::master::I2c};
@@ -59,6 +62,7 @@ impl ClockState {
     }
 }
 
+/// Calendar access and lifecycle control paired with the adapter's acquisition worker.
 pub struct RtcClock {
     state: &'static Mutex<CriticalSectionRawMutex, RefCell<Service>>,
     pause: PauseControl<'static, CriticalSectionRawMutex>,
@@ -68,6 +72,24 @@ pub struct RtcClock {
 pub struct ClockWorker {
     state: &'static Mutex<CriticalSectionRawMutex, RefCell<Service>>,
     pause: PauseWorker<'static, CriticalSectionRawMutex>,
+}
+
+/// Prepared RTC work with bus capacity hidden from the executor task type.
+#[must_use]
+pub struct Workers {
+    future: Pin<Box<dyn Future<Output = ()> + 'static>>,
+}
+
+impl WorkerSet for Workers {
+    fn spawn(self, spawner: Spawner) -> Result<(), SpawnError> {
+        spawner.spawn(worker(self)?);
+        Ok(())
+    }
+}
+
+#[embassy_executor::task]
+async fn worker(workers: Workers) {
+    workers.future.await;
 }
 
 impl Clock for RtcClock {
@@ -130,13 +152,23 @@ impl PowerOffParticipant for RtcClock {
 }
 
 impl ClockWorker {
-    /// Run on the caller's executor with its shared ESP I2C bus and location source.
-    /// The queue capacity remains a runtime choice. This future owns the worker endpoint.
-    pub async fn run<const N: usize>(
+    /// Prepare the worker with the runtime's bus and location source, after allocator initialization.
+    /// Allocate its future once to preserve runtime-selected bus capacity without a firmware task wrapper.
+    pub fn prepare<const N: usize>(
         self,
         bus: &'static Arbitrated<CriticalSectionRawMutex, I2c<'static, Blocking>, N>,
         location: fn(u64) -> LocationSnapshot,
-    ) -> ! {
+    ) -> Workers {
+        Workers {
+            future: Box::pin(self.run(bus, location)),
+        }
+    }
+
+    async fn run<const N: usize>(
+        self,
+        bus: &'static Arbitrated<CriticalSectionRawMutex, I2c<'static, Blocking>, N>,
+        location: fn(u64) -> LocationSnapshot,
+    ) {
         let ClockWorker { state, mut pause } = self;
         let mut faulted = false;
         loop {

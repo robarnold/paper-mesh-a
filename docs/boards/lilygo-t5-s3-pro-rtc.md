@@ -7,7 +7,7 @@
 This board uses the [PCF8563 calendar adapter](../adapters/rtc.md).
 That document defines device access and calendar validity.
 The platform [time service](../services/time.md#calendar-synchronization) defines synchronization and cache behavior.
-The [firmware task](../../firmware/src/rtc.rs) runs the [ESP clock adapter](../adapters/rtc.md#esp-clock-integration) with the shared I2C bus.
+Firmware supplies the shared I2C bus and launches the [ESP clock adapter's workers](../adapters/rtc.md#esp-clock-integration) on the main executor.
 Runtime lifecycle composition connects the clock handle to suspend coordination.
 The [runtime](../../firmware/src/main.rs) selects synchronization policy and owns the cache and pause storage.
 Clock and worker endpoints share that configured state. The worker does not select age limits or correction thresholds.

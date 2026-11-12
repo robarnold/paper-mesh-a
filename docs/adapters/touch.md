@@ -31,7 +31,7 @@ This avoids an allocated future for each bus acquisition or custom unsafe storag
 The allocation remains owned by the worker for its lifetime.
 
 USB uses the platform `WorkerSet` contract with a local spawner. Touch accepts `SendSpawner` directly because it runs on an interrupt executor.
-RTC still exposes a worker future for its runtime-owned concrete task.
+RTC also implements `WorkerSet` and owns its concrete task.
 
 ## Contact delivery
 

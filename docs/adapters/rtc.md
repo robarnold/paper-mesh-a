@@ -26,10 +26,16 @@ The runtime initializes `ClockState` with its policy, then splits matching `RtcC
 It owns static storage and supplies a location callback. The adapter has no dependency on the GNSS implementation.
 The runtime also owns bus initialization, pins, frequency, timeout, and queue capacity.
 
-`ClockWorker::run` accepts the shared ESP I2C bus with its caller-selected queue capacity.
-The [firmware task](../../firmware/src/rtc.rs) supplies the concrete type and executor task entry point.
+`ClockWorker::prepare` accepts the shared ESP I2C bus with its caller-selected queue capacity and returns `Workers`.
+The adapter owns the Embassy task and its storage. `Workers` implements the platform `WorkerSet` contract.
+Firmware launches it through `Execution::spawn`, which supplies the main executor's spawner.
 The adapter owns the polling loop and waits for deadlines selected by the platform synchronization service.
 This separates executor selection from service timing without another scheduling policy.
+
+Preparation requires an initialized allocator and allocates the complete worker future once.
+The boxed future retains the concrete bus reference and hides its capacity from the task type.
+Polling uses dynamic dispatch but adds no allocation per calendar read or synchronization cycle.
+The adapter owns this future for the task's lifetime. Shared-bus arbitration and lifecycle ordering remain unchanged.
 
 The [pause protocol](../platform/worker-coordination.md#rtc-integration) requires completed access and cache publication before acknowledgement.
 Suspend restoration invalidates cached UTC before worker release. Power-off preparation leaves the retained hardware counter running.

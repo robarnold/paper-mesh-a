@@ -9,7 +9,8 @@ The reusable [GPIO readiness provider](../../docs/adapters/gpio-readiness.md) se
 Touch converts GT911 reports into the platform [contact-frame contract](../../docs/services/input.md#contact-frame-contract).
 The RTC adapter receives synchronization policy, state storage, the shared ESP I2C bus, and location observations from the runtime.
 The runtime selects RTC and touch executors and bus queue capacity.
-RTC exposes a worker future for a runtime task. Touch owns its task and boxes its worker future once during preparation.
+RTC and touch own their tasks and box their worker futures once during preparation to hide the bus capacity.
+RTC workers implement the platform `WorkerSet` contract. Firmware selects the spawner.
 
 Default features are empty. Native workspace checks run the adapter's session, lifecycle, and readiness unit tests without ESP dependencies.
 Firmware explicitly enables `esp32s3` and builds the adapter with its Xtensa target configuration.

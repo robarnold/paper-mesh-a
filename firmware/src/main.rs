@@ -28,7 +28,6 @@ mod interrupts;
 mod lifecycle;
 mod power;
 mod recovery;
-mod rtc;
 #[cfg(feature = "radio-scan-demo")]
 mod scan_demo;
 mod suspend;
@@ -204,14 +203,9 @@ fn initialize(
         peripherals.GPIO44,
         peripherals.GPIO43,
     );
-    spawner.spawn(
-        rtc::worker(
-            bus,
-            |now_ms| gnss::FirmwareLocation.snapshot(now_ms),
-            rtc_worker,
-        )
-        .unwrap(),
-    );
+    execution
+        .spawn(rtc_worker.prepare(bus, |now_ms| gnss::FirmwareLocation.snapshot(now_ms)))
+        .expect("RTC worker launch failed");
     let power_observation =
         power::observation::start_observation(spawner, bus, POWER_OBSERVATION_INTERVAL);
     let panel = if display_safe.is_some_and(|result| {

@@ -35,8 +35,9 @@ Each integration has its own submodule. Adapter mechanisms remain separate from 
 The platform owns calendar synchronization through its `Rtc` contract.
 The PCF8563 crate implements that contract without ESP peripherals or executor dependencies.
 The platform has no dependency on the PCF8563 crate.
-The ESP adapter crate owns RTC clock reads, lifecycle handling, and the polling loop.
+The ESP adapter crate owns RTC clock reads, lifecycle handling, the polling loop, and the concrete Embassy task.
 Firmware retains synchronization policy, state storage, shared bus ownership, task startup, and system suspend coordination.
+RTC preparation hides bus capacity in one boxed future. Firmware launches its `WorkerSet` through the selected executor.
 The platform supplies [bus arbitration](platform/shared-bus.md) for asynchronous and synchronous clients without hardware dependencies.
 Firmware selects the bus driver, pins, storage, raw mutex, and queue capacity.
 The platform supplies a [worker pause channel](platform/worker-coordination.md) with separate controller and worker endpoints.

@@ -28,13 +28,15 @@ Adapters accept the selected spawner or expose a worker future. They do not allo
 
 The platform [WorkerSet contract](../../crates/platform/src/worker.rs) accepts an Embassy spawner selected by firmware through `Execution::spawn`.
 It consumes a concrete worker set. The empty set is `()`, which launches no work.
-USB supplies a [set of four private workers](../adapters/usb.md#worker-preparation-and-placement) as the first consumer.
+USB supplies a [set of four private workers](../adapters/usb.md#worker-preparation-and-placement).
+RTC supplies a [single prepared worker](../adapters/rtc.md#esp-clock-integration) through the same contract.
 Other adapters retain their existing spawner or worker-future interfaces.
 
 Adapters own worker membership, resources, and launch order. Firmware selects the spawner without knowledge of individual workers.
 All workers in the current contract share one local spawner. Per-worker executor selection is outside this contract.
 Workers are async tasks, not necessarily OS threads. Several workers can share one executor and its thread.
-USB retains concrete worker resources without allocation or type erasure. Touch boxes its worker future once to hide the bus capacity from task storage.
+USB retains concrete worker resources without allocation or type erasure.
+RTC and touch box their worker futures once to hide the bus capacity from task storage.
 Both preserve the `Send` restrictions required by their selected spawner.
 The interface does not assign priorities or describe peripheral interrupt bindings.
 
