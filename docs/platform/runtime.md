@@ -30,7 +30,8 @@ The platform [WorkerSet contract](../../crates/platform/src/worker.rs) accepts a
 It consumes a concrete worker set. The empty set is `()`, which launches no work.
 USB supplies a [set of four private workers](../adapters/usb.md#worker-preparation-and-placement).
 RTC supplies a [single prepared worker](../adapters/rtc.md#esp-clock-integration) through the same contract.
-Other adapters retain their existing spawner or worker-future interfaces.
+GNSS preparation returns concrete workers and a lifecycle handle. Firmware establishes admission policy before launching them with its selected `SendSpawner`.
+Other adapters retain their existing launch interfaces.
 
 Adapters own worker membership, resources, and launch order. Firmware selects the spawner without knowledge of individual workers.
 All workers in the current contract share one local spawner. Per-worker executor selection is outside this contract.

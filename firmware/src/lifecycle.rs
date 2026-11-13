@@ -9,9 +9,19 @@
 
 use paper_mesh_platform::{power_off::PowerOffParticipant, suspend::SuspendParticipant};
 
+type AuxiliaryPower = crate::features::auxiliary_power::Coordinator<
+    crate::auxiliary_rail::AuxiliaryRail,
+    crate::gnss::GnssLifecycle,
+>;
+type Error = crate::features::auxiliary_power::Error<
+    crate::gnss::PreparationError,
+    esp_hal::i2c::master::Error,
+>;
+
+/// Runtime-owned lifecycle ordering for services and shared power dependencies.
 pub struct Services {
     /// Absent when shared-bus initialization prevented receiver startup.
-    pub gnss: Option<crate::gnss::GnssLifecycle>,
+    pub auxiliary: Option<AuxiliaryPower>,
     pub clock: paper_mesh_esp_adapters::rtc::RtcClock,
     pub usb: crate::usb::UsbLifecycle,
     pub button_polling: crate::buttons::ButtonPollingLifecycle,
@@ -22,9 +32,24 @@ pub struct Services {
 }
 
 impl Services {
+    pub async fn poll_startup(&mut self, now_ms: u64) {
+        if let Some(auxiliary) = &mut self.auxiliary
+            && let Err(error) = auxiliary.poll_startup(now_ms).await
+        {
+            log::error!("auxiliary rail: startup failed: {:?}", error);
+            crate::gnss::fault();
+        }
+    }
+
+    pub fn next_startup_ms(&self) -> u64 {
+        self.auxiliary
+            .as_ref()
+            .map_or(u64::MAX, AuxiliaryPower::next_startup_ms)
+    }
+
     pub fn request_pause(&mut self) {
-        if let Some(gnss) = &mut self.gnss {
-            gnss.request_pause();
+        if let Some(auxiliary) = &mut self.auxiliary {
+            auxiliary.consumers.request_pause();
         }
         self.clock.request_pause();
         self.usb.request_pause();
@@ -39,7 +64,7 @@ impl Services {
 }
 
 impl SuspendParticipant for Services {
-    type Error = crate::gnss::PreparationError;
+    type Error = Error;
 
     async fn will_suspend(&mut self, deadline_ms: u64) -> Result<(), Self::Error> {
         self.usb.will_suspend(deadline_ms).await?;
@@ -51,15 +76,15 @@ impl SuspendParticipant for Services {
             observation.will_suspend(deadline_ms).await?;
         }
         self.clock.will_suspend(deadline_ms).await?;
-        if let Some(gnss) = &mut self.gnss {
-            gnss.will_suspend(deadline_ms).await?;
+        if let Some(auxiliary) = &mut self.auxiliary {
+            auxiliary.will_suspend(deadline_ms).await?;
         }
         Ok(())
     }
 
     async fn did_resume(&mut self, deadline_ms: u64) -> Result<(), Self::Error> {
-        if let Some(gnss) = &mut self.gnss {
-            gnss.did_resume(deadline_ms).await?;
+        if let Some(auxiliary) = &mut self.auxiliary {
+            auxiliary.did_resume(deadline_ms).await?;
         }
         self.clock.did_resume(deadline_ms).await?;
         if let Some(observation) = &mut self.power_observation {
@@ -74,8 +99,8 @@ impl SuspendParticipant for Services {
     }
 
     async fn did_cancel_suspend(&mut self, deadline_ms: u64) -> Result<(), Self::Error> {
-        if let Some(gnss) = &mut self.gnss {
-            gnss.did_cancel_suspend(deadline_ms).await?;
+        if let Some(auxiliary) = &mut self.auxiliary {
+            auxiliary.did_cancel_suspend(deadline_ms).await?;
         }
         self.clock.did_cancel_suspend(deadline_ms).await?;
         if let Some(observation) = &mut self.power_observation {
@@ -91,7 +116,7 @@ impl SuspendParticipant for Services {
 }
 
 impl PowerOffParticipant for Services {
-    type Error = crate::gnss::PreparationError;
+    type Error = Error;
 
     async fn will_power_off(&mut self, deadline_ms: u64) -> Result<(), Self::Error> {
         self.usb.will_power_off(deadline_ms).await?;
@@ -103,8 +128,8 @@ impl PowerOffParticipant for Services {
             observation.will_power_off(deadline_ms).await?;
         }
         self.clock.will_power_off(deadline_ms).await?;
-        if let Some(gnss) = &mut self.gnss {
-            gnss.will_power_off(deadline_ms).await?;
+        if let Some(auxiliary) = &mut self.auxiliary {
+            auxiliary.will_power_off(deadline_ms).await?;
         }
         Ok(())
     }

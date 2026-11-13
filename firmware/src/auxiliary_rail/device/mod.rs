@@ -5,7 +5,7 @@
 //! - Change only the auxiliary rail bit because the expander also controls unrelated
 //!   board signals.
 //!
-//! See [Shared buses, power domains, and wake routing](../../../docs/boards/lilygo-t5-s3-pro.md#shared-buses-power-domains-and-wake-routing).
+//! See [Shared buses, power domains, and wake routing](../../../../docs/boards/lilygo-t5-s3-pro.md#shared-buses-power-domains-and-wake-routing).
 
 pub fn enable<I: embedded_hal::i2c::I2c>(bus: &mut I) -> Result<(), I::Error> {
     let mut value = [0];
@@ -23,3 +23,6 @@ pub fn disable<I: embedded_hal::i2c::I2c>(bus: &mut I) -> Result<(), I::Error> {
     bus.write_read(0x20, &[2], &mut value)?;
     bus.write(0x20, &[2, value[0] & !1])
 }
+
+#[cfg(test)]
+mod tests;

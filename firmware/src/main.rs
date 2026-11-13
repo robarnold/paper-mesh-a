@@ -12,6 +12,7 @@
 
 extern crate alloc;
 
+mod auxiliary_rail;
 mod bus;
 mod buttons;
 mod device_control;
@@ -67,6 +68,7 @@ const GNSS_CONFIG: gnss::Config = gnss::Config {
     silence_ms: NonZeroU64::new(10_000).unwrap(),
     retry_ms: NonZeroU64::new(1_000).unwrap(),
 };
+const AUXILIARY_RAIL_RETRY_MS: NonZeroU64 = NonZeroU64::new(1_000).unwrap();
 const POWER_OBSERVATION_INTERVAL: Duration = Duration::from_secs(2);
 
 static TOUCH_READINESS: StaticCell<paper_mesh_esp_adapters::readiness::GpioReadiness> =
@@ -201,19 +203,26 @@ fn initialize(
                 power_observation: None,
                 button_polling,
                 touch_input: None,
-                gnss: None,
+                auxiliary: None,
             },
         );
     };
-    let gnss_spawner = execution.start_gnss();
-    let gnss = gnss::start(
-        gnss_spawner,
-        bus,
+    let mut gnss = gnss::prepare(
         peripherals.UART1,
         peripherals.GPIO44,
         peripherals.GPIO43,
         GNSS_CONFIG,
     );
+    // Keep acquisition blocked until the runtime coordinator has enabled the shared rail.
+    gnss.lifecycle.request_pause();
+    let auxiliary = features::auxiliary_power::Coordinator::new(
+        auxiliary_rail::AuxiliaryRail::new(bus),
+        gnss.lifecycle,
+        AUXILIARY_RAIL_RETRY_MS,
+    );
+    gnss.workers
+        .spawn(execution.start_gnss())
+        .expect("GNSS worker launch failed");
     execution
         .spawn(rtc_worker.prepare(bus, |now_ms| gnss::FirmwareLocation.snapshot(now_ms)))
         .expect("RTC worker launch failed");
@@ -286,7 +295,7 @@ fn initialize(
             power_observation: Some(power_observation),
             button_polling,
             touch_input,
-            gnss: Some(gnss),
+            auxiliary: Some(auxiliary),
         },
     )
 }
@@ -316,6 +325,7 @@ async fn run_app(
     #[cfg(feature = "radio-scan-demo")]
     scan_demo::run(&mut discovery).await;
     loop {
+        services.poll_startup(Instant::now().as_millis()).await;
         touchpad_session.set_active(app.touchpad_open(), &mut touchpad);
         touchpad_session.poll(&touchpad);
         app.set_touchpad_host(touchpad.state());
@@ -397,7 +407,9 @@ async fn run_app(
                     discovery::changed(),
                     select(gnss::changed(), power::observation::changed()),
                 ),
-                Timer::at(Instant::from_millis(app.next_deadline_ms())),
+                Timer::at(Instant::from_millis(
+                    app.next_deadline_ms().min(services.next_startup_ms()),
+                )),
             ),
             display_inspection::request(),
         )

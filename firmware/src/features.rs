@@ -6,4 +6,5 @@
 //!
 //! See [runtime ownership](../../docs/architecture.md).
 
+pub mod auxiliary_power;
 pub mod touch_wake;

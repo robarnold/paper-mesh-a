@@ -57,7 +57,11 @@ The worker reads shared synchronization state after each pause so lifecycle inva
 Runtime configuration supplies polling intervals, observation age limits, correction thresholds, and calendar range to the synchronization service.
 Startup supplies location observations through a callback, so the RTC worker does not depend on the GNSS adapter.
 Firmware supplies GNSS baud candidates and acquisition timing through an explicit configuration value.
-Receiver decoding and UART execution consume this configuration. Auxiliary-rail control remains in firmware.
+Receiver decoding and UART execution consume this configuration.
+The firmware auxiliary-rail component owns power access shared by GNSS and LoRa.
+A firmware coordinator prepares consumers before cutting the rail and restores power before releasing them.
+GNSS owns UART preparation and does not depend on the shared I2C bus or a supply-control contract.
+It returns workers and lifecycle control separately. Firmware requests initial pause before launch to enforce the rail dependency.
 
 The platform defines the [reply transport contract](services/connectivity.md#reply-transport) and [bounded request framing](services/connectivity.md#request-framing).
 Firmware selects frame capacity and owns JSON parsing and command routing.

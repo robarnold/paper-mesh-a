@@ -35,6 +35,6 @@ pub struct Config {
     pub probe_ms: NonZeroU64,
     /// Milliseconds of silence allowed after a valid sentence before baud probing resumes.
     pub silence_ms: NonZeroU64,
-    /// Milliseconds to wait after supply enable or UART construction fails.
+    /// Milliseconds to wait after UART construction fails.
     pub retry_ms: NonZeroU64,
 }

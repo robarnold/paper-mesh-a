@@ -14,7 +14,7 @@ Rates use `NonZeroU32`. Durations use `NonZeroU64` milliseconds. These types exc
 
 Acquisition starts with the first candidate and advances through the list when the probe deadline expires.
 A valid sentence replaces the probe deadline with the silence deadline. Noise does not extend either deadline.
-Resume restarts acquisition with the same configuration. Supply-enable and UART-construction failures use the configured retry delay.
+Resume restarts acquisition with the same configuration. UART-construction failures use the configured retry delay.
 
 Large satellite storage remains static. `Receiver::new` requires configuration and borrows that storage without constructing a large stack temporary.
 The receiver always has configuration. An in-place reset clears prior observations while retaining configuration and the storage borrow.
@@ -25,15 +25,20 @@ UART FIFO settings, sentence capacities, and satellite-group expiry remain imple
 The [firmware runtime](../platform/runtime.md#firmware-execution-placement) supplies the GNSS worker's interrupt-executor spawner.
 It selects core 0 and priority 1 so UART consumption can proceed during synchronous application rendering.
 
-[`firmware/src/gnss`](../../firmware/src/gnss/mod.rs) enables PCA9535 `IO0_0` through the shared I2C mutex.
-It sets the port 0 output latch before it selects the output direction.
-It preserves other port 0 bits and all display controls on port 1.
+Firmware owns the [shared auxiliary rail](lilygo-t5-s3-pro-power.md#auxiliary-rail), which also powers LoRa.
+GNSS `prepare` returns workers and their lifecycle handle without launching a task or requesting a pause.
+Firmware requests the initial pause before `Workers::spawn`, then enables the rail before releasing acquisition admission.
+The worker has no supply interface, board power-register access, or I2C bus reference.
+
 The auxiliary supply stays enabled after startup, during receiver faults, and after exit from the GNSS screen.
 Thus, this version also supplies power to LoRa. The LoRa driver stays uninitialized.
-The manual suspend experiment drops the UART and disables this supply after the active display update ends.
+The manual suspend experiment prepares GNSS before firmware disables this supply, after the active display update ends.
 It retains an idle transmitter during the pause to keep UART1 clocks available for HAL sleep preparation.
 This transmitter has no attached pins or receive wake lock.
-Resume enables the supply and restarts baud selection. Previous GNSS observations cannot supply a retained fix.
+Firmware restores the supply before releasing GNSS to restart baud selection. Previous GNSS observations cannot supply a retained fix.
+
+GNSS retains a concrete Embassy task and performs no heap allocation for startup or supply operations.
+The async UART is created inside its selected executor. Large satellite storage remains static.
 
 The [receiver worker](../../firmware/src/gnss/mod.rs) listens during rendering and tries the rates used by the supported receiver variants.
 Only a complete sentence with a valid checksum selects a rate. This identifies a working transport but cannot identify the fitted receiver.

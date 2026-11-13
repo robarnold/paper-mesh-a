@@ -1,4 +1,4 @@
-//! GNSS UART input and continuous auxiliary power for H752-01.
+//! GNSS UART input with firmware-coordinated power.
 //!
 //! # Design choices
 //!
@@ -12,11 +12,10 @@ pub use config::{BaudRates, Config};
 mod gsv;
 mod lifecycle;
 pub use lifecycle::{GnssLifecycle, PreparationError};
-mod power;
 mod receiver;
 
 use core::cell::{Cell, RefCell};
-use embassy_executor::SendSpawner;
+use embassy_executor::{SendSpawner, SpawnError};
 use embassy_futures::select::{Either, select};
 use embassy_sync::{
     blocking_mutex::{Mutex, raw::CriticalSectionRawMutex},
@@ -32,8 +31,6 @@ use paper_mesh_platform::location::{Location, LocationAvailability, LocationSnap
 use paper_mesh_platform::worker::{Pause, PauseWorker};
 use receiver::{Receiver, ReceiverStorage};
 use static_cell::{ConstStaticCell, StaticCell};
-
-use crate::bus::Bus;
 
 static RECEIVER_STORAGE: ConstStaticCell<ReceiverStorage> =
     ConstStaticCell::new(ReceiverStorage::EMPTY);
@@ -68,19 +65,57 @@ fn uart_config(baud: u32) -> UartConfig {
     )
 }
 
-pub fn start(
-    spawner: SendSpawner,
-    bus: &'static Bus,
+/// Prepared receiver resources and matching lifecycle control, with no worker launched.
+#[must_use]
+pub struct Prepared {
+    pub workers: Workers,
+    pub lifecycle: GnssLifecycle,
+}
+
+/// GNSS task resources launched on a runtime-selected executor.
+#[must_use]
+pub struct Workers {
     uart: peripherals::UART1<'static>,
     rx: peripherals::GPIO44<'static>,
     tx: peripherals::GPIO43<'static>,
     config: Config,
-) -> GnssLifecycle {
+    pause: PauseWorker<'static, CriticalSectionRawMutex>,
+}
+
+impl Workers {
+    /// Launch the receiver after firmware has established its startup policy through the lifecycle handle.
+    pub fn spawn(self, spawner: SendSpawner) -> Result<(), SpawnError> {
+        spawner.spawn(worker(
+            self.uart,
+            self.rx,
+            self.tx,
+            self.pause,
+            self.config,
+        )?);
+        Ok(())
+    }
+}
+
+/// Prepare an unpaused receiver. Firmware can request a pause before spawning its worker.
+pub fn prepare(
+    uart: peripherals::UART1<'static>,
+    rx: peripherals::GPIO44<'static>,
+    tx: peripherals::GPIO43<'static>,
+    config: Config,
+) -> Prepared {
     let (pause, worker_pause) = PAUSE.init(Pause::new()).split();
-    spawner.spawn(worker(bus, uart, rx, tx, worker_pause, config).unwrap());
-    GnssLifecycle {
-        pause,
-        report: &PREPARATION,
+    Prepared {
+        workers: Workers {
+            uart,
+            rx,
+            tx,
+            config,
+            pause: worker_pause,
+        },
+        lifecycle: GnssLifecycle {
+            pause,
+            report: &PREPARATION,
+        },
     }
 }
 
@@ -91,14 +126,8 @@ pub fn fault() {
     });
 }
 
-async fn enable_power(bus: &Bus) -> Result<(), esp_hal::i2c::master::Error> {
-    let mut bus = bus.lock().await;
-    power::enable(&mut *bus)
-}
-
 #[embassy_executor::task]
 async fn worker(
-    bus: &'static Bus,
     mut peripheral: peripherals::UART1<'static>,
     mut rx: peripherals::GPIO44<'static>,
     mut tx: peripherals::GPIO43<'static>,
@@ -114,28 +143,14 @@ async fn worker(
                 peripheral.reborrow(),
                 uart_config(config.baud_rates.first.get()),
             );
-            let result = {
-                let mut bus = bus.lock().await;
-                power::disable(&mut *bus)
-            };
             receiver.uart_error();
             publish(receiver.snapshot);
-            lifecycle::publish_preparation(&PREPARATION, idle_uart.is_ok(), result.is_ok());
+            lifecycle::publish_preparation(&PREPARATION, idle_uart.is_ok());
             if let Err(error) = PREPARATION.lock(Cell::get) {
                 error!("GNSS: preparation failed: {:?}", error);
             }
             pause.checkpoint().await;
             drop(idle_uart);
-        }
-        if let Err(error) = enable_power(bus).await {
-            error!("GNSS: supply enable failed: {:?}", error);
-            fault();
-            select(
-                Timer::after_millis(config.retry_ms.get()),
-                pause.requested(),
-            )
-            .await;
-            continue;
         }
         let uart = match Uart::new(
             peripheral.reborrow(),
@@ -154,7 +169,7 @@ async fn worker(
             }
         };
         receiver.reset();
-        info!("GNSS: auxiliary supply enabled; core=0; RX44/TX43");
+        info!("GNSS: acquisition started; core=0; RX44/TX43");
         select(pause.requested(), receive(uart, &mut receiver)).await;
         // Cancellation drops UART RX and its wake lock before the pause acknowledgement.
     }

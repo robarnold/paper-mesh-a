@@ -11,6 +11,37 @@ The [observation worker](../../firmware/src/power/observation.rs) uses the polli
 Its delay follows each completed pair of device reads. Pause requests interrupt that delay.
 See the [vendor pin map][pinmap] for connections.
 
+## Auxiliary rail
+
+The [auxiliary rail component](../../firmware/src/auxiliary_rail.rs) controls PCA9535 `IO0_0`, which supplies both GNSS and LoRa.
+It owns shared-bus access for each complete register sequence. It sets the output latch before selecting the output direction.
+The [register operations](../../firmware/src/auxiliary_rail/device/mod.rs) preserve other port 0 bits and all port 1 display controls.
+Enable and disable propagate bus failures. A failed sequence can leave partial hardware state, so callers must not assume success or rollback.
+
+The [firmware coordinator](../../firmware/src/features/auxiliary_power/mod.rs) owns the rail and its consumer lifecycle handles.
+GNSS preparation returns workers and a lifecycle handle without selecting startup admission policy.
+Firmware requests a pause through that handle, constructs the rail coordinator, and then launches the workers.
+The application loop attempts rail startup and schedules retries without blocking other application work between attempts.
+Firmware selects the rail retry interval independently of UART retry timing. A successful enable releases GNSS admission.
+
+Suspend preparation awaits consumer acknowledgement before disabling the rail.
+GNSS acknowledges only after dropping UART reception, retaining the idle transmitter required by HAL sleep preparation, and invalidating observations.
+Power-off uses the same consumer-before-rail order. LoRa is currently uninitialized and has no active lifecycle handle.
+Before enabling LoRa, firmware must include its preparation and restoration in the coordinated consumer group.
+
+The coordinator marks restoration necessary before attempting a power cut.
+A failed or canceled cut therefore requires a successful rail enable before consumers can resume.
+Cancellation before a cut releases partial consumer preparation without changing an already-enabled rail.
+A failed or timed-out restoration leaves consumers blocked and uses the suspend coordinator's reset recovery.
+The UART belongs to GNSS alone and needs no separate shared-resource coordinator.
+
+The service aggregate currently omits this coordinator when shared-bus initialization fails.
+A follow-up will make the coordinator mandatory and represent hardware unavailability within its lifecycle, instead of branching on `Option`.
+
+Native [rail tests](../../firmware/src/auxiliary_rail/device/tests.rs) verify register isolation, latch-before-direction order, propagated failures, and retry after partial writes.
+[Coordination tests](../../firmware/src/features/auxiliary_power/tests.rs) cover startup retries, transition order, partial preparation, cancellation during a cut, and failed restoration.
+These tests do not verify physical rail voltage or startup timing.
+
 ## Fuel gauge
 
 The adapter reports the gauge's internal temperature. Interpreting it as cell temperature could give a misleading thermal reading.

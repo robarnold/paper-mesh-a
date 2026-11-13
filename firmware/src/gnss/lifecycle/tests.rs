@@ -23,26 +23,19 @@ fn setup() -> (
     (GnssLifecycle { pause, report }, worker, report)
 }
 
-// Hardware results become visible only after acknowledgement, including both failure causes.
+// Hardware results become visible only after acknowledgement, including UART failure.
 #[test]
 fn preparation_waits_for_acknowledgement_and_preserves_failures() {
-    for (uart, supply) in [(true, true), (false, true), (true, false), (false, false)] {
+    for uart in [true, false] {
         let (mut lifecycle, mut worker, report) = setup();
         lifecycle.request_pause();
         let mut prepare = Box::pin(lifecycle.will_suspend(0));
         assert!(poll(prepare.as_mut()).is_pending());
-        publish_preparation(report, uart, supply);
+        publish_preparation(report, uart);
         assert!(poll(prepare.as_mut()).is_pending());
         let mut checkpoint = Box::pin(worker.checkpoint());
         assert!(poll(checkpoint.as_mut()).is_pending());
-        let expected = if uart && supply {
-            Ok(())
-        } else {
-            Err(PreparationError {
-                idle_uart_failed: !uart,
-                supply_shutdown_failed: !supply,
-            })
-        };
+        let expected = if uart { Ok(()) } else { Err(PreparationError) };
         assert_eq!(poll(prepare.as_mut()), Poll::Ready(expected));
         drop(prepare);
         assert_eq!(
@@ -60,7 +53,7 @@ fn retry_uses_the_new_preparation_result() {
     for ready in [false, true] {
         let mut prepare = Box::pin(lifecycle.will_suspend(0));
         assert!(poll(prepare.as_mut()).is_pending());
-        publish_preparation(report, ready, ready);
+        publish_preparation(report, ready);
         let mut checkpoint = Box::pin(worker.checkpoint());
         assert!(poll(checkpoint.as_mut()).is_pending());
         assert_eq!(poll(prepare.as_mut()), Poll::Ready(report.lock(Cell::get)));
@@ -95,7 +88,7 @@ fn power_off_failure_retains_the_pause() {
     let (mut lifecycle, mut worker, report) = setup();
     let mut prepare = Box::pin(lifecycle.will_power_off(0));
     assert!(poll(prepare.as_mut()).is_pending());
-    publish_preparation(report, true, false);
+    publish_preparation(report, false);
     let mut checkpoint = Box::pin(worker.checkpoint());
     assert!(poll(checkpoint.as_mut()).is_pending());
     assert_eq!(poll(prepare.as_mut()), Poll::Ready(report.lock(Cell::get)));

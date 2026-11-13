@@ -144,14 +144,14 @@ The read-only location capability remains separate from lifecycle ownership.
 
 Preparation cancels UART reception and releases its RX wake lock.
 The worker retains an idle transmitter because HAL sleep preparation requires UART1 clocks.
-It also disables the receiver supply, releases the bus, and publishes an unavailable receiver observation.
-It publishes both hardware results before acknowledging the pause.
+It publishes an unavailable receiver observation and its UART preparation result before acknowledging the pause.
+The firmware rail coordinator then disables the shared auxiliary supply.
 The lifecycle handle reads those results only after acknowledgement, so an earlier result cannot approve a new preparation.
 
 UART setup or supply shutdown failure prevents the power transition.
 Suspend cancellation releases the worker to restart the receiver. Power-off failure keeps it paused for reset recovery.
 Restoration permits receiver initialization but does not establish a fresh location or UTC observation.
-The worker keeps its existing supply retry and receiver acquisition behavior.
+Firmware retries initial rail enable while keeping GNSS admission blocked. UART retry remains in the GNSS worker.
 
 ## Runtime composition
 
@@ -161,8 +161,8 @@ The runtime prepares USB, touch input, button polling, power observations, RTC, 
 GNSS prepares last so its hardware failure leaves the other workers paused and cached UTC invalidated.
 It passes the same coordinator deadline to each service.
 Cancellation restores all present handles because preparation can stop at any await.
-GNSS preparation can fail. The other current participants are infallible.
-The aggregate returns the GNSS preparation error. General error aggregation and dependency planning remain separate work.
+GNSS UART preparation and auxiliary-rail operations can fail. The other current participants are infallible.
+The aggregate distinguishes consumer preparation failures from rail access failures. General error aggregation and dependency planning remain separate work.
 
 Reset recovery requests all present services to pause without waiting for acknowledgement.
 This path does not claim safe device detachment. The watchdog returns through normal startup.
@@ -180,7 +180,7 @@ No lock is held across an await, and the channel requires no heap allocation.
 
 Tests cover both request orderings, canceled waits, revoked acknowledgements, rapid release and re-request, independent channels, and endpoint wakeups.
 USB lifecycle tests cover endpoint ordering, partial cancellation, session invalidation, and reset pause requests.
-GNSS lifecycle tests cover hardware failure combinations, acknowledgement ordering, retries, incomplete cancellation, and retained pauses after power-off failure.
+GNSS lifecycle tests cover UART failure, acknowledgement ordering, retries, incomplete cancellation, and retained pauses after power-off failure.
 Firmware checks verify runtime integration. These checks do not establish physical sleep or wake reliability.
 
 The [platform manifest](../../crates/platform/Cargo.toml) pins the synchronization and executor dependencies.

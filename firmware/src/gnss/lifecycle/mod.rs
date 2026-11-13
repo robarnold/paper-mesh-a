@@ -5,7 +5,7 @@
 //! - Read the preparation result only after pause acknowledgement so stale results cannot approve shutdown.
 //! - Keep a failed preparation paused until suspend cancellation or power-off reset recovery.
 //!
-//! See [GNSS coordination](../../../docs/platform/worker-coordination.md#gnss-integration).
+//! See [GNSS coordination](../../../../docs/platform/worker-coordination.md#gnss-integration).
 
 use core::{cell::Cell, convert::Infallible};
 use embassy_sync::blocking_mutex::Mutex;
@@ -17,11 +17,9 @@ use paper_mesh_platform::{
     power_off::PowerOffParticipant, suspend::SuspendParticipant, worker::PauseControl,
 };
 
+/// GNSS could not retain the idle UART required for system sleep preparation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct PreparationError {
-    pub idle_uart_failed: bool,
-    pub supply_shutdown_failed: bool,
-}
+pub struct PreparationError;
 
 impl From<Infallible> for PreparationError {
     fn from(never: Infallible) -> Self {
@@ -31,29 +29,24 @@ impl From<Infallible> for PreparationError {
 
 pub(super) type PreparationReport = Mutex<PauseMutex, Cell<Result<(), PreparationError>>>;
 
-pub(super) fn publish_preparation(
-    report: &PreparationReport,
-    idle_uart_ready: bool,
-    supply_disabled: bool,
-) {
-    let result = if idle_uart_ready && supply_disabled {
-        Ok(())
-    } else {
-        Err(PreparationError {
-            idle_uart_failed: !idle_uart_ready,
-            supply_shutdown_failed: !supply_disabled,
+pub(super) fn publish_preparation(report: &PreparationReport, idle_uart_ready: bool) {
+    report.lock(|state| {
+        state.set(if idle_uart_ready {
+            Ok(())
+        } else {
+            Err(PreparationError)
         })
-    };
-    report.lock(|state| state.set(result));
+    });
 }
 
+/// GNSS worker pause control and UART preparation result.
 pub struct GnssLifecycle {
     pub(super) pause: PauseControl<'static, PauseMutex>,
     pub(super) report: &'static PreparationReport,
 }
 
 impl GnssLifecycle {
-    /// Request a pause before reset without claiming preparation succeeded.
+    /// Request a pause before worker launch or reset without claiming preparation succeeded.
     pub fn request_pause(&mut self) {
         self.pause.request_pause();
     }
@@ -90,5 +83,4 @@ impl PowerOffParticipant for GnssLifecycle {
 }
 
 #[cfg(test)]
-#[path = "lifecycle/tests.rs"]
 mod tests;
