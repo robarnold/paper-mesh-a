@@ -19,6 +19,7 @@ axum = { version = "=0.8.9", default-features = false, features = ["http1", "tok
 tokio = { version = "=1.54.1", features = ["rt", "macros", "net", "time"] }
 
 [dev-dependencies]
+paper-mesh-bq25896 = { path = "../crates/bq25896" }
 paper-mesh-bq27220 = { path = "../crates/bq27220" }
 paper-mesh-gnss = { path = "../crates/gnss" }
 heapless = "=0.9.3"

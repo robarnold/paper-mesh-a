@@ -8,8 +8,8 @@
 //! See [Hardware and execution](../../../docs/boards/lilygo-t5-s3-pro-power.md#hardware-and-execution).
 
 mod lifecycle;
-use super::device;
 pub use lifecycle::PowerObservationLifecycle;
+use paper_mesh_bq25896::observation as charger;
 
 use core::cell::RefCell;
 use embassy_executor::Spawner;
@@ -56,7 +56,7 @@ pub async fn read_now(bus: &Bus) -> PowerSnapshot {
     };
     let charger = {
         let mut bus = bus.lock().await;
-        device::charger(&mut *bus)
+        charger::read(&mut *bus)
             .map(|value| PowerReading::ready(value, Instant::now().as_millis()))
             .unwrap_or(PowerReading::unavailable(PowerAvailability::Fault))
     };
@@ -98,7 +98,7 @@ async fn observation_worker(
         let charger = {
             let mut bus = bus.lock().await;
             let at_ms = Instant::now().as_millis();
-            device::charger(&mut *bus).map(|value| PowerReading::ready(value, at_ms))
+            charger::read(&mut *bus).map(|value| PowerReading::ready(value, at_ms))
         };
         if let Err(error) = &battery
             && !failed.0

@@ -1,4 +1,4 @@
-//! Native tests execute the firmware register adapter without hardware.
+//! Verify independent gauge and charger failures through their public crate APIs.
 //!
 //! # Design choices
 //!
@@ -7,11 +7,9 @@
 //!
 //! See [LILYGO power control and observations](../../docs/boards/lilygo-t5-s3-pro-power.md).
 
-#[path = "../../firmware/src/power/device.rs"]
-mod device;
+use paper_mesh_bq25896::observation as device;
 
 use embedded_hal::i2c::{ErrorKind, ErrorType, I2c, Operation};
-use paper_mesh_platform::power::{ChargeFault, ChargeState, PowerSource, ThermistorState};
 
 struct Bus {
     gauge: [u8; 64],
@@ -108,42 +106,6 @@ impl I2c for Bus {
     }
 }
 
-// Charger decoding preserves source, charging phase, and separate fault latches.
-#[test]
-fn charger_distinguishes_source_phase_settings_and_fault_latches() {
-    let mut bus = Bus::new();
-    bus.charger[0x0c] = 0xee;
-    bus.charger[0x13] = 0xc0;
-    bus.charger[0x0e] = 0x80;
-    let c = device::charger(&mut bus).unwrap();
-    assert_eq!(c.source, PowerSource::Usb);
-    assert_eq!(c.charge, ChargeState::Fast);
-    assert!(c.power_good && c.charge_enabled && !c.input_suspended);
-    assert_eq!(c.input_limit_ma, 500);
-    assert_eq!(c.charge_limit_ma, 1024);
-    assert_eq!(c.charge_voltage_mv, 4208);
-    assert_eq!(c.termination_current_ma, 128);
-    assert_eq!(c.input_voltage_limit_mv, 4400);
-    assert!(c.input_current_limited && c.input_voltage_limited && c.thermal_regulation);
-    assert_eq!(c.latched_faults.charge, ChargeFault::Input);
-    assert_eq!(c.faults.charge, ChargeFault::ThermalShutdown);
-    assert_eq!(c.faults.thermistor, ThermistorState::Hot);
-    assert!(c.faults.battery_overvoltage && c.faults.watchdog_expired && c.faults.boost);
-    assert_eq!(bus.faults_read, 2);
-    for (raw, source, phase) in [
-        (0x02, PowerSource::None, ChargeState::Idle),
-        (0x4e, PowerSource::Adapter, ChargeState::Precharge),
-        (0x3e, PowerSource::Usb, ChargeState::Complete),
-        (0xe2, PowerSource::Output, ChargeState::Idle),
-        (0x62, PowerSource::Unknown, ChargeState::Idle),
-    ] {
-        bus.charger[0x0b] = raw;
-        let c = device::charger(&mut bus).unwrap();
-        assert_eq!(c.source, source);
-        assert_eq!(c.charge, phase);
-    }
-}
-
 // Failure in either device leaves the other readable, and a subsequent complete read can recover.
 #[test]
 fn every_bus_failure_discards_the_partial_sample_and_next_read_recovers() {
@@ -154,18 +116,18 @@ fn every_bus_failure_discards_the_partial_sample_and_next_read_recovers() {
         let mut bus = Bus::new();
         bus.fail_at = Some(fail);
         assert!(paper_mesh_bq27220::battery(&mut bus).is_err());
-        assert!(device::charger(&mut bus).is_ok());
+        assert!(device::read(&mut bus).is_ok());
         bus.fail_at = None;
         assert!(paper_mesh_bq27220::battery(&mut bus).is_ok());
     }
     let mut probe = Bus::new();
-    device::charger(&mut probe).unwrap();
+    device::read(&mut probe).unwrap();
     for fail in 1..=probe.transactions {
         let mut bus = Bus::new();
         bus.fail_at = Some(fail);
-        assert!(device::charger(&mut bus).is_err());
+        assert!(device::read(&mut bus).is_err());
         assert!(paper_mesh_bq27220::battery(&mut bus).is_ok());
         bus.fail_at = None;
-        assert!(device::charger(&mut bus).is_ok());
+        assert!(device::read(&mut bus).is_ok());
     }
 }

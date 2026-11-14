@@ -5,15 +5,16 @@
 //! - Read latched and current faults separately so past faults do not appear current.
 //! - Register pointer writes do not change charger settings.
 //!
-//! See [Charger observations](../../../docs/boards/lilygo-t5-s3-pro-power.md#charger).
+//! See [Charger observations](../../../docs/adapters/bq25896.md#observations).
 
 use embedded_hal::i2c::I2c;
 use paper_mesh_platform::power::{
     ChargeFault, ChargeState, ChargerFaults, ChargerState, PowerSource, ThermistorState,
 };
 
-const CHARGER: u8 = 0x6b;
+use crate::I2C_ADDRESS;
 
+/// Bus failure while reading charger observations.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Error<E> {
     Bus(E),
@@ -21,12 +22,14 @@ pub enum Error<E> {
 
 fn byte<I: I2c>(bus: &mut I, register: u8) -> Result<u8, Error<I::Error>> {
     let mut bytes = [0];
-    bus.write_read(CHARGER, &[register], &mut bytes)
+    bus.write_read(I2C_ADDRESS, &[register], &mut bytes)
         .map_err(Error::Bus)?;
     Ok(bytes[0])
 }
 
-pub fn charger<I: I2c>(bus: &mut I) -> Result<ChargerState, Error<I::Error>> {
+/// Read charger settings and status without changing configuration. Fault reads clear latched history.
+/// Hold the bus for the complete observation. Errors discard partial results.
+pub fn read<I: I2c>(bus: &mut I) -> Result<ChargerState, Error<I::Error>> {
     let status = byte(bus, 0x0b)?;
     // REG0C does not support a burst read. Two reads distinguish latched and current faults.
     let latched_faults = faults(byte(bus, 0x0c)?);
@@ -47,14 +50,14 @@ pub fn charger<I: I2c>(bus: &mut I) -> Result<ChargerState, Error<I::Error>> {
             7 => PowerSource::Output,
             _ => PowerSource::Unknown,
         },
-        charge: match (status >> 3) & 3 {
+        charge: match (status >> 3) & 0x03 {
             0 => ChargeState::Idle,
             1 => ChargeState::Precharge,
             2 => ChargeState::Fast,
             _ => ChargeState::Complete,
         },
-        power_good: status & 4 != 0,
-        minimum_system_voltage: status & 1 != 0,
+        power_good: status & 0x04 != 0,
+        minimum_system_voltage: status & 0x01 != 0,
         charge_enabled: control & 0x10 != 0,
         input_suspended: input & 0x80 != 0,
         input_limit_ma: 100 + u16::from(input & 0x3f) * 50,
@@ -74,14 +77,14 @@ fn faults(value: u8) -> ChargerFaults {
     ChargerFaults {
         watchdog_expired: value & 0x80 != 0,
         boost: value & 0x40 != 0,
-        battery_overvoltage: value & 8 != 0,
-        charge: match (value >> 4) & 3 {
+        battery_overvoltage: value & 0x08 != 0,
+        charge: match (value >> 4) & 0x03 {
             0 => ChargeFault::None,
             1 => ChargeFault::Input,
             2 => ChargeFault::ThermalShutdown,
             _ => ChargeFault::SafetyTimer,
         },
-        thermistor: match value & 7 {
+        thermistor: match value & 0x07 {
             0 => ThermistorState::Normal,
             2 => ThermistorState::Warm,
             3 => ThermistorState::Cool,

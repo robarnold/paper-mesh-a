@@ -56,8 +56,8 @@ Firmware supplies the shared bus and publishes its `BatteryState` independently 
 
 ## Charger
 
-The charger's configured input limit can exceed the available electrical current.
-Use the [BQ25896 datasheet][charger], sections 9.3.1 and 9.4, to interpret settings and regulation status.
+The [portable BQ25896 adapter](../adapters/bq25896.md) defines charger observations and separate guarded isolation operations.
+Firmware retains polling, shared-bus ownership, shutdown sequencing, and reset recovery.
 
 `VBUS_STAT` classifies input through `PSEL`, as section 9.2.3.3.1 specifies.
 The [schematic][schematic], sheet 1, connects `PSEL` to ground, which selects the adapter class.
@@ -65,15 +65,7 @@ This class does not distinguish USB power from wireless power.
 The schematic shows no separate signal that identifies wireless input.
 The backend therefore cannot identify the physical power connection from these registers.
 
-The adapter reads `REG0C` twice with separate transactions, as sections 9.2.9.3 and 9.3 specify.
-The first read supplies latched faults. The second supplies current faults.
-The thermistor field always reports its current state, including in the first read.
-A read clears latched fault history. The application does not provide a persistent fault log.
-The watchdog flag can indicate default mode after reset or watchdog expiry.
-
-The observation adapter writes only register pointers for read transactions.
-It does not change charge limits, watchdog settings, ADC mode, or BATFET controls.
-Charger ADC measurements remain unavailable because this adapter does not start or verify a conversion.
+The application does not retain a persistent charger fault log.
 Battery voltage and current come from the gauge.
 The separate power-off path controls BATFET, as described below.
 Charge control remains planned work.

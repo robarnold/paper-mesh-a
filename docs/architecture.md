@@ -12,6 +12,7 @@ The toolkit has no dependency on a particular application.
 | [`crates/app`](../crates/app/src/lib.rs) | Application state, screens, layout, actions, and policy choices | `paper-mesh-platform` |
 | [`crates/platform`](../crates/platform/src/lib.rs) | Application toolkit and portable contracts | None |
 | [`crates/gnss`](../crates/gnss/README.md) | Portable NMEA decoding, acquisition, and optional baud probing | Platform serial and location contracts |
+| [`crates/bq25896`](../crates/bq25896/README.md) | Charger observations and guarded battery isolation through I2C | Platform charger state |
 | [`crates/bq27220`](../crates/bq27220/README.md) | Portable fuel-gauge observations through I2C | Platform battery state |
 | [`crates/pcf8563`](../crates/pcf8563/src/lib.rs) | PCF8563 calendar access through I2C | Platform calendar contract |
 | [`firmware/src/main.rs`](../firmware/src/main.rs) | Hardware startup and connection of the application to services | Application, platform, and hardware adapters |

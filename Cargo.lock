@@ -1447,6 +1447,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "paper-mesh-bq25896"
+version = "0.1.0"
+dependencies = [
+ "embedded-hal 1.0.0",
+ "paper-mesh-platform",
+]
+
+[[package]]
 name = "paper-mesh-bq27220"
 version = "0.1.0"
 dependencies = [
@@ -1536,6 +1544,7 @@ dependencies = [
  "embedded-hal 1.0.0",
  "heapless 0.9.3",
  "paper-mesh-app",
+ "paper-mesh-bq25896",
  "paper-mesh-bq27220",
  "paper-mesh-ed047tc1",
  "paper-mesh-gnss",

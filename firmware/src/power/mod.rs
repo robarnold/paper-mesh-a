@@ -7,9 +7,8 @@
 //!
 //! See [system power-off](../../../docs/boards/lilygo-t5-s3-pro-power.md#system-power-off).
 
-mod device;
 pub mod observation;
-pub(crate) mod ship;
+pub(crate) use paper_mesh_bq25896::ship;
 
 use crate::bus::Bus;
 

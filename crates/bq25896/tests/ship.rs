@@ -5,10 +5,9 @@
 //! - Inject supply changes and bus failures around battery isolation so uncertainty
 //!   cannot trigger a second cut request.
 //!
-//! See [System power-off](../../docs/boards/lilygo-t5-s3-pro-power.md#system-power-off).
+//! See [System power-off](../../../docs/adapters/bq25896.md#battery-isolation).
 
-#[path = "../../firmware/src/power/ship.rs"]
-mod ship;
+use paper_mesh_bq25896::ship;
 
 use embedded_hal::i2c::{ErrorKind, ErrorType, I2c, Operation};
 
