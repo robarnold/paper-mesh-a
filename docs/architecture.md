@@ -64,7 +64,7 @@ The [serial session contract](platform/serial.md) keeps UART ownership and ESP s
 Receiver decoding consumes observation settings. The runtime owns probing and recovery policy.
 The firmware auxiliary-rail component owns power access shared by GNSS and LoRa.
 A firmware coordinator prepares consumers before cutting the rail and restores power before releasing them.
-The firmware serial owner handles UART preparation. GNSS has no shared-I2C or supply-control dependency.
+The ESP serial adapter handles UART preparation. GNSS has no shared-I2C or supply-control dependency.
 The runtime worker exposes lifecycle control separately from task launch. Rail admission blocks acquisition until the coordinator establishes usable power.
 
 The platform defines the [reply transport contract](services/connectivity.md#reply-transport) and [bounded request framing](services/connectivity.md#request-framing).

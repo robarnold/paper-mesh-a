@@ -26,3 +26,6 @@ pub mod touch;
 
 #[cfg(any(feature = "esp32s3", test))]
 pub mod readiness;
+
+#[cfg(feature = "esp32s3")]
+pub mod serial;

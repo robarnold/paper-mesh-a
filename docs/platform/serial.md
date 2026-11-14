@@ -19,16 +19,11 @@ The [GNSS acquisition loop](../../crates/gnss/src/acquisition.rs) retains a pend
 Silence, end-of-stream, and receive errors end acquisition. The runtime closes that session before recovery.
 No baud changes occur inside normal acquisition.
 
-## Firmware ownership
+## Hardware integration
 
-The [board serial owner](../../firmware/src/serial.rs) retains UART1, its pins, and its hardware configuration.
-It constructs an async UART on the selected executor for each session.
-HAL initialization resets the FIFOs. Dropping the session releases RX and its wake lock.
-
-The [runtime worker](../../firmware/src/gnss_worker.rs) closes reception before requesting serial sleep preparation.
-The serial owner creates a pinless idle transmitter because ESP sleep preparation requires UART1 clocks.
-Its preparation guard borrows the same owner, preventing reception until the guard is dropped.
-Preparation errors remain visible to suspend coordination. GNSS decoding contains no ESP lifecycle operations.
+The [ESP serial adapter](../adapters/serial.md) owns UART resources and implements fresh receive sessions.
+Firmware selects the peripheral, pins, settings, and executor. It coordinates hardware sleep preparation after reception closes.
+Hardware preparation remains separate from the portable receive contract because closing a session does not prove system sleep readiness.
 
 ## Verification and dependencies
 

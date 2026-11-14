@@ -10,12 +10,13 @@
 mod lifecycle;
 pub use lifecycle::{GnssLifecycle, PreparationError};
 
-use crate::{gnss, serial::Serial};
+use crate::gnss;
 use core::{cell::Cell, num::NonZeroU64};
 use embassy_executor::{SendSpawner, SpawnError};
 use embassy_futures::select::{Either, select};
 use embassy_sync::blocking_mutex::{Mutex, raw::CriticalSectionRawMutex};
 use embassy_time::{Instant, Timer};
+use paper_mesh_esp_adapters::serial::Serial;
 use paper_mesh_gnss::{Receiver, ReceiverStorage, acquisition, probe};
 use paper_mesh_platform::{
     serial::SerialReceiver,

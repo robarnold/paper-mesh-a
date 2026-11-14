@@ -5,6 +5,7 @@ The `esp32s3` feature exposes the [USB adapter](../../docs/adapters/usb.md), [RT
 Firmware supplies device configuration, command dispatch, diagnostics, an executor, and an allocator.
 USB preparation returns a typed worker set. Firmware selects a local spawner for the set before using the lifecycle handle.
 The adapters do not depend on firmware or the application.
+The [serial adapter](../../docs/adapters/serial.md) owns firmware-selected UART resources and separates receive sessions from ESP sleep preparation.
 The reusable [GPIO readiness provider](../../docs/adapters/gpio-readiness.md) separates acquisition notifications from reset, wake control, and worker execution.
 Touch converts GT911 reports into the platform [contact-frame contract](../../docs/services/input.md#contact-frame-contract).
 The RTC adapter receives synchronization policy, state storage, the shared ESP I2C bus, and location observations from the runtime.

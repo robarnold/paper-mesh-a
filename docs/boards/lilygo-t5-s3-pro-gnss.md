@@ -29,7 +29,7 @@ NMEA framing is shared by probing and decoding. Each new session discards previo
 
 The [firmware runtime](../platform/runtime.md#firmware-execution-placement) supplies the worker's interrupt-executor spawner.
 The [runtime worker](../../firmware/src/gnss_worker.rs) composes GNSS with the [serial session contract](../platform/serial.md).
-Firmware supplies UART resources, pins, and hardware settings to the [serial owner](../../firmware/src/serial.rs).
+Firmware supplies UART resources, pins, and hardware settings to the [ESP serial adapter](../adapters/serial.md).
 GNSS receives only serial sessions and does not configure ESP peripherals.
 
 The [acquisition loop](../../crates/gnss/src/acquisition.rs) preserves a pending read across observation deadlines.

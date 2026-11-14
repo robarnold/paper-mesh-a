@@ -32,7 +32,6 @@ mod power;
 mod recovery;
 #[cfg(feature = "radio-scan-demo")]
 mod scan_demo;
-mod serial;
 mod suspend;
 use paper_mesh_esp_adapters::touch;
 use paper_mesh_esp_adapters::usb;
@@ -192,7 +191,7 @@ fn initialize(
     let (admission, supply) = AUXILIARY_ADMISSION
         .init(paper_mesh_platform::worker::Pause::new())
         .split();
-    let serial = serial::Serial::new(
+    let serial = paper_mesh_esp_adapters::serial::Serial::new(
         peripherals.UART1,
         peripherals.GPIO44,
         peripherals.GPIO43,
