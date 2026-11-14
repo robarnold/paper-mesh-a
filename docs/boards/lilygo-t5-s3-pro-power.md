@@ -51,19 +51,8 @@ These tests do not verify physical rail voltage or startup timing.
 
 ## Fuel gauge
 
-The adapter reports the gauge's internal temperature. Interpreting it as cell temperature could give a misleading thermal reading.
-Negative current indicates discharge. See the [register adapter](../../firmware/src/power/device.rs) and the [BQ27220 reference manual][gauge], table 2-1 and sections 2.6–2.28.
-
-`BATTPRES` supplies reported battery presence.
-The fitted cell and gauge configuration determine the accuracy of this indication.
-`INITCOMP`, `CFGUPDATE`, and `CALMD` determine measurement readiness.
-The adapter omits measurements during startup, configuration, calibration, or reported battery absence.
-It checks presence and readiness again after the measurements. A change rejects the complete sample.
-
-The adapter reads existing capacity and health estimates without changes to the cell profile.
-It does not unseal, calibrate, reset, or configure the gauge.
-The backend marks estimates as unverified because software has not established the fitted cell parameters or calibration.
-Gauge readiness alone cannot verify those conditions.
+The [portable BQ27220 adapter](../adapters/bq27220.md) defines measurement validity, units, and calibration limits.
+Firmware supplies the shared bus and publishes its `BatteryState` independently of charger observations.
 
 ## Charger
 
@@ -251,6 +240,5 @@ The charger reference is SLUSC76C, revised May 2018.
 
 [schematic]: https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/hardware/T5%20E-paper%20S3%20Pro%20V1.0%2024-12-24.pdf
 [pinmap]: https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO/blob/938d6189db0fde9a12558629bc1405bb49e1be78/docs/pinmap.md
-[gauge]: https://www.ti.com/lit/ug/sluubd4/sluubd4.pdf
 [charger]: https://www.ti.com/lit/ds/symlink/bq25896.pdf
 [rtos-sleep]: https://github.com/esp-rs/esp-hal/blob/63e97be553f435f29171f7ae5f37a41ad737a75a/esp-rtos/src/sleep.rs

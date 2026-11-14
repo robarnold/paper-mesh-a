@@ -50,7 +50,7 @@ fn publish(snapshot: PowerSnapshot) {
 pub async fn read_now(bus: &Bus) -> PowerSnapshot {
     let battery = {
         let mut bus = bus.lock().await;
-        device::battery(&mut *bus)
+        paper_mesh_bq27220::battery(&mut *bus)
             .map(|value| PowerReading::ready(value, Instant::now().as_millis()))
             .unwrap_or(PowerReading::unavailable(PowerAvailability::Fault))
     };
@@ -92,7 +92,7 @@ async fn observation_worker(
         let battery = {
             let mut bus = bus.lock().await;
             let at_ms = Instant::now().as_millis();
-            device::battery(&mut *bus).map(|value| PowerReading::ready(value, at_ms))
+            paper_mesh_bq27220::battery(&mut *bus).map(|value| PowerReading::ready(value, at_ms))
         };
         // Release the bus between devices so other clients can proceed.
         let charger = {
