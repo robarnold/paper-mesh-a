@@ -20,8 +20,8 @@ type Error = crate::features::auxiliary_power::Error<
 
 /// Runtime-owned lifecycle ordering for services and shared power dependencies.
 pub struct Services {
-    /// Absent when shared-bus initialization prevented receiver startup.
-    pub auxiliary: Option<AuxiliaryPower>,
+    /// Own consumer ordering for the shared auxiliary rail.
+    pub auxiliary: AuxiliaryPower,
     pub clock: paper_mesh_esp_adapters::rtc::RtcClock,
     pub usb: crate::usb::UsbLifecycle,
     pub button_polling: crate::buttons::ButtonPollingLifecycle,
@@ -32,25 +32,26 @@ pub struct Services {
 }
 
 impl Services {
-    pub async fn poll_startup(&mut self, now_ms: u64) {
-        if let Some(auxiliary) = &mut self.auxiliary
-            && let Err(error) = auxiliary.poll_startup(now_ms).await
-        {
-            log::error!("auxiliary rail: startup failed: {:?}", error);
-            crate::gnss::fault();
+    /// Establish the shared supply before application work. Failure requires a fresh hardware initialization.
+    pub async fn start(&mut self) {
+        use embassy_time::{Duration, Instant, with_timeout};
+        const STARTUP_TIMEOUT: Duration = Duration::from_secs(5);
+        let deadline_ms = (Instant::now() + STARTUP_TIMEOUT).as_millis();
+        match with_timeout(STARTUP_TIMEOUT, self.auxiliary.did_resume(deadline_ms)).await {
+            Ok(Ok(())) => {}
+            Ok(Err(error)) => {
+                log::error!("auxiliary rail: startup failed: {:?}; resetting", error);
+                esp_hal::system::software_reset();
+            }
+            Err(_) => {
+                log::error!("auxiliary rail: startup timed out; resetting");
+                esp_hal::system::software_reset();
+            }
         }
-    }
-
-    pub fn next_startup_ms(&self) -> u64 {
-        self.auxiliary
-            .as_ref()
-            .map_or(u64::MAX, AuxiliaryPower::next_startup_ms)
     }
 
     pub fn request_pause(&mut self) {
-        if let Some(auxiliary) = &mut self.auxiliary {
-            auxiliary.consumers.request_pause();
-        }
+        self.auxiliary.consumers.request_pause();
         self.clock.request_pause();
         self.usb.request_pause();
         if let Some(touch_input) = &mut self.touch_input {
@@ -76,16 +77,12 @@ impl SuspendParticipant for Services {
             observation.will_suspend(deadline_ms).await?;
         }
         self.clock.will_suspend(deadline_ms).await?;
-        if let Some(auxiliary) = &mut self.auxiliary {
-            auxiliary.will_suspend(deadline_ms).await?;
-        }
+        self.auxiliary.will_suspend(deadline_ms).await?;
         Ok(())
     }
 
     async fn did_resume(&mut self, deadline_ms: u64) -> Result<(), Self::Error> {
-        if let Some(auxiliary) = &mut self.auxiliary {
-            auxiliary.did_resume(deadline_ms).await?;
-        }
+        self.auxiliary.did_resume(deadline_ms).await?;
         self.clock.did_resume(deadline_ms).await?;
         if let Some(observation) = &mut self.power_observation {
             observation.did_resume(deadline_ms).await?;
@@ -99,9 +96,7 @@ impl SuspendParticipant for Services {
     }
 
     async fn did_cancel_suspend(&mut self, deadline_ms: u64) -> Result<(), Self::Error> {
-        if let Some(auxiliary) = &mut self.auxiliary {
-            auxiliary.did_cancel_suspend(deadline_ms).await?;
-        }
+        self.auxiliary.did_cancel_suspend(deadline_ms).await?;
         self.clock.did_cancel_suspend(deadline_ms).await?;
         if let Some(observation) = &mut self.power_observation {
             observation.did_cancel_suspend(deadline_ms).await?;
@@ -128,9 +123,7 @@ impl PowerOffParticipant for Services {
             observation.will_power_off(deadline_ms).await?;
         }
         self.clock.will_power_off(deadline_ms).await?;
-        if let Some(auxiliary) = &mut self.auxiliary {
-            auxiliary.will_power_off(deadline_ms).await?;
-        }
+        self.auxiliary.will_power_off(deadline_ms).await?;
         Ok(())
     }
 }

@@ -13,7 +13,7 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex as AdmissionMutex
 use embassy_sync::blocking_mutex::raw::NoopRawMutex as AdmissionMutex;
 use paper_mesh_platform::worker::PauseControl;
 
-use core::{convert::Infallible, future::Future, num::NonZeroU64};
+use core::{convert::Infallible, future::Future};
 use paper_mesh_platform::{power_off::PowerOffParticipant, suspend::SuspendParticipant};
 
 /// Physical rail operations used by firmware coordination.
@@ -45,46 +45,16 @@ pub struct Coordinator<R, C> {
     /// Consumer handles retained for reset-recovery pause requests.
     pub(crate) consumers: C,
     needs_enable: bool,
-    started: bool,
-    next_startup_ms: u64,
-    retry_ms: NonZeroU64,
 }
 impl<R: Rail, C: SuspendParticipant> Coordinator<R, C> {
     /// Supply admission control paired with the worker's rail dependency.
-    pub fn new(
-        rail: R,
-        consumers: C,
-        retry_ms: NonZeroU64,
-        admission: PauseControl<'static, AdmissionMutex>,
-    ) -> Self {
+    pub fn new(rail: R, consumers: C, admission: PauseControl<'static, AdmissionMutex>) -> Self {
         Self {
             rail,
             admission,
             consumers,
             needs_enable: true,
-            started: false,
-            next_startup_ms: 0,
-            retry_ms,
         }
-    }
-
-    /// Next retry deadline, or the maximum timestamp after startup completes.
-    pub fn next_startup_ms(&self) -> u64 {
-        if self.started {
-            u64::MAX
-        } else {
-            self.next_startup_ms
-        }
-    }
-
-    /// Attempt due startup without holding the application in a retry loop.
-    /// Failure retains blocked consumer admission and schedules another attempt.
-    pub async fn poll_startup(&mut self, now_ms: u64) -> Result<(), Error<C::Error, R::Error>> {
-        if self.started || now_ms < self.next_startup_ms {
-            return Ok(());
-        }
-        self.next_startup_ms = now_ms.saturating_add(self.retry_ms.get());
-        self.did_resume(self.next_startup_ms).await
     }
 
     async fn restore_rail(&mut self) -> Result<(), Error<C::Error, R::Error>> {
@@ -115,7 +85,6 @@ impl<R: Rail, C: SuspendParticipant> SuspendParticipant for Coordinator<R, C> {
             .await
             .map_err(Error::Consumer)?;
         self.needs_enable = false;
-        self.started = true;
         self.admission.resume();
         Ok(())
     }
@@ -127,7 +96,6 @@ impl<R: Rail, C: SuspendParticipant> SuspendParticipant for Coordinator<R, C> {
             .await
             .map_err(Error::Consumer)?;
         self.needs_enable = false;
-        self.started = true;
         self.admission.resume();
         Ok(())
     }

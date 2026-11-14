@@ -72,7 +72,6 @@ const GNSS_CONFIG: gnss_worker::Config = gnss_worker::Config {
     },
     retry_ms: NonZeroU64::new(1_000).unwrap(),
 };
-const AUXILIARY_RAIL_RETRY_MS: NonZeroU64 = NonZeroU64::new(1_000).unwrap();
 const POWER_OBSERVATION_INTERVAL: Duration = Duration::from_secs(2);
 
 static TOUCH_READINESS: StaticCell<paper_mesh_esp_adapters::readiness::GpioReadiness> =
@@ -128,7 +127,11 @@ fn initialize(
     interrupts.register(wake_interrupt);
     display_recovery::boot();
     assert!(recovery::arm(recovery::Owner::Boot, 15_000));
-    let bus_result = bus::initialize(peripherals.I2C0, peripherals.GPIO39, peripherals.GPIO40);
+    let bus = bus::initialize(peripherals.I2C0, peripherals.GPIO39, peripherals.GPIO40)
+        .unwrap_or_else(|error| {
+            error!("I2C: initialization failed: {:?}; resetting", error);
+            esp_hal::system::software_reset()
+        });
     let mut pins = display::Pins {
         data0: peripherals.GPIO5,
         data1: peripherals.GPIO6,
@@ -145,15 +148,10 @@ fn initialize(
         start_vertical: peripherals.GPIO45,
     };
     // External expander outputs survive an ESP reset. Stop them before PSRAM setup.
-    let display_safe = bus_result
-        .as_ref()
-        .ok()
-        .map(|bus| display::establish_safe_state(bus, &mut pins));
+    let display_safe = display::establish_safe_state(bus, &mut pins);
     // Restore retained charger state through the same path after cold start or watchdog reset.
-    let power_ready = bus_result
-        .as_ref()
-        .ok()
-        .and_then(|bus| bus.try_lock())
+    let power_ready = bus
+        .try_lock()
         .is_some_and(|mut bus| power::ship::initialize(&mut *bus).is_ok());
     if !power_ready {
         // Do not start workers or disable the boot watchdog with an unconfirmed power state.
@@ -161,7 +159,7 @@ fn initialize(
             esp_hal::delay::Delay::new().delay_millis(1_000);
         }
     }
-    if matches!(display_safe, Some(Ok(()))) {
+    if display_safe.is_ok() {
         recovery::disable(recovery::Owner::Boot);
     } else {
         display_recovery::latch_fault(display_recovery::Stage::ShuttingDown);
@@ -190,30 +188,7 @@ fn initialize(
         env!("CARGO_PKG_VERSION")
     );
 
-    let bus = bus_result
-        .map_err(|error| {
-            error!("I2C: initialization failed: {:?}", error);
-            gnss::fault();
-            power::observation::fault();
-        })
-        .ok();
-    let button_polling = buttons::start_polling(spawner, bus, peripherals.GPIO0);
-    let Some(bus) = bus else {
-        interrupts.enable();
-        return (
-            None,
-            None,
-            suspend,
-            lifecycle::Services {
-                clock,
-                usb,
-                power_observation: None,
-                button_polling,
-                touch_input: None,
-                auxiliary: None,
-            },
-        );
-    };
+    let button_polling = buttons::start_polling(spawner, Some(bus), peripherals.GPIO0);
     let (admission, supply) = AUXILIARY_ADMISSION
         .init(paper_mesh_platform::worker::Pause::new())
         .split();
@@ -233,7 +208,6 @@ fn initialize(
     let auxiliary = features::auxiliary_power::Coordinator::new(
         auxiliary_rail::AuxiliaryRail::new(bus),
         gnss.lifecycle,
-        AUXILIARY_RAIL_RETRY_MS,
         admission,
     );
     gnss.workers
@@ -244,13 +218,10 @@ fn initialize(
         .expect("RTC worker launch failed");
     let power_observation =
         power::observation::start_observation(spawner, bus, POWER_OBSERVATION_INTERVAL);
-    let panel = if display_safe.is_some_and(|result| {
-        if let Err(error) = &result {
-            error!("display: boot shutdown failed: {}", error);
-        }
-        result.is_ok()
-    }) && !display_recovery::blocked()
-    {
+    if let Err(error) = &display_safe {
+        error!("display: boot shutdown failed: {}", error);
+    }
+    let panel = if display_safe.is_ok() && !display_recovery::blocked() {
         display::Panel::new(
             pins,
             peripherals.PSRAM,
@@ -311,7 +282,7 @@ fn initialize(
             power_observation: Some(power_observation),
             button_polling,
             touch_input,
-            auxiliary: Some(auxiliary),
+            auxiliary,
         },
     )
 }
@@ -322,6 +293,7 @@ async fn run_app(
     mut suspend: suspend::Controller,
     mut services: lifecycle::Services,
 ) -> ! {
+    services.start().await;
     // The application and its scan results use static RAM instead of the task stack.
     let app = APP.take();
     app.start(0);
@@ -341,7 +313,6 @@ async fn run_app(
     #[cfg(feature = "radio-scan-demo")]
     scan_demo::run(&mut discovery).await;
     loop {
-        services.poll_startup(Instant::now().as_millis()).await;
         touchpad_session.set_active(app.touchpad_open(), &mut touchpad);
         touchpad_session.poll(&touchpad);
         app.set_touchpad_host(touchpad.state());
@@ -423,9 +394,7 @@ async fn run_app(
                     discovery::changed(),
                     select(gnss::changed(), power::observation::changed()),
                 ),
-                Timer::at(Instant::from_millis(
-                    app.next_deadline_ms().min(services.next_startup_ms()),
-                )),
+                Timer::at(Instant::from_millis(app.next_deadline_ms())),
             ),
             display_inspection::request(),
         )

@@ -157,7 +157,7 @@ The lifecycle handle reads those results only after acknowledgement, so an earli
 UART setup or supply shutdown failure prevents the power transition.
 Suspend cancellation releases the worker to restart the receiver. Power-off failure keeps it paused for reset recovery.
 Restoration permits receiver initialization but does not establish a fresh location or UTC observation.
-Firmware retries initial rail enable while keeping GNSS admission blocked. UART retry remains in the GNSS worker.
+Firmware resets after failed initial rail enable while keeping GNSS admission blocked. UART retry remains in the GNSS worker.
 
 ## Runtime composition
 

@@ -23,8 +23,9 @@ GNSS preparation returns workers and a lifecycle handle without selecting startu
 Firmware gives the worker a [platform pause endpoint](../../crates/platform/src/worker.rs) that starts closed.
 The worker waits for admission before constructing its receiving UART. Launch order cannot bypass this dependency.
 While admission is closed, the worker can still prepare its idle UART for suspend.
-The application loop attempts rail startup and schedules retries without blocking other application work between attempts.
-Firmware selects the rail retry interval independently of UART retry timing. A successful enable releases GNSS admission.
+Firmware attempts rail startup once, with a bounded wait, before the application loop.
+A successful enable and consumer restoration release GNSS admission. Failure or timeout causes a software reset, without releasing admission.
+UART retries remain independent and belong to the GNSS worker.
 
 Suspend preparation closes admission, then awaits consumer acknowledgement before disabling the rail.
 Closing admission alone does not prove that an existing acquisition has finished.
@@ -39,11 +40,13 @@ Cancellation before a cut releases partial consumer preparation without changing
 A failed or timed-out restoration leaves consumers blocked and uses the suspend coordinator's reset recovery.
 The UART belongs to GNSS alone and needs no separate shared-resource coordinator.
 
-The service aggregate currently omits this coordinator when shared-bus initialization fails.
-A follow-up will make the coordinator mandatory and represent hardware unavailability within its lifecycle, instead of branching on `Option`.
+The service aggregate always owns a coordinator with its rail and consumers. There is no unavailable coordinator state.
+Shared-bus initialization failure causes a software reset before workers start.
+Both startup failure paths return through normal hardware initialization, including retained display and charger controls.
+A persistent fault can cause repeated resets. Firmware does not continue with an unavailable auxiliary supply.
 
 Native [rail tests](../../firmware/src/auxiliary_rail/device/tests.rs) verify register isolation, latch-before-direction order, propagated failures, and retry after partial writes.
-[Coordination tests](../../firmware/src/features/auxiliary_power/tests.rs) cover startup retries, transition order, partial preparation, cancellation during a cut, and failed restoration.
+[Coordination tests](../../firmware/src/features/auxiliary_power/tests.rs) cover failed startup, transition order, partial preparation, cancellation during a cut, and failed restoration.
 These tests do not verify physical rail voltage or startup timing.
 
 ## Fuel gauge

@@ -96,7 +96,6 @@ fn setup() -> (Coordinator<TestRail, Consumer>, Rc<RefCell<State>>) {
         Coordinator::new(
             TestRail(state.clone()),
             Consumer(state.clone()),
-            NonZeroU64::new(10).unwrap(),
             Box::leak(Box::new(paper_mesh_platform::worker::Pause::new()))
                 .split()
                 .0,
@@ -106,7 +105,7 @@ fn setup() -> (Coordinator<TestRail, Consumer>, Rc<RefCell<State>>) {
 }
 fn running() -> (Coordinator<TestRail, Consumer>, Rc<RefCell<State>>) {
     let (mut coordinator, state) = setup();
-    complete(coordinator.poll_startup(0)).unwrap();
+    complete(coordinator.did_resume(0)).unwrap();
     state.borrow_mut().events.clear();
     (coordinator, state)
 }
@@ -117,18 +116,14 @@ fn rail_dependency_controls_admission() {
     let state = Rc::new(RefCell::new(State::default()));
     let (control, mut supply) =
         Box::leak(Box::new(paper_mesh_platform::worker::Pause::new())).split();
-    let mut coordinator = Coordinator::new(
-        TestRail(state.clone()),
-        Consumer(state.clone()),
-        NonZeroU64::new(10).unwrap(),
-        control,
-    );
+    let mut coordinator =
+        Coordinator::new(TestRail(state.clone()), Consumer(state.clone()), control);
     assert!(poll(core::pin::pin!(supply.checkpoint())).is_pending());
     state.borrow_mut().fail_enable = true;
-    assert!(complete(coordinator.poll_startup(0)).is_err());
+    assert!(complete(coordinator.did_resume(0)).is_err());
     assert!(poll(core::pin::pin!(supply.checkpoint())).is_pending());
     state.borrow_mut().fail_enable = false;
-    complete(coordinator.poll_startup(10)).unwrap();
+    complete(coordinator.did_resume(10)).unwrap();
     complete(supply.checkpoint());
     complete(coordinator.will_suspend(100)).unwrap();
     // A stale release notification cannot bypass the closed admission state.
@@ -147,13 +142,9 @@ fn canceled_preparation_retains_closed_admission() {
     let state = Rc::new(RefCell::new(State::default()));
     let (control, mut supply) =
         Box::leak(Box::new(paper_mesh_platform::worker::Pause::new())).split();
-    let mut coordinator = Coordinator::new(
-        TestRail(state.clone()),
-        Consumer(state.clone()),
-        NonZeroU64::new(10).unwrap(),
-        control,
-    );
-    complete(coordinator.poll_startup(0)).unwrap();
+    let mut coordinator =
+        Coordinator::new(TestRail(state.clone()), Consumer(state.clone()), control);
+    complete(coordinator.did_resume(0)).unwrap();
     state.borrow_mut().block_prepare = true;
     assert!(poll(core::pin::pin!(coordinator.will_suspend(100))).is_pending());
     assert!(poll(core::pin::pin!(supply.checkpoint())).is_pending());
@@ -161,22 +152,16 @@ fn canceled_preparation_retains_closed_admission() {
     complete(supply.checkpoint());
 }
 
-// Failed startup keeps admission blocked and retries only when due.
+// Failed initial enable propagates the fault without restoring consumers or releasing admission.
 #[test]
-fn startup_retries_before_releasing_consumers() {
+fn startup_failure_keeps_consumers_stopped() {
     let (mut coordinator, state) = setup();
     state.borrow_mut().fail_enable = true;
     assert_eq!(
-        complete(coordinator.poll_startup(0)),
+        complete(coordinator.did_resume(100)),
         Err(Error::Rail("enable"))
     );
-    assert_eq!(coordinator.next_startup_ms(), 10);
-    complete(coordinator.poll_startup(9)).unwrap();
     assert_eq!(state.borrow().events, ["enable"]);
-    state.borrow_mut().fail_enable = false;
-    complete(coordinator.poll_startup(10)).unwrap();
-    assert_eq!(state.borrow().events, ["enable", "enable", "resume"]);
-    assert_eq!(coordinator.next_startup_ms(), u64::MAX);
 }
 
 // A successful transition cuts power after preparation and restores it before releasing consumers.

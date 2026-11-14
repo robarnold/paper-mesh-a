@@ -42,13 +42,6 @@ pub async fn changed() {
     CHANGED.wait().await;
 }
 
-pub fn fault() {
-    publish(PowerSnapshot {
-        battery: PowerReading::unavailable(PowerAvailability::Fault),
-        charger: PowerReading::unavailable(PowerAvailability::Fault),
-    });
-}
-
 fn publish(snapshot: PowerSnapshot) {
     STATE.lock(|state| *state.borrow_mut() = snapshot);
     CHANGED.signal(());
