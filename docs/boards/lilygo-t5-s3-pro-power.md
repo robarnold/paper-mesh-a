@@ -141,7 +141,8 @@ An active or pending radio scan rejects the request.
 Preparation pauses button, power, and RTC polling.
 It stops touch interrupts, cancels the current touch gesture, and pauses USB reports and logs.
 USB detaches before its device task acknowledges preparation.
-The GNSS task drops the UART and its wake lock, then disables the shared GNSS/LoRa auxiliary supply.
+The runtime closes the GNSS serial session and releases its RX wake lock.
+After preparation succeeds, the rail coordinator disables the shared GNSS/LoRa auxiliary supply.
 It retains a separate idle UART1 transmitter with no attached pins during the pause.
 This transmitter keeps UART1 clocks available without the receive wake lock.
 HAL sleep preparation polls UART transmitters and can stop indefinitely if UART1 clocks are disabled.
@@ -192,7 +193,7 @@ It arms the RTC timer with the selected deadline and calls the HAL sleep functio
 The HAL restores monotonic time after sleep. The coordinator captures pending GPIO events and releases the hardware stall.
 It rearms the RTOS timer alarm before it enables interrupts and releases the cooperative stop.
 After wake, the coordinator restores the wake lock and reads the gauge and charger before it resumes services.
-USB reconnects. GNSS restarts baud selection and acquires new observations.
+USB reconnects. GNSS opens a new session at its retained baud and acquires new observations.
 The display compares its framebuffer checksum across suspend and requires a full refresh after resume.
 
 The [portable report](../services/power.md#manual-suspend-experiment) defines charge signs, retention, and measurement limits.

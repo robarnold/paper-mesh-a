@@ -1735,6 +1735,7 @@ dependencies = [
  "embassy-sync 0.8.0",
  "embedded-graphics",
  "embedded-iconoir",
+ "embedded-io-async 0.7.0",
  "heapless 0.9.3",
  "time",
 ]

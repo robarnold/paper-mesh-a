@@ -52,16 +52,17 @@ Touch uses [acquisition control](platform/readiness.md#acquisition-control) to s
 The runtime combines their lifecycle handles in [service composition](../firmware/src/lifecycle.rs).
 The hardware coordinator remains independent of the selected adapters.
 The coordinator retains a system admission flag, but no global worker registry.
-GNSS reports hardware preparation failures through its lifecycle handle.
+The runtime GNSS worker reports hardware preparation failures through its lifecycle handle.
 The worker reads shared synchronization state after each pause so lifecycle invalidation reaches its next poll.
 Runtime configuration supplies polling intervals, observation age limits, correction thresholds, and calendar range to the synchronization service.
 Startup supplies location observations through a callback, so the RTC worker does not depend on the GNSS adapter.
-Firmware supplies GNSS baud candidates and acquisition timing through an explicit configuration value.
-Receiver decoding and UART execution consume this configuration.
+Firmware supplies startup probe candidates and retry timing separately from GNSS observation timing.
+The [serial session contract](platform/serial.md) keeps UART ownership and ESP sleep preparation outside GNSS decoding.
+Receiver decoding consumes observation settings. The runtime owns probing and recovery policy.
 The firmware auxiliary-rail component owns power access shared by GNSS and LoRa.
 A firmware coordinator prepares consumers before cutting the rail and restores power before releasing them.
-GNSS owns UART preparation and does not depend on the shared I2C bus or a supply-control contract.
-It returns workers and lifecycle control separately. A rail admission handle blocks acquisition until the coordinator establishes usable power.
+The firmware serial owner handles UART preparation. GNSS has no shared-I2C or supply-control dependency.
+The runtime worker exposes lifecycle control separately from task launch. Rail admission blocks acquisition until the coordinator establishes usable power.
 
 The platform defines the [reply transport contract](services/connectivity.md#reply-transport) and [bounded request framing](services/connectivity.md#request-framing).
 Firmware selects frame capacity and owns JSON parsing and command routing.

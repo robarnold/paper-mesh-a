@@ -144,12 +144,12 @@ The [touch adapter documentation](../adapters/touch.md#readiness-and-suspend) de
 
 ## GNSS integration
 
-The [GNSS module](../../firmware/src/gnss/mod.rs) returns a lifecycle handle when the shared bus is available.
+The [runtime GNSS worker](../../firmware/src/gnss_worker.rs) returns a lifecycle handle when the shared bus is available.
 Its worker runs on an interrupt executor. Its pause endpoint does not depend on a system service registry.
 The read-only location capability remains separate from lifecycle ownership.
 
 Preparation cancels UART reception and releases its RX wake lock.
-The worker retains an idle transmitter because HAL sleep preparation requires UART1 clocks.
+The serial owner retains an idle transmitter because HAL sleep preparation requires UART1 clocks.
 It publishes an unavailable receiver observation and its UART preparation result before acknowledging the pause.
 The firmware rail coordinator then disables the shared auxiliary supply.
 The lifecycle handle reads those results only after acknowledgement, so an earlier result cannot approve a new preparation.

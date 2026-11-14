@@ -1,4 +1,4 @@
-//! GNSS preparation results and worker lifecycle ownership.
+//! Runtime preparation results and GNSS worker lifecycle ownership.
 //!
 //! # Design choices
 //!

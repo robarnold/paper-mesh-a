@@ -1,14 +1,13 @@
-//! Bounded NMEA decoder and UART baud selection for the GNSS adapter.
+//! Bounded NMEA decoder and observation expiry for the GNSS adapter.
 //!
 //! # Design choices
 //!
-//! - Require a valid sentence before selecting a baud rate so noise cannot establish
-//!   receiver activity.
+//! - Require a valid sentence before publishing receiver activity.
 //! - Borrow large satellite storage so every receiver has configuration without a large construction temporary on the worker stack.
 //!
 //! See [LILYGO GNSS adapter](../../../docs/boards/lilygo-t5-s3-pro-gnss.md).
 
-use super::{config::Config, gsv::Gsv};
+use super::{config::Config, gsv::Gsv, nmea::Sentence};
 use paper_mesh_platform::location::{
     Coordinates, LocationAvailability, LocationObservation, LocationSnapshot, MotionObservation,
     ReceiverActivity, UtcObservation, UtcTime,
@@ -28,10 +27,7 @@ impl ReceiverStorage {
 /// Bounded sentence decoder with required configuration and borrowed satellite storage.
 pub struct Receiver<'a> {
     config: Config,
-    frame: [u8; 128],
-    length: usize,
-    collecting: bool,
-    rate: usize,
+    sentence: Sentence,
     deadline_ms: u64,
     gsv: &'a mut Gsv,
     pub snapshot: LocationSnapshot,
@@ -43,11 +39,8 @@ impl<'a> Receiver<'a> {
         storage.gsv.clear();
         Self {
             config,
-            frame: [0; 128],
-            length: 0,
-            collecting: false,
-            rate: 0,
-            deadline_ms: config.probe_ms.get(),
+            sentence: Sentence::default(),
+            deadline_ms: config.silence_ms.get(),
             gsv: &mut storage.gsv,
             snapshot: LocationSnapshot::new(),
         }
@@ -55,87 +48,67 @@ impl<'a> Receiver<'a> {
 
     /// Discard prior acquisition state while retaining configuration and storage ownership.
     pub fn reset(&mut self) {
-        self.frame.fill(0);
-        self.length = 0;
-        self.collecting = false;
-        self.rate = 0;
-        self.deadline_ms = self.config.probe_ms.get();
+        self.sentence.clear();
+        self.deadline_ms = self.config.silence_ms.get();
         self.gsv.clear();
         self.snapshot = LocationSnapshot::new();
     }
 
     pub fn start_at(&mut self, now_ms: u64) {
-        self.deadline_ms = now_ms.saturating_add(self.config.probe_ms.get());
+        self.deadline_ms = now_ms.saturating_add(self.config.silence_ms.get());
     }
 
-    pub fn baud(&self) -> u32 {
-        self.config.baud_rates.at(self.rate).get()
-    }
     pub fn deadline_ms(&self) -> u64 {
         self.gsv
             .next_deadline_ms()
             .map_or(self.deadline_ms, |time| time.min(self.deadline_ms))
     }
 
-    /// A valid NMEA envelope selects the baud rate, even without a position fix.
+    /// A valid NMEA envelope establishes activity, even without a position fix.
     pub fn feed(&mut self, byte: u8, now_ms: u64) -> bool {
-        if byte == b'$' {
-            self.length = 0;
-            self.collecting = true;
-        } else if self.collecting && byte == b'\n' {
-            self.collecting = false;
-            if let Some(text) = message(&self.frame[..self.length]) {
-                self.snapshot.availability = LocationAvailability::Ready;
-                self.snapshot.activity = Some(ReceiverActivity {
-                    received_at_ms: now_ms,
-                    valid_messages: self
-                        .snapshot
-                        .activity
-                        .map_or(1, |activity| activity.valid_messages.saturating_add(1)),
-                });
-                if let Some(observation) = parse_gga(text, now_ms) {
-                    self.snapshot.observation = Some(observation);
-                }
-                if let Some((motion, utc)) = parse_rmc(text, now_ms) {
-                    self.snapshot.motion = Some(motion);
-                    self.snapshot.utc = utc;
-                }
-                if text.as_bytes().get(2..5) == Some(b"GSV") {
-                    let mut fields = [""; 21];
-                    let mut count = 0;
-                    for field in text.split(',') {
-                        if count == fields.len() {
-                            break;
-                        }
-                        fields[count] = field;
-                        count += 1;
-                    }
-                    if text.split(',').count() == count {
-                        self.gsv.feed(&fields[..count], now_ms);
-                    } else {
-                        self.gsv.feed(&fields[..1], now_ms);
-                    }
-                }
-                self.gsv.expire(now_ms);
-                self.snapshot.satellites = self.gsv.observation();
-                self.deadline_ms = now_ms.saturating_add(self.config.silence_ms.get());
-                return true;
+        if let Some(text) = self.sentence.feed(byte) {
+            self.snapshot.availability = LocationAvailability::Ready;
+            self.snapshot.activity = Some(ReceiverActivity {
+                received_at_ms: now_ms,
+                valid_messages: self
+                    .snapshot
+                    .activity
+                    .map_or(1, |activity| activity.valid_messages.saturating_add(1)),
+            });
+            if let Some(observation) = parse_gga(text, now_ms) {
+                self.snapshot.observation = Some(observation);
             }
-        } else if self.collecting {
-            if self.length == self.frame.len() {
-                self.collecting = false;
-            } else {
-                self.frame[self.length] = byte;
-                self.length += 1;
+            if let Some((motion, utc)) = parse_rmc(text, now_ms) {
+                self.snapshot.motion = Some(motion);
+                self.snapshot.utc = utc;
             }
+            if text.as_bytes().get(2..5) == Some(b"GSV") {
+                let mut fields = [""; 21];
+                let mut count = 0;
+                for field in text.split(',') {
+                    if count == fields.len() {
+                        break;
+                    }
+                    fields[count] = field;
+                    count += 1;
+                }
+                if text.split(',').count() == count {
+                    self.gsv.feed(&fields[..count], now_ms);
+                } else {
+                    self.gsv.feed(&fields[..1], now_ms);
+                }
+            }
+            self.gsv.expire(now_ms);
+            self.snapshot.satellites = self.gsv.observation();
+            self.deadline_ms = now_ms.saturating_add(self.config.silence_ms.get());
+            return true;
         }
         false
     }
 
     /// A UART error invalidates the observation and the partial sentence.
     pub fn uart_error(&mut self) {
-        self.collecting = false;
-        self.length = 0;
+        self.sentence.clear();
         if self.snapshot.availability == LocationAvailability::Ready {
             self.snapshot.availability = LocationAvailability::Fault;
         }
@@ -146,7 +119,7 @@ impl<'a> Receiver<'a> {
         self.snapshot.satellites = None;
     }
 
-    /// After silence, all configured baud rates remain available for automatic recovery.
+    /// Expire observations after silence without changing transport configuration.
     pub fn advance(&mut self, now_ms: u64) -> bool {
         let expired = self.gsv.expire(now_ms);
         if expired {
@@ -155,50 +128,16 @@ impl<'a> Receiver<'a> {
         if now_ms < self.deadline_ms {
             return expired;
         }
-        self.rate = if self.rate == self.config.baud_rates.remaining.len() {
-            0
-        } else {
-            self.rate + 1
-        };
-        self.collecting = false;
-        self.length = 0;
+        self.sentence.clear();
         self.gsv.clear();
         self.snapshot.satellites = None;
-        if self.rate == 0 || self.snapshot.availability != LocationAvailability::Starting {
-            self.snapshot.availability = LocationAvailability::Unavailable;
-            self.snapshot.observation = None;
-            self.snapshot.motion = None;
-            self.snapshot.utc = None;
-        }
-        self.deadline_ms = now_ms.saturating_add(self.config.probe_ms.get());
+        self.snapshot.availability = LocationAvailability::Unavailable;
+        self.snapshot.observation = None;
+        self.snapshot.motion = None;
+        self.snapshot.utc = None;
+        self.deadline_ms = now_ms.saturating_add(self.config.silence_ms.get());
         true
     }
-}
-
-fn message(frame: &[u8]) -> Option<&str> {
-    let frame = frame.strip_suffix(b"\r").unwrap_or(frame);
-    let star = frame.iter().position(|byte| *byte == b'*')?;
-    if star + 3 != frame.len() {
-        return None;
-    }
-    let checksum = hex(frame[star + 1])? * 16 + hex(frame[star + 2])?;
-    if frame[..star].iter().fold(0, |sum, byte| sum ^ byte) != checksum {
-        return None;
-    }
-    let text = core::str::from_utf8(&frame[..star]).ok()?;
-    let header = text.split(',').next()?;
-    if header.len() != 5
-        || !header.bytes().all(|byte| byte.is_ascii_uppercase())
-        || !matches!(
-            &header[..2],
-            "GP" | "GN" | "GL" | "GA" | "GB" | "BD" | "GQ" | "GI"
-        )
-        || !text.bytes().all(|byte| (b' '..=b'~').contains(&byte))
-        || !text.contains(',')
-    {
-        return None;
-    }
-    Some(text)
 }
 
 fn parse_gga(text: &str, now_ms: u64) -> Option<LocationObservation> {
@@ -361,27 +300,6 @@ fn utc_time(text: &str) -> Option<UtcTime> {
     )
 }
 
-fn hex(byte: u8) -> Option<u8> {
-    match byte {
-        b'0'..=b'9' => Some(byte - b'0'),
-        b'A'..=b'F' => Some(byte - b'A' + 10),
-        b'a'..=b'f' => Some(byte - b'a' + 10),
-        _ => None,
-    }
-}
-
-pub(super) fn decimal(text: &str) -> Option<u32> {
-    if text.is_empty() {
-        return None;
-    }
-    text.bytes().try_fold(0_u32, |value, byte| {
-        if !byte.is_ascii_digit() {
-            return None;
-        }
-        value.checked_mul(10)?.checked_add(u32::from(byte - b'0'))
-    })
-}
-
 fn coordinate(
     text: &str,
     hemisphere: &str,
@@ -419,4 +337,16 @@ fn coordinate(
         return None;
     };
     Some(sign * value as i32)
+}
+
+pub(super) fn decimal(text: &str) -> Option<u32> {
+    if text.is_empty() {
+        return None;
+    }
+    text.bytes().try_fold(0_u32, |value, byte| {
+        if !byte.is_ascii_digit() {
+            return None;
+        }
+        value.checked_mul(10)?.checked_add(u32::from(byte - b'0'))
+    })
 }

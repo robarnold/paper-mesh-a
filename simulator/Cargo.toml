@@ -19,6 +19,7 @@ axum = { version = "=0.8.9", default-features = false, features = ["http1", "tok
 tokio = { version = "=1.54.1", features = ["rt", "macros", "net", "time"] }
 
 [dev-dependencies]
+embassy-futures = "=0.1.2"
 heapless = "=0.9.3"
 embassy-sync = "=0.8.0"
 embedded-hal = "=1.0.0"

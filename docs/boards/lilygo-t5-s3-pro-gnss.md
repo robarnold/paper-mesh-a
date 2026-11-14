@@ -7,46 +7,43 @@ The [location contract](../services/location.md) defines its portable observatio
 
 ## Configuration
 
-The firmware [entry point](../../firmware/src/main.rs) supplies `GNSS_CONFIG` to the receiver worker.
-The [configuration type](../../firmware/src/gnss/config.rs) contains ordered baud candidates, probe and silence durations, and the hardware retry delay.
-`BaudRates` requires a first candidate and permits additional candidates in static storage.
-Rates use `NonZeroU32`. Durations use `NonZeroU64` milliseconds. These types exclude empty candidate lists and zero values without runtime validation.
+The firmware [entry point](../../firmware/src/main.rs) supplies separate probe, recovery, and observation settings.
+The [runtime configuration](../../firmware/src/gnss_worker.rs) contains ordered baud candidates, a per-candidate deadline, and a retry delay.
+The [decoder configuration](../../firmware/src/gnss/config.rs) contains only the observation silence limit.
+Rates and durations use nonzero types. The probe requires a first candidate.
 
-Acquisition starts with the first candidate and advances through the list when the probe deadline expires.
-A valid sentence replaces the probe deadline with the silence deadline. Noise does not extend either deadline.
-Resume restarts acquisition with the same configuration. UART-construction failures use the configured retry delay.
+The [startup probe](../../firmware/src/gnss/probe.rs) opens a fresh serial session for each candidate.
+Only a complete sentence with a valid checksum selects a rate. This establishes communication, not receiver identity or a satellite fix.
+Each probe is bounded. Firmware retries unsuccessful startup probes after its retry delay.
+A successful rate remains in runtime state across suspend and receive retries.
+Firmware sends no command to change the receiver's baud.
 
-Large satellite storage remains static. `Receiver::new` requires configuration and borrows that storage without constructing a large stack temporary.
-The receiver always has configuration. An in-place reset clears prior observations while retaining configuration and the storage borrow.
-UART FIFO settings, sentence capacities, and satellite-group expiry remain implementation details of their existing modules.
+Silence invalidates observations and ends the receive session. Recovery opens another session at the retained rate.
+It does not restart baud probing. Receiver reconfiguration can invalidate that retained choice and currently requires a firmware restart.
+The probe is a separate helper. A future board configuration with a known baud can bypass it.
+
+Large satellite storage remains static. The receiver borrows that storage and retains its observation configuration across reset.
+NMEA framing is shared by probing and decoding. Each new session discards previous partial sentence state.
 
 ## Transport and power
 
-The [firmware runtime](../platform/runtime.md#firmware-execution-placement) supplies the GNSS worker's interrupt-executor spawner.
-It selects core 0 and priority 1 so UART consumption can proceed during synchronous application rendering.
+The [firmware runtime](../platform/runtime.md#firmware-execution-placement) supplies the worker's interrupt-executor spawner.
+The [runtime worker](../../firmware/src/gnss_worker.rs) composes GNSS with the [serial session contract](../platform/serial.md).
+Firmware supplies UART resources, pins, and hardware settings to the [serial owner](../../firmware/src/serial.rs).
+GNSS receives only serial sessions and does not configure ESP peripherals.
+
+The [acquisition loop](../../firmware/src/gnss/acquisition.rs) preserves a pending read across observation deadlines.
+Read cancellation is permitted only when ending the session, including suspend or silence.
+The runtime closes the session before serial sleep preparation. It invalidates receiver observations before acknowledging the pause.
+ESP idle-transmitter handling remains in the serial owner.
 
 Firmware owns the [shared auxiliary rail](lilygo-t5-s3-pro-power.md#auxiliary-rail), which also powers LoRa.
-GNSS `prepare` returns workers and their lifecycle handle without launching a task or requesting a pause.
-The worker receives a closed rail admission handle and waits for usable power before UART acquisition.
-The rail coordinator releases admission after successful power and lifecycle restoration.
-The worker has no supply interface, board power-register access, or I2C bus reference.
+Startup admission remains blocked until rail initialization succeeds.
+The rail coordinator awaits preparation before cutting power and restores power before releasing acquisition.
+The retained baud survives these transitions. Location and UTC observations do not.
 
-The auxiliary supply stays enabled after startup, during receiver faults, and after exit from the GNSS screen.
-Thus, this version also supplies power to LoRa. The LoRa driver stays uninitialized.
-The manual suspend experiment prepares GNSS before firmware disables this supply, after the active display update ends.
-It retains an idle transmitter during the pause to keep UART1 clocks available for HAL sleep preparation.
-This transmitter has no attached pins or receive wake lock.
-Firmware restores the supply before releasing GNSS to restart baud selection. Previous GNSS observations cannot supply a retained fix.
-
-GNSS retains a concrete Embassy task and performs no heap allocation for startup or supply operations.
-The async UART is created inside its selected executor. Large satellite storage remains static.
-
-The [receiver worker](../../firmware/src/gnss/mod.rs) listens during rendering and tries the rates used by the supported receiver variants.
-Only a complete sentence with a valid checksum selects a rate. This identifies a working transport but cannot identify the fitted receiver.
-After a prolonged silence the adapter retries baud selection without sending a receiver command.
-
-The [application](../application.md#location-screen) selects observation age limits.
-Incorrect checksums and malformed sentences do not change the previous observation time.
+The worker remains a concrete Embassy task without heap allocation for sessions or startup probing.
+The runtime constructs async UART sessions on the selected executor.
 
 ## Position and elevation
 
@@ -110,7 +107,7 @@ Section 2.2.3, pages 14–15, specifies GSV groups, signal IDs, and C/N0 in dB-H
 It excludes the combined `GN` identifier from GSV reports.
 Section 2.2.1, pages 9–11, specifies RMC fields, data status, mode, and the published example.
 Section 2.2.5, page 17, defines course over ground relative to true north.
-Native tests use the published GGA, GSV, and RMC examples and exercise malformed input, UART errors, baud retries, and independent expiry.
+Native tests use the published GGA, GSV, and RMC examples and exercise malformed input, UART errors, session expiry, and independent observation expiry.
 
 Hardware checks established receiver communication and satellite signal reports.
 Satellite fix acquisition, time to first fix, and measurement accuracy are unverified.

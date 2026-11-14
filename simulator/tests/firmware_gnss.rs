@@ -1,4 +1,4 @@
-//! Native tests exercise the decoder and baud selection from the firmware.
+//! Native tests exercise the decoder and session expiry from the firmware.
 //!
 //! # Design choices
 //!
@@ -8,35 +8,26 @@
 //! See [LILYGO GNSS adapter](../../docs/boards/lilygo-t5-s3-pro-gnss.md).
 
 #[path = "../../firmware/src/gnss/config.rs"]
-#[expect(
-    dead_code,
-    reason = "The firmware worker consumes retry_ms; these tests exercise the receiver."
-)]
 mod config;
 #[path = "../../firmware/src/gnss/gsv.rs"]
 mod gsv;
-#[path = "../../firmware/src/gnss/lifecycle/mod.rs"]
+#[path = "../../firmware/src/gnss_worker/lifecycle/mod.rs"]
 mod lifecycle;
+#[path = "../../firmware/src/gnss/nmea.rs"]
+mod nmea;
 #[path = "../../firmware/src/gnss/receiver.rs"]
 mod receiver;
 
-use core::num::{NonZeroU32, NonZeroU64};
+use core::num::NonZeroU64;
 use paper_mesh_platform::location::{
     Coordinates, Location, LocationAvailability, LocationSnapshot, SatelliteSystem, UtcTime,
 };
 use paper_mesh_platform::time::{Date, Month};
 use receiver::{Receiver, ReceiverStorage};
 
-const PROBE_MS: u64 = 4_000;
 const SILENCE_MS: u64 = 10_000;
 const CONFIG: config::Config = config::Config {
-    baud_rates: config::BaudRates {
-        first: NonZeroU32::new(9_600).unwrap(),
-        remaining: &[NonZeroU32::new(38_400).unwrap()],
-    },
-    probe_ms: NonZeroU64::new(PROBE_MS).unwrap(),
     silence_ms: NonZeroU64::new(SILENCE_MS).unwrap(),
-    retry_ms: NonZeroU64::new(1_000).unwrap(),
 };
 
 fn sentence(body: &str) -> Vec<u8> {
@@ -516,7 +507,6 @@ fn satellite_reports_expire_while_other_messages_keep_receiver_active() {
     );
     assert_eq!(receiver.deadline_ms(), 5_010);
     assert!(receiver.advance(5_010));
-    assert_eq!(receiver.baud(), 9_600);
     assert_eq!(receiver.snapshot.satellites, None);
     assert_eq!(receiver.snapshot.observation.unwrap().observed_at_ms, 20);
     assert_eq!(receiver.snapshot.activity.unwrap().received_at_ms, 4_000);
@@ -571,109 +561,49 @@ fn noise_truncation_and_overflow_recover_at_the_next_sentence() {
     assert_eq!(receiver.snapshot.availability, LocationAvailability::Ready);
 }
 
+// Silence invalidates observations, and fresh input can establish activity without a position fix.
 #[test]
-fn baud_probes_retry_without_a_fix_and_recover_after_silence() {
+fn silence_expires_without_transport_policy() {
     let mut storage = ReceiverStorage::EMPTY;
     let mut receiver = Receiver::new(&mut storage, CONFIG);
     receiver.start_at(0);
-    assert_eq!(receiver.baud(), 9_600);
-    receiver.uart_error();
-    assert_eq!(
-        receiver.snapshot.availability,
-        LocationAvailability::Starting
-    );
-    assert!(!receiver.advance(PROBE_MS - 1));
-    assert!(receiver.advance(PROBE_MS));
-    assert_eq!(receiver.baud(), 38_400);
-    assert_eq!(
-        receiver.snapshot.availability,
-        LocationAvailability::Starting
-    );
-    assert!(receiver.advance(2 * PROBE_MS));
+    assert!(!receiver.advance(SILENCE_MS - 1));
+    assert!(receiver.advance(SILENCE_MS));
     assert_eq!(
         receiver.snapshot.availability,
         LocationAvailability::Unavailable
     );
-    assert_eq!(receiver.baud(), 9_600);
     assert_eq!(
         feed(
             &mut receiver,
             &sentence("GNGGA,071557,,,,,0,00,,,,,,,"),
-            8_100
+            10_100
         ),
         1
     );
     assert_eq!(receiver.snapshot.availability, LocationAvailability::Ready);
     assert_eq!(receiver.snapshot.observation.unwrap().coordinates, None);
-    assert_eq!(receiver.deadline_ms(), 8_100 + SILENCE_MS);
-    assert!(!receiver.advance(8_100 + SILENCE_MS - 1));
-    assert!(receiver.advance(8_100 + SILENCE_MS));
+    assert_eq!(receiver.deadline_ms(), 10_100 + SILENCE_MS);
+    assert!(receiver.advance(10_100 + SILENCE_MS));
     assert_eq!(receiver.snapshot.observation, None);
-    assert_eq!(receiver.baud(), 38_400);
-    assert_eq!(feed(&mut receiver, &sentence(FIX), 18_200), 1);
-    assert_eq!(receiver.snapshot.availability, LocationAvailability::Ready);
 }
 
-// Runtime choices must control baud order, wraparound, and deadlines after both noise and valid input.
+// Reset retains the configured silence duration and clears all acquisition state.
 #[test]
-fn custom_configuration_controls_acquisition_and_recovery() {
-    const CUSTOM_CONFIG: config::Config = config::Config {
-        baud_rates: config::BaudRates {
-            first: NonZeroU32::new(4_800).unwrap(),
-            remaining: &[
-                NonZeroU32::new(19_200).unwrap(),
-                NonZeroU32::new(115_200).unwrap(),
-            ],
-        },
-        probe_ms: NonZeroU64::new(25).unwrap(),
-        silence_ms: NonZeroU64::new(70).unwrap(),
-        retry_ms: NonZeroU64::new(3).unwrap(),
-    };
-    let config = CUSTOM_CONFIG;
+fn reset_preserves_observation_policy() {
     let mut storage = ReceiverStorage::EMPTY;
-    let mut receiver = Receiver::new(&mut storage, config);
+    let mut receiver = Receiver::new(
+        &mut storage,
+        config::Config {
+            silence_ms: NonZeroU64::new(70).unwrap(),
+        },
+    );
     receiver.start_at(100);
-    assert_eq!(receiver.baud(), 4_800);
-    assert_eq!(receiver.deadline_ms(), 125);
-    assert!(!receiver.advance(124));
-    assert!(receiver.advance(125));
-    assert_eq!(receiver.baud(), 19_200);
-    assert_eq!(feed(&mut receiver, &sentence(FIX), 130), 1);
+    assert_eq!(receiver.deadline_ms(), 170);
+    feed(&mut receiver, &sentence(FIX), 130);
     assert_eq!(receiver.deadline_ms(), 200);
-    assert!(!receiver.advance(199));
-    assert!(receiver.advance(200));
-    assert_eq!(receiver.baud(), 115_200);
-    assert_eq!(receiver.snapshot.observation, None);
-    assert_eq!(receiver.deadline_ms(), 225);
-    assert!(receiver.advance(225));
-    assert_eq!(receiver.baud(), 4_800);
-    feed(&mut receiver, &sentence(FIX), 230);
     receiver.reset();
     receiver.start_at(300);
-    assert_eq!(receiver.baud(), 4_800);
-    assert_eq!(receiver.deadline_ms(), 325);
-    assert_eq!(
-        receiver.snapshot,
-        paper_mesh_platform::location::LocationSnapshot::new()
-    );
-}
-
-// A required first candidate remains usable when there are no additional rates to probe.
-#[test]
-fn single_baud_candidate_retries_without_losing_configuration() {
-    let config = config::Config {
-        baud_rates: config::BaudRates {
-            first: NonZeroU32::new(115_200).unwrap(),
-            remaining: &[],
-        },
-        ..CONFIG
-    };
-    let mut storage = ReceiverStorage::EMPTY;
-    let mut receiver = Receiver::new(&mut storage, config);
-    receiver.start_at(0);
-    for deadline in [PROBE_MS, 2 * PROBE_MS] {
-        assert!(receiver.advance(deadline));
-        assert_eq!(receiver.baud(), 115_200);
-        assert_eq!(receiver.deadline_ms(), deadline + PROBE_MS);
-    }
+    assert_eq!(receiver.deadline_ms(), 370);
+    assert_eq!(receiver.snapshot, LocationSnapshot::new());
 }

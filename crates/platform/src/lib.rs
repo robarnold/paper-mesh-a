@@ -23,6 +23,7 @@ pub mod power_off;
 pub mod readiness;
 pub mod rotation;
 pub mod rtc;
+pub mod serial;
 pub mod suspend;
 pub mod time;
 pub mod touchpad;

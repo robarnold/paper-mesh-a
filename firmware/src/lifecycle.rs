@@ -11,10 +11,10 @@ use paper_mesh_platform::{power_off::PowerOffParticipant, suspend::SuspendPartic
 
 type AuxiliaryPower = crate::features::auxiliary_power::Coordinator<
     crate::auxiliary_rail::AuxiliaryRail,
-    crate::gnss::GnssLifecycle,
+    crate::gnss_worker::GnssLifecycle,
 >;
 type Error = crate::features::auxiliary_power::Error<
-    crate::gnss::PreparationError,
+    crate::gnss_worker::PreparationError,
     esp_hal::i2c::master::Error,
 >;
 

@@ -25,12 +25,14 @@ mod display_worker;
 mod execution;
 mod features;
 mod gnss;
+mod gnss_worker;
 mod interrupts;
 mod lifecycle;
 mod power;
 mod recovery;
 #[cfg(feature = "radio-scan-demo")]
 mod scan_demo;
+mod serial;
 mod suspend;
 use paper_mesh_esp_adapters::touch;
 use paper_mesh_esp_adapters::usb;
@@ -59,13 +61,15 @@ const RTC_POLICY: paper_mesh_platform::rtc::synchronization::Policy =
         first_year: 2000,
         last_year: 2099,
     };
-const GNSS_CONFIG: gnss::Config = gnss::Config {
-    baud_rates: gnss::BaudRates {
+const GNSS_CONFIG: gnss_worker::Config = gnss_worker::Config {
+    rates: gnss::probe::BaudRates {
         first: NonZeroU32::new(9_600).unwrap(),
         remaining: &[NonZeroU32::new(38_400).unwrap()],
     },
     probe_ms: NonZeroU64::new(4_000).unwrap(),
-    silence_ms: NonZeroU64::new(10_000).unwrap(),
+    receiver: gnss::Config {
+        silence_ms: NonZeroU64::new(10_000).unwrap(),
+    },
     retry_ms: NonZeroU64::new(1_000).unwrap(),
 };
 const AUXILIARY_RAIL_RETRY_MS: NonZeroU64 = NonZeroU64::new(1_000).unwrap();
@@ -213,13 +217,19 @@ fn initialize(
     let (admission, supply) = AUXILIARY_ADMISSION
         .init(paper_mesh_platform::worker::Pause::new())
         .split();
-    let gnss = gnss::prepare(
+    let serial = serial::Serial::new(
         peripherals.UART1,
         peripherals.GPIO44,
         peripherals.GPIO43,
-        GNSS_CONFIG,
-        supply,
+        esp_hal::uart::Config::default()
+            .with_baudrate(GNSS_CONFIG.rates.first.get())
+            .with_rx(
+                esp_hal::uart::RxConfig::default()
+                    .with_fifo_full_threshold(32)
+                    .with_timeout(10),
+            ),
     );
+    let gnss = gnss_worker::prepare(serial, GNSS_CONFIG, supply);
     let auxiliary = features::auxiliary_power::Coordinator::new(
         auxiliary_rail::AuxiliaryRail::new(bus),
         gnss.lifecycle,
