@@ -1450,6 +1450,7 @@ dependencies = [
 name = "paper-mesh-bq25896"
 version = "0.1.0"
 dependencies = [
+ "embassy-sync 0.8.0",
  "embedded-hal 1.0.0",
  "paper-mesh-platform",
 ]
@@ -1458,6 +1459,7 @@ dependencies = [
 name = "paper-mesh-bq27220"
 version = "0.1.0"
 dependencies = [
+ "embassy-sync 0.8.0",
  "embedded-hal 1.0.0",
  "paper-mesh-platform",
 ]

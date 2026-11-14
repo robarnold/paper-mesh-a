@@ -9,6 +9,28 @@
 //!
 //! See the [power observation contract](../../../docs/services/power.md#current-observations).
 
+use core::future::Future;
+
+/// Device access for a complete battery observation, independent of transport and scheduling.
+pub trait BatteryGauge {
+    /// Access or sample-validation failure. Absence and gauge readiness are successful status observations.
+    type Error;
+
+    /// Acquire device resources, read a complete observation, and release resources before returning.
+    /// Errors discard partial measurements. Callers must await completion before claiming quiescence.
+    fn read(&mut self) -> impl Future<Output = Result<BatteryState, Self::Error>>;
+}
+
+/// Charger observation access without authority to configure charging or isolate the battery.
+pub trait ChargerObserver {
+    type Error;
+
+    /// Acquire device resources, read a complete observation, and release resources before returning.
+    /// Reads may consume hardware fault latches. Cancellation need not preserve that fault history.
+    /// Callers must await completion before claiming quiescence.
+    fn read(&mut self) -> impl Future<Output = Result<ChargerState, Self::Error>>;
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PowerAvailability {
     Starting,

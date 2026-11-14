@@ -5,6 +5,19 @@
 Power observations, a manual suspend experiment, and explicit power-off are implemented.
 Charge control and general lifecycle planning stay planned work.
 
+## Device observation capabilities
+
+`BatteryGauge::read` and `ChargerObserver::read` perform asynchronous device access and return complete platform states.
+Each backend acquires its device resources and releases them before returning, including after failure.
+Their associated error types retain access and sample-validation failures. An absent battery or unready gauge remains a successful status observation.
+These contracts do not expose buses, pin selection, scheduling, or charger control.
+Charger reads can consume fault latches. Cancellation does not promise to preserve fault history.
+Lifecycle coordination must await the read before claiming acquisition quiescence.
+
+The observer awaits each source independently and records a timestamp after each successful read completes.
+It publishes a fault for a failed source while retaining a successful observation from the other source.
+`Power::snapshot` remains the separate cached interface used by the application.
+
 ## Current observations
 
 `Power::snapshot` returns cached battery and charger observations without I/O or a wait.

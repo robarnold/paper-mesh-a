@@ -9,7 +9,6 @@
 
 mod lifecycle;
 pub use lifecycle::PowerObservationLifecycle;
-use paper_mesh_bq25896::observation as charger;
 
 use core::cell::RefCell;
 use embassy_executor::Spawner;
@@ -19,7 +18,9 @@ use embassy_sync::{
     signal::Signal,
 };
 use embassy_time::{Duration, Instant, Timer};
-use paper_mesh_platform::power::{Power, PowerAvailability, PowerReading, PowerSnapshot};
+use paper_mesh_platform::power::{
+    BatteryGauge, ChargerObserver, Power, PowerAvailability, PowerReading, PowerSnapshot,
+};
 use paper_mesh_platform::worker::{Pause, PauseWorker};
 use static_cell::StaticCell;
 
@@ -30,6 +31,7 @@ static STATE: Mutex<CriticalSectionRawMutex, RefCell<PowerSnapshot>> =
 static CHANGED: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 static PAUSE: StaticCell<Pause<CriticalSectionRawMutex>> = StaticCell::new();
 
+/// Cached battery and charger observations published by the firmware worker.
 pub struct FirmwarePowerObservation;
 
 impl Power for FirmwarePowerObservation {
@@ -48,18 +50,16 @@ fn publish(snapshot: PowerSnapshot) {
 }
 
 pub async fn read_now(bus: &Bus) -> PowerSnapshot {
-    let battery = {
-        let mut bus = bus.lock().await;
-        paper_mesh_bq27220::battery(&mut *bus)
-            .map(|value| PowerReading::ready(value, Instant::now().as_millis()))
-            .unwrap_or(PowerReading::unavailable(PowerAvailability::Fault))
-    };
-    let charger = {
-        let mut bus = bus.lock().await;
-        charger::read(&mut *bus)
-            .map(|value| PowerReading::ready(value, Instant::now().as_millis()))
-            .unwrap_or(PowerReading::unavailable(PowerAvailability::Fault))
-    };
+    let battery = paper_mesh_bq27220::Bq27220::new(bus)
+        .read()
+        .await
+        .map(|value| PowerReading::ready(value, Instant::now().as_millis()))
+        .unwrap_or(PowerReading::unavailable(PowerAvailability::Fault));
+    let charger = paper_mesh_bq25896::observation::Observer::new(bus)
+        .read()
+        .await
+        .map(|value| PowerReading::ready(value, Instant::now().as_millis()))
+        .unwrap_or(PowerReading::unavailable(PowerAvailability::Fault));
     let snapshot = PowerSnapshot { battery, charger };
     publish(snapshot);
     snapshot
@@ -86,34 +86,34 @@ async fn observation_worker(
     mut pause: PauseWorker<'static, CriticalSectionRawMutex>,
     poll_interval: Duration,
 ) {
+    let mut gauge = paper_mesh_bq27220::Bq27220::new(bus);
+    let mut charger = paper_mesh_bq25896::observation::Observer::new(bus);
     let mut failed = (false, false);
     loop {
         pause.checkpoint().await;
-        let battery = {
-            let mut bus = bus.lock().await;
-            let at_ms = Instant::now().as_millis();
-            paper_mesh_bq27220::battery(&mut *bus).map(|value| PowerReading::ready(value, at_ms))
-        };
-        // Release the bus between devices so other clients can proceed.
-        let charger = {
-            let mut bus = bus.lock().await;
-            let at_ms = Instant::now().as_millis();
-            charger::read(&mut *bus).map(|value| PowerReading::ready(value, at_ms))
-        };
+        let battery = gauge
+            .read()
+            .await
+            .map(|value| PowerReading::ready(value, Instant::now().as_millis()));
+        // Each device releases the bus before the next read, so other clients can proceed.
+        let charger_reading = charger
+            .read()
+            .await
+            .map(|value| PowerReading::ready(value, Instant::now().as_millis()));
         if let Err(error) = &battery
             && !failed.0
         {
             log::error!("battery: read failed: {:?}", error);
         }
-        if let Err(error) = &charger
+        if let Err(error) = &charger_reading
             && !failed.1
         {
             log::error!("charger: read failed: {:?}", error);
         }
-        failed = (battery.is_err(), charger.is_err());
+        failed = (battery.is_err(), charger_reading.is_err());
         publish(PowerSnapshot {
             battery: battery.unwrap_or(PowerReading::unavailable(PowerAvailability::Fault)),
-            charger: charger.unwrap_or(PowerReading::unavailable(PowerAvailability::Fault)),
+            charger: charger_reading.unwrap_or(PowerReading::unavailable(PowerAvailability::Fault)),
         });
         select(Timer::after(poll_interval), pause.requested()).await;
     }

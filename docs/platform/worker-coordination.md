@@ -105,6 +105,9 @@ Power-off preparation leaves all workers paused until power removal or reset.
 ## Power observation integration
 
 The [power observation module](../../firmware/src/power/observation.rs) starts its periodic worker and returns a `PowerObservationLifecycle` handle.
+The BQ27220 and BQ25896 drivers implement platform `BatteryGauge` and `ChargerObserver`.
+Each driver uses [shared bus ownership](shared-bus.md) to hold the bus for the complete observation and release it before returning.
+The observer calls these traits for both periodic observations and direct suspend comparisons.
 The runtime supplies a nonzero polling interval. The worker waits that interval after each completed pair of device reads.
 Startup creates this handle only when shared-bus initialization succeeds.
 The runtime omits an unavailable worker from lifecycle composition, so preparation cannot wait for a task that never started.

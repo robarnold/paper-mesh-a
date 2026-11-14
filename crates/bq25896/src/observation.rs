@@ -7,12 +7,37 @@
 //!
 //! See [Charger observations](../../../docs/adapters/bq25896.md#observations).
 
+use embassy_sync::blocking_mutex::raw::RawMutex;
 use embedded_hal::i2c::I2c;
+use paper_mesh_platform::bus::Arbitrated;
 use paper_mesh_platform::power::{
     ChargeFault, ChargeState, ChargerFaults, ChargerState, PowerSource, ThermistorState,
 };
 
 use crate::I2C_ADDRESS;
+
+/// Charger observations with exclusive bus ownership for each complete sample.
+pub struct Observer<'a, M: RawMutex, I, const N: usize> {
+    bus: &'a Arbitrated<M, I, N>,
+}
+
+impl<'a, M: RawMutex, I, const N: usize> Observer<'a, M, I, N> {
+    /// Use the supplied bus access without changing device configuration.
+    pub const fn new(bus: &'a Arbitrated<M, I, N>) -> Self {
+        Self { bus }
+    }
+}
+
+impl<M: RawMutex, I: I2c, const N: usize> paper_mesh_platform::power::ChargerObserver
+    for Observer<'_, M, I, N>
+{
+    type Error = Error<I::Error>;
+
+    async fn read(&mut self) -> Result<ChargerState, Self::Error> {
+        let mut bus = self.bus.lock().await;
+        read(&mut *bus)
+    }
+}
 
 /// Bus failure while reading charger observations.
 #[derive(Debug, PartialEq, Eq)]

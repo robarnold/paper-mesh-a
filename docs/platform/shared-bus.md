@@ -4,6 +4,9 @@ The platform [bus arbitration helper](../../crates/platform/src/bus.rs) gives as
 It contains no I2C driver, board pins, executor, timer, or device policy.
 The backend supplies the value, storage, raw mutex, and queue capacity.
 
+The BQ27220 and BQ25896 observation drivers use `Arbitrated` directly with a generic `embedded-hal` I2C implementation.
+They retain one guard across each complete observation, including all register transfers. Firmware supplies the concrete bus.
+
 ## Ownership and waiting
 
 `Arbitrated::lock` queues asynchronous clients through a fair semaphore with one permit.

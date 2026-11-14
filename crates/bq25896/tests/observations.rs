@@ -124,3 +124,39 @@ fn every_bus_failure_discards_the_partial_sample() {
         assert!(device::read(&mut bus).is_ok());
     }
 }
+
+// A held bus delays observations. Completed reads release it after success or failure.
+#[test]
+fn observation_capability_releases_complete_sample_ownership() {
+    use core::future::Future;
+    use core::task::{Context, Poll, Waker};
+    use paper_mesh_platform::power::ChargerObserver;
+
+    let access = paper_mesh_platform::bus::Arbitrated::<
+        embassy_sync::blocking_mutex::raw::NoopRawMutex,
+        _,
+        2,
+    >::new(Bus::new());
+    let mut device = device::Observer::new(&access);
+    let mut cx = Context::from_waker(Waker::noop());
+    {
+        let owner = access.try_lock().unwrap();
+        let mut read = core::pin::pin!(device.read());
+        assert!(read.as_mut().poll(&mut cx).is_pending());
+        drop(owner);
+        assert!(matches!(read.as_mut().poll(&mut cx), Poll::Ready(Ok(_))));
+    }
+    assert!(matches!(
+        core::pin::pin!(device.read()).as_mut().poll(&mut cx),
+        Poll::Ready(Ok(_))
+    ));
+    {
+        let mut bus = access.try_lock().unwrap();
+        bus.fail_at = Some(bus.transactions + 1);
+    }
+    assert!(matches!(
+        core::pin::pin!(device.read()).as_mut().poll(&mut cx),
+        Poll::Ready(Err(device::Error::Bus(ErrorKind::Other)))
+    ));
+    assert!(access.try_lock().is_some());
+}
