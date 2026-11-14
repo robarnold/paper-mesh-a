@@ -97,6 +97,9 @@ fn setup() -> (Coordinator<TestRail, Consumer>, Rc<RefCell<State>>) {
             TestRail(state.clone()),
             Consumer(state.clone()),
             NonZeroU64::new(10).unwrap(),
+            Box::leak(Box::new(paper_mesh_platform::worker::Pause::new()))
+                .split()
+                .0,
         ),
         state,
     )
@@ -106,6 +109,56 @@ fn running() -> (Coordinator<TestRail, Consumer>, Rc<RefCell<State>>) {
     complete(coordinator.poll_startup(0)).unwrap();
     state.borrow_mut().events.clear();
     (coordinator, state)
+}
+
+// A launched consumer stays blocked through failed startup and uncertain restoration.
+#[test]
+fn rail_dependency_controls_admission() {
+    let state = Rc::new(RefCell::new(State::default()));
+    let (control, mut supply) =
+        Box::leak(Box::new(paper_mesh_platform::worker::Pause::new())).split();
+    let mut coordinator = Coordinator::new(
+        TestRail(state.clone()),
+        Consumer(state.clone()),
+        NonZeroU64::new(10).unwrap(),
+        control,
+    );
+    assert!(poll(core::pin::pin!(supply.checkpoint())).is_pending());
+    state.borrow_mut().fail_enable = true;
+    assert!(complete(coordinator.poll_startup(0)).is_err());
+    assert!(poll(core::pin::pin!(supply.checkpoint())).is_pending());
+    state.borrow_mut().fail_enable = false;
+    complete(coordinator.poll_startup(10)).unwrap();
+    complete(supply.checkpoint());
+    complete(coordinator.will_suspend(100)).unwrap();
+    // A stale release notification cannot bypass the closed admission state.
+    assert!(poll(core::pin::pin!(supply.checkpoint())).is_pending());
+    state.borrow_mut().fail_enable = true;
+    assert!(complete(coordinator.did_resume(200)).is_err());
+    assert!(poll(core::pin::pin!(supply.checkpoint())).is_pending());
+    state.borrow_mut().fail_enable = false;
+    complete(coordinator.did_resume(200)).unwrap();
+    complete(supply.checkpoint());
+}
+
+// Cancellation during preparation leaves admission blocked until explicit restoration.
+#[test]
+fn canceled_preparation_retains_closed_admission() {
+    let state = Rc::new(RefCell::new(State::default()));
+    let (control, mut supply) =
+        Box::leak(Box::new(paper_mesh_platform::worker::Pause::new())).split();
+    let mut coordinator = Coordinator::new(
+        TestRail(state.clone()),
+        Consumer(state.clone()),
+        NonZeroU64::new(10).unwrap(),
+        control,
+    );
+    complete(coordinator.poll_startup(0)).unwrap();
+    state.borrow_mut().block_prepare = true;
+    assert!(poll(core::pin::pin!(coordinator.will_suspend(100))).is_pending());
+    assert!(poll(core::pin::pin!(supply.checkpoint())).is_pending());
+    complete(coordinator.did_cancel_suspend(200)).unwrap();
+    complete(supply.checkpoint());
 }
 
 // Failed startup keeps admission blocked and retries only when due.

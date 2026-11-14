@@ -7,6 +7,12 @@
 //!
 //! See [auxiliary rail ownership](../../../../docs/boards/lilygo-t5-s3-pro-power.md#auxiliary-rail).
 
+#[cfg(not(test))]
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex as AdmissionMutex;
+#[cfg(test)]
+use embassy_sync::blocking_mutex::raw::NoopRawMutex as AdmissionMutex;
+use paper_mesh_platform::worker::PauseControl;
+
 use core::{convert::Infallible, future::Future, num::NonZeroU64};
 use paper_mesh_platform::{power_off::PowerOffParticipant, suspend::SuspendParticipant};
 
@@ -35,6 +41,7 @@ impl<C, R> From<Infallible> for Error<C, R> {
 /// A consumer group can supply the same lifecycle interface when more devices become active.
 pub struct Coordinator<R, C> {
     rail: R,
+    admission: PauseControl<'static, AdmissionMutex>,
     /// Consumer handles retained for reset-recovery pause requests.
     pub(crate) consumers: C,
     needs_enable: bool,
@@ -43,10 +50,16 @@ pub struct Coordinator<R, C> {
     retry_ms: NonZeroU64,
 }
 impl<R: Rail, C: SuspendParticipant> Coordinator<R, C> {
-    /// Consumers must start with acquisition admission blocked until this coordinator releases them.
-    pub fn new(rail: R, consumers: C, retry_ms: NonZeroU64) -> Self {
+    /// Supply admission control paired with the worker's rail dependency.
+    pub fn new(
+        rail: R,
+        consumers: C,
+        retry_ms: NonZeroU64,
+        admission: PauseControl<'static, AdmissionMutex>,
+    ) -> Self {
         Self {
             rail,
+            admission,
             consumers,
             needs_enable: true,
             started: false,
@@ -85,6 +98,7 @@ impl<R: Rail, C: SuspendParticipant> SuspendParticipant for Coordinator<R, C> {
     type Error = Error<C::Error, R::Error>;
 
     async fn will_suspend(&mut self, deadline_ms: u64) -> Result<(), Self::Error> {
+        self.admission.request_pause();
         self.consumers
             .will_suspend(deadline_ms)
             .await
@@ -102,6 +116,7 @@ impl<R: Rail, C: SuspendParticipant> SuspendParticipant for Coordinator<R, C> {
             .map_err(Error::Consumer)?;
         self.needs_enable = false;
         self.started = true;
+        self.admission.resume();
         Ok(())
     }
 
@@ -113,6 +128,7 @@ impl<R: Rail, C: SuspendParticipant> SuspendParticipant for Coordinator<R, C> {
             .map_err(Error::Consumer)?;
         self.needs_enable = false;
         self.started = true;
+        self.admission.resume();
         Ok(())
     }
 }
@@ -120,6 +136,7 @@ impl<R: Rail, C: PowerOffParticipant> PowerOffParticipant for Coordinator<R, C> 
     type Error = Error<C::Error, R::Error>;
 
     async fn will_power_off(&mut self, deadline_ms: u64) -> Result<(), Self::Error> {
+        self.admission.request_pause();
         self.consumers
             .will_power_off(deadline_ms)
             .await

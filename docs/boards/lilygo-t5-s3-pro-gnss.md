@@ -27,7 +27,8 @@ It selects core 0 and priority 1 so UART consumption can proceed during synchron
 
 Firmware owns the [shared auxiliary rail](lilygo-t5-s3-pro-power.md#auxiliary-rail), which also powers LoRa.
 GNSS `prepare` returns workers and their lifecycle handle without launching a task or requesting a pause.
-Firmware requests the initial pause before `Workers::spawn`, then enables the rail before releasing acquisition admission.
+The worker receives a closed rail admission handle and waits for usable power before UART acquisition.
+The rail coordinator releases admission after successful power and lifecycle restoration.
 The worker has no supply interface, board power-register access, or I2C bus reference.
 
 The auxiliary supply stays enabled after startup, during receiver faults, and after exit from the GNSS screen.

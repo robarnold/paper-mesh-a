@@ -18,7 +18,8 @@ fn setup() -> (
     &'static PreparationReport,
 ) {
     let channel = Box::leak(Box::new(Pause::new()));
-    let (pause, worker) = channel.split();
+    let (mut pause, worker) = channel.split();
+    pause.resume();
     let report = Box::leak(Box::new(Mutex::new(Cell::new(Ok(())))));
     (GnssLifecycle { pause, report }, worker, report)
 }

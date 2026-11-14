@@ -192,10 +192,10 @@ pub fn prepare(
         "USB request limit exceeds buffer capacity"
     );
     let [device, hid_pause, logs, commands] = PAUSES.init(core::array::from_fn(|_| Pause::new()));
-    let (device, device_worker) = device.split();
-    let (hid_pause, hid_pause_worker) = hid_pause.split();
-    let (logs, logs_worker) = logs.split();
-    let (commands, commands_worker) = commands.split();
+    let (mut device, device_worker) = device.split();
+    let (mut hid_pause, hid_pause_worker) = hid_pause.split();
+    let (mut logs, logs_worker) = logs.split();
+    let (mut commands, commands_worker) = commands.split();
     log::set_logger(&LOGGER).unwrap();
     log::set_max_level(log::LevelFilter::Info);
     let driver = Driver::new(
@@ -238,6 +238,11 @@ pub fn prepare(
         HidWorker::new(hid, hid_pause_worker),
         cdc_workers,
     );
+    // All USB classes are initialized before any worker can launch.
+    device.resume();
+    hid_pause.resume();
+    logs.resume();
+    commands.resume();
     (
         UsbLifecycle {
             device,

@@ -80,7 +80,9 @@ pub fn start_observation(
     poll_interval: Duration,
 ) -> PowerObservationLifecycle {
     assert!(poll_interval.as_ticks() > 0);
-    let (pause, worker_pause) = PAUSE.init(Pause::new()).split();
+    let (mut pause, worker_pause) = PAUSE.init(Pause::new()).split();
+    // The shared bus is initialized before observation starts.
+    pause.resume();
     spawner.spawn(observation_worker(bus, worker_pause, poll_interval).unwrap());
     PowerObservationLifecycle { pause }
 }

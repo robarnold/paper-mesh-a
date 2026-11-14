@@ -79,11 +79,12 @@ pub struct Workers {
     rx: peripherals::GPIO44<'static>,
     tx: peripherals::GPIO43<'static>,
     config: Config,
+    supply: PauseWorker<'static, CriticalSectionRawMutex>,
     pause: PauseWorker<'static, CriticalSectionRawMutex>,
 }
 
 impl Workers {
-    /// Launch the receiver after firmware has established its startup policy through the lifecycle handle.
+    /// Launch the receiver. Its rail dependency controls when acquisition can begin.
     pub fn spawn(self, spawner: SendSpawner) -> Result<(), SpawnError> {
         spawner.spawn(worker(
             self.uart,
@@ -91,17 +92,19 @@ impl Workers {
             self.tx,
             self.pause,
             self.config,
+            self.supply,
         )?);
         Ok(())
     }
 }
 
-/// Prepare an unpaused receiver. Firmware can request a pause before spawning its worker.
+/// Prepare a receiver whose acquisition waits for its rail dependency.
 pub fn prepare(
     uart: peripherals::UART1<'static>,
     rx: peripherals::GPIO44<'static>,
     tx: peripherals::GPIO43<'static>,
     config: Config,
+    supply: PauseWorker<'static, CriticalSectionRawMutex>,
 ) -> Prepared {
     let (pause, worker_pause) = PAUSE.init(Pause::new()).split();
     Prepared {
@@ -110,6 +113,7 @@ pub fn prepare(
             rx,
             tx,
             config,
+            supply,
             pause: worker_pause,
         },
         lifecycle: GnssLifecycle {
@@ -133,6 +137,7 @@ async fn worker(
     mut tx: peripherals::GPIO43<'static>,
     mut pause: PauseWorker<'static, CriticalSectionRawMutex>,
     config: Config,
+    mut supply: PauseWorker<'static, CriticalSectionRawMutex>,
 ) {
     let mut receiver = Receiver::new(RECEIVER_STORAGE.take(), config);
     loop {
@@ -151,6 +156,15 @@ async fn worker(
             }
             pause.checkpoint().await;
             drop(idle_uart);
+        }
+        // Suspend can arrive while rail startup fails. Waiting only for power would
+        // prevent pause acknowledgement and cause a suspend timeout. Handle the pause
+        // so GNSS can retain the idle UART required by HAL sleep without starting reception.
+        if matches!(
+            select(pause.requested(), supply.checkpoint()).await,
+            Either::First(())
+        ) {
+            continue;
         }
         let uart = match Uart::new(
             peripheral.reborrow(),

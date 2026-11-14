@@ -29,11 +29,25 @@ fn poll<F: Future>(future: core::pin::Pin<&mut F>) -> Poll<F::Output> {
     future.poll(&mut Context::from_waker(Waker::noop()))
 }
 
+// Ready device data stays retained until the owner releases startup admission.
+#[test]
+fn startup_retains_ready_data_until_resume() {
+    let mut storage = Acquisition::<NoopRawMutex>::new();
+    let source = Arc::new(AtomicU64::new(42));
+    let (mut control, mut reader) = storage.split(Source(source.clone()));
+    let mut wait = Box::pin(reader.wait());
+    assert!(poll(wait.as_mut()).is_pending());
+    assert_eq!(source.load(Ordering::SeqCst), 42);
+    control.resume();
+    assert_eq!(poll(wait.as_mut()), Poll::Ready(Ready { at_us: 42 }));
+}
+
 // Creating a wait cannot acknowledge release of resources without polling the reader.
 #[test]
 fn unpolled_wait_does_not_acknowledge_quiescence() {
     let mut storage = Acquisition::<NoopRawMutex>::new();
     let (mut control, mut reader) = storage.split(Source(Arc::new(AtomicU64::new(0))));
+    control.resume();
     let mut wait = Box::pin(reader.wait());
     let mut stop = Box::pin(control.quiesce());
     assert!(poll(stop.as_mut()).is_pending());
@@ -47,6 +61,7 @@ fn waiting_reader_blocks_delivery_until_resume() {
     let source = Arc::new(AtomicU64::new(0));
     let mut storage = Acquisition::<NoopRawMutex>::new();
     let (mut control, mut reader) = storage.split(Source(source.clone()));
+    control.resume();
     let mut wait = Box::pin(reader.wait());
     assert!(poll(wait.as_mut()).is_pending());
     let mut stop = Box::pin(control.quiesce());
@@ -65,6 +80,7 @@ fn waiting_reader_blocks_delivery_until_resume() {
 fn admitted_acquisition_requires_next_wait() {
     let mut storage = Acquisition::<NoopRawMutex>::new();
     let (mut control, mut reader) = storage.split(Source(Arc::new(AtomicU64::new(8))));
+    control.resume();
     let mut wait = Box::pin(reader.wait());
     assert_eq!(poll(wait.as_mut()), Poll::Ready(Ready { at_us: 8 }));
     drop(wait);
@@ -81,6 +97,7 @@ fn admitted_acquisition_requires_next_wait() {
 fn canceled_reader_revokes_acknowledgement() {
     let mut storage = Acquisition::<NoopRawMutex>::new();
     let (mut control, mut reader) = storage.split(Source(Arc::new(AtomicU64::new(0))));
+    control.resume();
     control.request_quiescence();
     let mut wait = Box::pin(reader.wait());
     assert!(poll(wait.as_mut()).is_pending());
@@ -97,6 +114,7 @@ fn canceled_reader_revokes_acknowledgement() {
 fn canceled_controller_keeps_request_active() {
     let mut storage = Acquisition::<NoopRawMutex>::new();
     let (mut control, mut reader) = storage.split(Source(Arc::new(AtomicU64::new(9))));
+    control.resume();
     let mut stop = Box::pin(control.quiesce());
     assert!(poll(stop.as_mut()).is_pending());
     drop(stop);
@@ -111,6 +129,7 @@ fn canceled_controller_keeps_request_active() {
 fn repeated_request_requires_fresh_acknowledgement() {
     let mut storage = Acquisition::<NoopRawMutex>::new();
     let (mut control, mut reader) = storage.split(Source(Arc::new(AtomicU64::new(9))));
+    control.resume();
     control.request_quiescence();
     let mut wait = Box::pin(reader.wait());
     assert!(poll(wait.as_mut()).is_pending());

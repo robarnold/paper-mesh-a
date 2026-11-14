@@ -20,14 +20,18 @@ Enable and disable propagate bus failures. A failed sequence can leave partial h
 
 The [firmware coordinator](../../firmware/src/features/auxiliary_power/mod.rs) owns the rail and its consumer lifecycle handles.
 GNSS preparation returns workers and a lifecycle handle without selecting startup admission policy.
-Firmware requests a pause through that handle, constructs the rail coordinator, and then launches the workers.
+Firmware gives the worker a [platform pause endpoint](../../crates/platform/src/worker.rs) that starts closed.
+The worker waits for admission before constructing its receiving UART. Launch order cannot bypass this dependency.
+While admission is closed, the worker can still prepare its idle UART for suspend.
 The application loop attempts rail startup and schedules retries without blocking other application work between attempts.
 Firmware selects the rail retry interval independently of UART retry timing. A successful enable releases GNSS admission.
 
-Suspend preparation awaits consumer acknowledgement before disabling the rail.
+Suspend preparation closes admission, then awaits consumer acknowledgement before disabling the rail.
+Closing admission alone does not prove that an existing acquisition has finished.
 GNSS acknowledges only after dropping UART reception, retaining the idle transmitter required by HAL sleep preparation, and invalidating observations.
 Power-off uses the same consumer-before-rail order. LoRa is currently uninitialized and has no active lifecycle handle.
 Before enabling LoRa, firmware must include its preparation and restoration in the coordinated consumer group.
+The current admission channel has one consumer. LoRa requires its own admission endpoint before its worker can launch.
 
 The coordinator marks restoration necessary before attempting a power cut.
 A failed or canceled cut therefore requires a successful rail enable before consumers can resume.

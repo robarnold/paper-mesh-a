@@ -195,8 +195,10 @@ pub fn prepare<const N: usize, R: Readiness + Send + 'static>(
     touch: Touch,
     readiness: R,
 ) -> Prepared {
-    let (control, reader) = ACQUISITION.init(Acquisition::new()).split(readiness);
+    let (mut control, reader) = ACQUISITION.init(Acquisition::new()).split(readiness);
     let state = INPUT_STATE.init(InputState::new(touch));
+    // Device state and readiness are installed before acquisition is released.
+    control.resume();
     Prepared {
         workers: Workers {
             future: Box::pin(run(state, bus, reader)),

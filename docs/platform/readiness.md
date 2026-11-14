@@ -8,6 +8,8 @@ Canceling a wait stops that delivery attempt. It must not discard captured readi
 
 ## Acquisition control
 
+New acquisition channels block delivery until the owner calls `resume` after startup dependencies are ready.
+
 The platform [acquisition channel](../../crates/platform/src/acquisition.rs) separates readiness capture from permission to acquire data.
 It supplies one reader and one control handle. It uses the [pause channel](worker-coordination.md) internally.
 Quiescence means that no acquisition is in progress and no new acquisition can start until release.

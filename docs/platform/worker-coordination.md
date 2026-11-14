@@ -25,6 +25,12 @@ The endpoints cannot be cloned. Their mutable methods prevent simultaneous waits
 Storage must outlive both endpoints. Dropping a handle does not release an active request.
 The runtime retains the handles for the service lifetime.
 
+New and default channels start with admission blocked. This initial request does not acknowledge worker quiescence.
+The owner calls `resume` when startup dependencies are ready, without invoking suspend restoration.
+RTC, USB, touch, button polling, and power observation release admission during setup before worker launch.
+GNSS waits for the auxiliary coordinator to establish power before release.
+The rail admission channel and GNSS lifecycle channel remain separate: rail admission does not prove UART sleep preparation.
+
 ## Pause protocol
 
 1. The controller requests a pause. A request does not acknowledge resource release.

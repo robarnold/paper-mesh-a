@@ -135,7 +135,9 @@ pub fn start_polling(
     bus: Option<&'static Bus>,
     pin: GPIO0<'static>,
 ) -> ButtonPollingLifecycle {
-    let (pause, worker_pause) = POLLING_PAUSE.init(Pause::new()).split();
+    let (mut pause, worker_pause) = POLLING_PAUSE.init(Pause::new()).split();
+    // Startup owns the bus and pin required by this worker.
+    pause.resume();
     spawner.spawn(polling_worker(bus, pin, worker_pause).unwrap());
     ButtonPollingLifecycle { pause }
 }

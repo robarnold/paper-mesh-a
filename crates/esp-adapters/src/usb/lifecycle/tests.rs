@@ -43,10 +43,14 @@ fn setup() -> (UsbLifecycle, [Worker; 4]) {
         Pause::<NoopRawMutex>::new()
     })));
     let [device, hid, logs, commands] = channels;
-    let (device, device_worker) = device.split();
-    let (hid, hid_worker) = hid.split();
-    let (logs, log_worker) = logs.split();
-    let (commands, command_worker) = commands.split();
+    let (mut device, device_worker) = device.split();
+    device.resume();
+    let (mut hid, hid_worker) = hid.split();
+    hid.resume();
+    let (mut logs, log_worker) = logs.split();
+    logs.resume();
+    let (mut commands, command_worker) = commands.split();
+    commands.resume();
     (
         UsbLifecycle {
             device,

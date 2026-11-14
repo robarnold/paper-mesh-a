@@ -29,6 +29,7 @@ impl<M: RawMutex> Default for Acquisition<M> {
     }
 }
 impl<M: RawMutex> Acquisition<M> {
+    /// Start with admission blocked until the controller calls `resume`.
     pub const fn new() -> Self {
         Self {
             pause: Pause::new(),

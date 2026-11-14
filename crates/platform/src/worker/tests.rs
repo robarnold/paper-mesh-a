@@ -14,11 +14,27 @@ fn poll<F: Future>(future: Pin<&mut F>) -> Poll<F::Output> {
     future.poll(&mut Context::from_waker(Waker::noop()))
 }
 
+// New and default channels block work without claiming quiescence before a worker checkpoint.
+#[test]
+fn startup_requires_explicit_release() {
+    for mut channel in [Pause::<NoopRawMutex>::new(), Pause::default()] {
+        let (mut control, mut worker) = channel.split();
+        assert!(worker.is_requested());
+        assert!(poll(core::pin::pin!(control.pause())).is_pending());
+        let mut checkpoint = std::boxed::Box::pin(worker.checkpoint());
+        assert!(poll(checkpoint.as_mut()).is_pending());
+        assert!(poll(core::pin::pin!(control.pause())).is_ready());
+        control.resume();
+        assert!(poll(checkpoint.as_mut()).is_ready());
+    }
+}
+
 // Observing a request does not acknowledge it, and release clears the observation.
 #[test]
 fn request_observation_does_not_acknowledge() {
     let mut channel = Pause::<NoopRawMutex>::new();
     let (mut control, worker) = channel.split();
+    control.resume();
     assert!(!worker.is_requested());
     control.request_pause();
     assert!(worker.is_requested());
@@ -33,6 +49,7 @@ fn request_observation_does_not_acknowledge() {
 fn pause_waits_for_worker_and_resume_releases_it() {
     let mut channel = Pause::<NoopRawMutex>::new();
     let (mut control, mut worker) = channel.split();
+    control.resume();
     let mut prepare = std::boxed::Box::pin(control.pause());
     assert!(poll(prepare.as_mut()).is_pending());
     assert!(poll(core::pin::pin!(worker.requested())).is_ready());
@@ -49,6 +66,7 @@ fn pause_waits_for_worker_and_resume_releases_it() {
 fn worker_can_acknowledge_before_controller_waits() {
     let mut channel = Pause::<NoopRawMutex>::new();
     let (mut control, mut worker) = channel.split();
+    control.resume();
     control.request_pause();
     let mut checkpoint = std::boxed::Box::pin(worker.checkpoint());
     assert!(poll(checkpoint.as_mut()).is_pending());
@@ -62,6 +80,7 @@ fn worker_can_acknowledge_before_controller_waits() {
 fn dropping_preparation_keeps_the_request_until_resume() {
     let mut channel = Pause::<NoopRawMutex>::new();
     let (mut control, mut worker) = channel.split();
+    control.resume();
     let mut prepare = std::boxed::Box::pin(control.pause());
     assert!(poll(prepare.as_mut()).is_pending());
     drop(prepare);
@@ -76,6 +95,7 @@ fn dropping_preparation_keeps_the_request_until_resume() {
 fn dropping_preparation_after_acknowledgement_does_not_resume_work() {
     let mut channel = Pause::<NoopRawMutex>::new();
     let (mut control, mut worker) = channel.split();
+    control.resume();
     let mut prepare = std::boxed::Box::pin(control.pause());
     assert!(poll(prepare.as_mut()).is_pending());
     let mut checkpoint = std::boxed::Box::pin(worker.checkpoint());
@@ -91,6 +111,7 @@ fn dropping_preparation_after_acknowledgement_does_not_resume_work() {
 fn repeated_pause_requires_a_new_acknowledgement() {
     let mut channel = Pause::<NoopRawMutex>::new();
     let (mut control, mut worker) = channel.split();
+    control.resume();
     control.request_pause();
     let mut checkpoint = std::boxed::Box::pin(worker.checkpoint());
     assert!(poll(checkpoint.as_mut()).is_pending());
@@ -110,6 +131,7 @@ fn repeated_pause_requires_a_new_acknowledgement() {
 fn canceled_checkpoint_cannot_leave_a_false_acknowledgement() {
     let mut channel = Pause::<NoopRawMutex>::new();
     let (mut control, mut worker) = channel.split();
+    control.resume();
     control.request_pause();
     let mut checkpoint = std::boxed::Box::pin(worker.checkpoint());
     assert!(poll(checkpoint.as_mut()).is_pending());
@@ -127,7 +149,9 @@ fn independent_workers_do_not_share_pause_state() {
     let mut first = Pause::<NoopRawMutex>::new();
     let mut second = Pause::<NoopRawMutex>::new();
     let (mut first_control, mut first_worker) = first.split();
+    first_control.resume();
     let (mut second_control, mut second_worker) = second.split();
+    second_control.resume();
     first_control.request_pause();
     assert!(poll(core::pin::pin!(second_worker.checkpoint())).is_ready());
     let mut first_checkpoint = std::boxed::Box::pin(first_worker.checkpoint());
@@ -141,6 +165,7 @@ fn independent_workers_do_not_share_pause_state() {
 fn canceling_an_idle_wait_does_not_lose_a_later_request() {
     let mut channel = Pause::<NoopRawMutex>::new();
     let (mut control, mut worker) = channel.split();
+    control.resume();
     let mut idle = std::boxed::Box::pin(worker.requested());
     assert!(poll(idle.as_mut()).is_pending());
     drop(idle);
@@ -173,6 +198,7 @@ fn notifications_wake_both_endpoints() {
     let control_waker = Waker::from(control_wakes.clone());
     let mut channel = Pause::<NoopRawMutex>::new();
     let (mut control, mut worker) = channel.split();
+    control.resume();
     let mut request = std::boxed::Box::pin(worker.requested());
     assert!(
         request

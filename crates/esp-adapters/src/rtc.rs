@@ -48,7 +48,9 @@ impl ClockState {
 
     /// Give the clock and worker matching state and unique pause endpoints.
     pub fn split(&'static mut self) -> (RtcClock, ClockWorker) {
-        let (control, worker) = self.pause.split();
+        let (mut control, worker) = self.pause.split();
+        // Calendar state is initialized. Worker preparation supplies the bus before launch.
+        control.resume();
         (
             RtcClock {
                 state: &self.service,

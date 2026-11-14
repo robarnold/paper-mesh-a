@@ -73,6 +73,9 @@ const POWER_OBSERVATION_INTERVAL: Duration = Duration::from_secs(2);
 
 static TOUCH_READINESS: StaticCell<paper_mesh_esp_adapters::readiness::GpioReadiness> =
     StaticCell::new();
+static AUXILIARY_ADMISSION: StaticCell<
+    paper_mesh_platform::worker::Pause<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex>,
+> = StaticCell::new();
 static RTC_STATE: StaticCell<ClockState> = StaticCell::new();
 
 static APP: ConstStaticCell<App> = ConstStaticCell::new(App::unstarted());
@@ -207,18 +210,21 @@ fn initialize(
             },
         );
     };
-    let mut gnss = gnss::prepare(
+    let (admission, supply) = AUXILIARY_ADMISSION
+        .init(paper_mesh_platform::worker::Pause::new())
+        .split();
+    let gnss = gnss::prepare(
         peripherals.UART1,
         peripherals.GPIO44,
         peripherals.GPIO43,
         GNSS_CONFIG,
+        supply,
     );
-    // Keep acquisition blocked until the runtime coordinator has enabled the shared rail.
-    gnss.lifecycle.request_pause();
     let auxiliary = features::auxiliary_power::Coordinator::new(
         auxiliary_rail::AuxiliaryRail::new(bus),
         gnss.lifecycle,
         AUXILIARY_RAIL_RETRY_MS,
+        admission,
     );
     gnss.workers
         .spawn(execution.start_gnss())

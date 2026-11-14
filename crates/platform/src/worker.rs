@@ -50,9 +50,11 @@ impl<M: RawMutex> Default for Pause<M> {
 }
 
 impl<M: RawMutex> Pause<M> {
+    /// Start with admission blocked. The owner must resume after startup dependencies are ready.
+    /// Initial blocking does not acknowledge worker quiescence.
     pub const fn new() -> Self {
         Self {
-            state: Mutex::new(Cell::new(State::Running)),
+            state: Mutex::new(Cell::new(State::Requested)),
             worker_changed: Signal::new(),
             controller_changed: Signal::new(),
         }
