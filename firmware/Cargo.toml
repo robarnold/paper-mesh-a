@@ -15,6 +15,7 @@ bench = false
 radio-scan-demo = []
 
 [dependencies]
+paper-mesh-gnss = { path = "../crates/gnss" }
 paper-mesh-esp-adapters = { path = "../crates/esp-adapters", features = ["esp32s3"] }
 paper-mesh-platform = { path = "../crates/platform" }
 paper-mesh-app = { path = "../crates/app" }

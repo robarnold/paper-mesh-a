@@ -1,6 +1,6 @@
 //! Bounded NMEA envelopes shared by startup probing and observation decoding.
 //!
-//! See [GNSS input](../../../docs/boards/lilygo-t5-s3-pro-gnss.md).
+//! See [GNSS input](../../../docs/adapters/gnss.md).
 
 /// One partial NMEA sentence, discarded at each receive-session boundary.
 pub struct Sentence {

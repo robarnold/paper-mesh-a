@@ -1474,6 +1474,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "paper-mesh-gnss"
+version = "0.1.0"
+dependencies = [
+ "embassy-futures",
+ "paper-mesh-platform",
+]
+
+[[package]]
 name = "paper-mesh-gt911"
 version = "0.1.0"
 dependencies = [
@@ -1515,13 +1523,13 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "bt-hci",
- "embassy-futures",
  "embassy-sync 0.8.0",
  "embedded-graphics",
  "embedded-hal 1.0.0",
  "heapless 0.9.3",
  "paper-mesh-app",
  "paper-mesh-ed047tc1",
+ "paper-mesh-gnss",
  "paper-mesh-platform",
  "png",
  "serde",

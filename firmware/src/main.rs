@@ -62,12 +62,12 @@ const RTC_POLICY: paper_mesh_platform::rtc::synchronization::Policy =
         last_year: 2099,
     };
 const GNSS_CONFIG: gnss_worker::Config = gnss_worker::Config {
-    rates: gnss::probe::BaudRates {
+    rates: paper_mesh_gnss::probe::BaudRates {
         first: NonZeroU32::new(9_600).unwrap(),
         remaining: &[NonZeroU32::new(38_400).unwrap()],
     },
     probe_ms: NonZeroU64::new(4_000).unwrap(),
-    receiver: gnss::Config {
+    receiver: paper_mesh_gnss::Config {
         silence_ms: NonZeroU64::new(10_000).unwrap(),
     },
     retry_ms: NonZeroU64::new(1_000).unwrap(),

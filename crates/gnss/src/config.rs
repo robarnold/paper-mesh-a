@@ -1,6 +1,6 @@
 //! Observation timing independent of serial configuration.
 //!
-//! See [GNSS configuration](../../../docs/boards/lilygo-t5-s3-pro-gnss.md#configuration).
+//! See [GNSS acquisition](../../../docs/adapters/gnss.md#acquisition).
 
 use core::num::NonZeroU64;
 

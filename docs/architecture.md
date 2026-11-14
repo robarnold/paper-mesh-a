@@ -11,6 +11,7 @@ The toolkit has no dependency on a particular application.
 | --- | --- | --- |
 | [`crates/app`](../crates/app/src/lib.rs) | Application state, screens, layout, actions, and policy choices | `paper-mesh-platform` |
 | [`crates/platform`](../crates/platform/src/lib.rs) | Application toolkit and portable contracts | None |
+| [`crates/gnss`](../crates/gnss/README.md) | Portable NMEA decoding, acquisition, and optional baud probing | Platform serial and location contracts |
 | [`crates/pcf8563`](../crates/pcf8563/src/lib.rs) | PCF8563 calendar access through I2C | Platform calendar contract |
 | [`firmware/src/main.rs`](../firmware/src/main.rs) | Hardware startup and connection of the application to services | Application, platform, and hardware adapters |
 | [`crates/esp-adapters`](../crates/esp-adapters/README.md) | ESP USB transport, RTC clock, touch input, and lifecycle handles | Platform, HID protocol, PCF8563, and GT911 drivers |
@@ -57,6 +58,8 @@ The worker reads shared synchronization state after each pause so lifecycle inva
 Runtime configuration supplies polling intervals, observation age limits, correction thresholds, and calendar range to the synchronization service.
 Startup supplies location observations through a callback, so the RTC worker does not depend on the GNSS adapter.
 Firmware supplies startup probe candidates and retry timing separately from GNSS observation timing.
+The [portable GNSS crate](../crates/gnss/README.md) owns decoding, observation expiry, acquisition, and optional startup probing.
+It borrows receiver storage and accepts runtime callbacks for monotonic time, deadlines, and observation publication.
 The [serial session contract](platform/serial.md) keeps UART ownership and ESP sleep preparation outside GNSS decoding.
 Receiver decoding consumes observation settings. The runtime owns probing and recovery policy.
 The firmware auxiliary-rail component owns power access shared by GNSS and LoRa.

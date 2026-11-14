@@ -5,7 +5,7 @@
 //! - Publish complete satellite groups so a partial update cannot replace a valid
 //!   constellation summary.
 //!
-//! See [Satellite reports and receiver activity](../../../docs/boards/lilygo-t5-s3-pro-gnss.md#satellite-reports-and-receiver-activity).
+//! See [Satellite reports and receiver activity](../../../docs/adapters/gnss.md#satellite-reports-and-receiver-activity).
 
 use paper_mesh_platform::location::{
     MAX_SATELLITES, SatelliteObservation, SatelliteSignal, SatelliteSystem,
@@ -54,6 +54,7 @@ impl Stream {
     };
 }
 
+/// Bounded aggregation of complete satellite groups with independent expiry.
 pub struct Gsv {
     streams: [Stream; STREAMS],
     overflow_at_ms: Option<u64>,

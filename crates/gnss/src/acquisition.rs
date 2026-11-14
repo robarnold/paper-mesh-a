@@ -5,7 +5,7 @@
 //! - Retain pending reads across expiry checks so ordinary timers cannot discard bytes.
 //! - End the session on silence, EOF, or I/O failure; firmware chooses recovery.
 //!
-//! See [GNSS input](../../../docs/boards/lilygo-t5-s3-pro-gnss.md).
+//! See [GNSS input](../../../docs/adapters/gnss.md).
 
 use super::receiver::Receiver;
 use core::{future::Future, pin::pin};

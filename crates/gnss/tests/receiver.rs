@@ -1,32 +1,22 @@
-//! Native tests exercise the decoder and session expiry from the firmware.
+//! Native tests exercise the decoder and session expiry from the portable crate.
 //!
 //! # Design choices
 //!
 //! - Use receiver sentences to check decoding and acquisition independently of
 //!   satellite reception.
 //!
-//! See [LILYGO GNSS adapter](../../docs/boards/lilygo-t5-s3-pro-gnss.md).
+//! See [GNSS receiver](../../../docs/adapters/gnss.md).
 
-#[path = "../../firmware/src/gnss/config.rs"]
-mod config;
-#[path = "../../firmware/src/gnss/gsv.rs"]
-mod gsv;
-#[path = "../../firmware/src/gnss_worker/lifecycle/mod.rs"]
-mod lifecycle;
-#[path = "../../firmware/src/gnss/nmea.rs"]
-mod nmea;
-#[path = "../../firmware/src/gnss/receiver.rs"]
-mod receiver;
+use paper_mesh_gnss::{Config, Receiver, ReceiverStorage};
 
 use core::num::NonZeroU64;
 use paper_mesh_platform::location::{
-    Coordinates, Location, LocationAvailability, LocationSnapshot, SatelliteSystem, UtcTime,
+    Coordinates, LocationAvailability, LocationSnapshot, SatelliteSystem, UtcTime,
 };
 use paper_mesh_platform::time::{Date, Month};
-use receiver::{Receiver, ReceiverStorage};
 
 const SILENCE_MS: u64 = 10_000;
-const CONFIG: config::Config = config::Config {
+const CONFIG: Config = Config {
     silence_ms: NonZeroU64::new(SILENCE_MS).unwrap(),
 };
 
@@ -236,38 +226,6 @@ fn malformed_rmc_cannot_refresh_observations_and_transport_faults_clear_them() {
     receiver.advance(30 + SILENCE_MS);
     assert_eq!(receiver.snapshot.motion, None);
     assert_eq!(receiver.snapshot.utc, None);
-}
-
-impl Location for Receiver<'_> {
-    fn snapshot(&mut self, _now_ms: u64) -> LocationSnapshot {
-        self.snapshot
-    }
-}
-
-#[test]
-fn gga_and_other_messages_cannot_keep_motion_or_utc_current() {
-    use paper_mesh_app::location::{LocationScreen, ReceiverStatus};
-    let mut storage = ReceiverStorage::EMPTY;
-    let mut receiver = Receiver::new(&mut storage, CONFIG);
-    let mut screen = LocationScreen::new();
-    screen.open();
-    feed(&mut receiver, &sentence(RMC), 100);
-    screen.poll(100, &mut receiver);
-    assert_eq!(screen.view().speed_mm_s, Some(5_144));
-    assert_eq!(screen.view().coordinates, None);
-    assert_eq!(screen.next_deadline_ms(), Some(5_100));
-    feed(&mut receiver, &sentence(FIX), 5_000);
-    screen.poll(5_099, &mut receiver);
-    assert!(screen.view().utc.is_some());
-    screen.poll(5_100, &mut receiver);
-    assert_eq!(screen.view().speed_mm_s, None);
-    assert_eq!(screen.view().course_millidegrees, None);
-    assert_eq!(screen.view().utc, None);
-    assert!(screen.view().coordinates.is_some());
-    assert_eq!(screen.view().receiver_status, ReceiverStatus::Active);
-    feed(&mut receiver, &sentence(RMC), 5_101);
-    screen.poll(5_101, &mut receiver);
-    assert!(screen.view().utc.is_some());
 }
 
 #[test]
@@ -594,7 +552,7 @@ fn reset_preserves_observation_policy() {
     let mut storage = ReceiverStorage::EMPTY;
     let mut receiver = Receiver::new(
         &mut storage,
-        config::Config {
+        Config {
             silence_ms: NonZeroU64::new(70).unwrap(),
         },
     );

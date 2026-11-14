@@ -5,7 +5,7 @@
 //! - Require a valid sentence before publishing receiver activity.
 //! - Borrow large satellite storage so every receiver has configuration without a large construction temporary on the worker stack.
 //!
-//! See [LILYGO GNSS adapter](../../../docs/boards/lilygo-t5-s3-pro-gnss.md).
+//! See [GNSS receiver](../../../docs/adapters/gnss.md).
 
 use super::{config::Config, gsv::Gsv, nmea::Sentence};
 use paper_mesh_platform::location::{

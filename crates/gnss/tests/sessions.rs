@@ -1,19 +1,8 @@
 //! Verify serial attempts and reads retained across observation deadlines.
 //!
-//! See [serial sessions](../../docs/platform/serial.md).
+//! See [serial sessions](../../../docs/platform/serial.md).
 
-#[path = "../../firmware/src/gnss/acquisition.rs"]
-mod acquisition;
-#[path = "../../firmware/src/gnss/config.rs"]
-mod config;
-#[path = "../../firmware/src/gnss/gsv.rs"]
-mod gsv;
-#[path = "../../firmware/src/gnss/nmea.rs"]
-mod nmea;
-#[path = "../../firmware/src/gnss/probe.rs"]
-mod probe;
-#[path = "../../firmware/src/gnss/receiver.rs"]
-mod receiver;
+use paper_mesh_gnss::{Config, Receiver, ReceiverStorage, acquisition, probe};
 
 use core::{
     future::{Future, poll_fn},
@@ -242,10 +231,10 @@ fn observation_deadline_preserves_in_flight_read() {
         ready: ready.clone(),
         calls: calls.clone(),
     };
-    let mut storage = receiver::ReceiverStorage::EMPTY;
-    let mut receiver = receiver::Receiver::new(
+    let mut storage = ReceiverStorage::EMPTY;
+    let mut receiver = Receiver::new(
         &mut storage,
-        config::Config {
+        Config {
             silence_ms: NonZeroU64::new(10000).unwrap(),
         },
     );
@@ -296,10 +285,10 @@ fn observation_deadline_preserves_in_flight_read() {
 fn silence_ends_receive_session() {
     let mut serial = serial(vec![vec![]]);
     let mut session = serial.open(RATES.first).unwrap();
-    let mut storage = receiver::ReceiverStorage::EMPTY;
-    let mut receiver = receiver::Receiver::new(
+    let mut storage = ReceiverStorage::EMPTY;
+    let mut receiver = Receiver::new(
         &mut storage,
-        config::Config {
+        Config {
             silence_ms: NonZeroU64::new(10).unwrap(),
         },
     );

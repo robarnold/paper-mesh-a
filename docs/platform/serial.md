@@ -15,7 +15,7 @@ A consumer that cancels a read must end the session and discard partial protocol
 Ordinary observation deadlines retain the same pending read. Only session-ending events abandon it.
 The backend must safely stop access to borrowed buffers when reads are dropped.
 
-The [GNSS acquisition loop](../../firmware/src/gnss/acquisition.rs) retains a pending read across satellite expiry.
+The [GNSS acquisition loop](../../crates/gnss/src/acquisition.rs) retains a pending read across satellite expiry.
 Silence, end-of-stream, and receive errors end acquisition. The runtime closes that session before recovery.
 No baud changes occur inside normal acquisition.
 
@@ -32,7 +32,7 @@ Preparation errors remain visible to suspend coordination. GNSS decoding contain
 
 ## Verification and dependencies
 
-Native [session tests](../../simulator/tests/firmware_gnss_sessions.rs) cover bounded probing, canceled input, failed opens, receive errors, and reads retained across observation deadlines.
+Native [session tests](../../crates/gnss/tests/sessions.rs) cover bounded probing, canceled input, failed opens, receive errors, and reads retained across observation deadlines.
 Firmware checks compile the concrete session and sleep guard with stack limits enabled.
 Physical power-cycle retention, wake behavior, and UART timing remain hardware verification work.
 

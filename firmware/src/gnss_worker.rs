@@ -10,18 +10,13 @@
 mod lifecycle;
 pub use lifecycle::{GnssLifecycle, PreparationError};
 
-use crate::{
-    gnss::{
-        self, probe,
-        receiver::{Receiver, ReceiverStorage},
-    },
-    serial::Serial,
-};
+use crate::{gnss, serial::Serial};
 use core::{cell::Cell, num::NonZeroU64};
 use embassy_executor::{SendSpawner, SpawnError};
 use embassy_futures::select::{Either, select};
 use embassy_sync::blocking_mutex::{Mutex, raw::CriticalSectionRawMutex};
 use embassy_time::{Instant, Timer};
+use paper_mesh_gnss::{Receiver, ReceiverStorage, acquisition, probe};
 use paper_mesh_platform::{
     serial::SerialReceiver,
     worker::{Pause, PauseWorker},
@@ -38,7 +33,7 @@ pub struct Config {
     pub rates: probe::BaudRates,
     pub probe_ms: NonZeroU64,
     pub retry_ms: NonZeroU64,
-    pub receiver: gnss::Config,
+    pub receiver: paper_mesh_gnss::Config,
 }
 
 /// Prepared task resources and their matching lifecycle control.
@@ -138,7 +133,7 @@ async fn receive_session(
     };
     if let Either::Second(end) = select(
         pause.requested(),
-        gnss::acquisition::run(
+        acquisition::run(
             &mut session,
             receiver,
             || Instant::now().as_millis(),

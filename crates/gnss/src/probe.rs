@@ -5,7 +5,7 @@
 //! - Open a fresh session per candidate and accept a valid envelope without requiring a satellite fix.
 //! - Let firmware supply attempt deadlines and decide when to retry a failed probe.
 //!
-//! See [GNSS configuration](../../../docs/boards/lilygo-t5-s3-pro-gnss.md#configuration).
+//! See [GNSS acquisition](../../../docs/adapters/gnss.md#acquisition).
 
 use super::nmea::Sentence;
 use core::{future::Future, num::NonZeroU32};

@@ -1,18 +1,10 @@
-//! Portable GNSS decoding, startup probing, and location publication.
+//! Firmware publication of GNSS observations.
 //!
 //! # Design choices
 //!
-//! - Receive bytes through platform serial sessions without owning UART hardware or power transitions.
+//! - Keep shared observation storage and application notifications outside the portable receiver.
 //!
-//! See [GNSS integration](../../../docs/boards/lilygo-t5-s3-pro-gnss.md).
-
-mod config;
-pub use config::Config;
-pub mod acquisition;
-mod gsv;
-mod nmea;
-pub mod probe;
-pub(crate) mod receiver;
+//! See [GNSS integration](../../docs/boards/lilygo-t5-s3-pro-gnss.md).
 
 use core::cell::RefCell;
 use embassy_sync::{

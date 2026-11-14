@@ -1698,11 +1698,20 @@ dependencies = [
  "paper-mesh-app",
  "paper-mesh-ed047tc1",
  "paper-mesh-esp-adapters",
+ "paper-mesh-gnss",
  "paper-mesh-hid-touchpad",
  "paper-mesh-platform",
  "serde_json",
  "static_cell",
  "xtensa-lx",
+]
+
+[[package]]
+name = "paper-mesh-gnss"
+version = "0.1.0"
+dependencies = [
+ "embassy-futures",
+ "paper-mesh-platform",
 ]
 
 [[package]]
