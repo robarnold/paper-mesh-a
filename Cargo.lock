@@ -1536,6 +1536,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "paper-mesh-power-observation"
+version = "0.1.0"
+dependencies = [
+ "critical-section",
+ "embassy-executor",
+ "embassy-futures",
+ "embassy-sync 0.8.0",
+ "log",
+ "paper-mesh-platform",
+ "static_cell",
+]
+
+[[package]]
 name = "paper-mesh-simulator"
 version = "0.1.0"
 dependencies = [

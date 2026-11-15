@@ -1721,6 +1721,7 @@ dependencies = [
  "paper-mesh-gnss",
  "paper-mesh-hid-touchpad",
  "paper-mesh-platform",
+ "paper-mesh-power-observation",
  "serde_json",
  "static_cell",
  "xtensa-lx",
@@ -1767,6 +1768,18 @@ dependencies = [
  "embedded-io-async 0.7.0",
  "heapless 0.9.3",
  "time",
+]
+
+[[package]]
+name = "paper-mesh-power-observation"
+version = "0.1.0"
+dependencies = [
+ "embassy-executor",
+ "embassy-futures",
+ "embassy-sync 0.8.0",
+ "log",
+ "paper-mesh-platform",
+ "static_cell",
 ]
 
 [[package]]

@@ -1,0 +1,20 @@
+[package]
+name = "paper-mesh-power-observation"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+paper-mesh-platform = { path = "../platform" }
+embassy-executor = { version = "=0.10.0", default-features = false }
+embassy-sync = "=0.8.0"
+embassy-futures = "=0.1.2"
+log = "=0.4.35"
+static_cell = "=2.1.1"
+
+[dev-dependencies]
+critical-section = { version = "=1.2.0", features = ["std"] }

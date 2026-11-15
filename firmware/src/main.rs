@@ -215,8 +215,11 @@ fn initialize(
     execution
         .spawn(rtc_worker.prepare(bus, |now_ms| gnss::FirmwareLocation.snapshot(now_ms)))
         .expect("RTC worker launch failed");
-    let power_observation =
-        power::observation::start_observation(spawner, bus, POWER_OBSERVATION_INTERVAL);
+    let (power_observation, power_workers) =
+        power::observation::prepare(bus, POWER_OBSERVATION_INTERVAL);
+    execution
+        .spawn(power_workers)
+        .expect("Power observation worker launch failed");
     if let Err(error) = &display_safe {
         error!("display: boot shutdown failed: {}", error);
     }
@@ -306,7 +309,7 @@ async fn run_app(
     let mut inspection_hold: Option<display_inspection::Hold> = None;
     let mut discovery = discovery::FirmwareDiscovery;
     let mut location = gnss::FirmwareLocation;
-    let mut power_observation = power::observation::FirmwarePowerObservation;
+    let mut power_observation = &power::observation::SERVICE;
     let mut touchpad = usb::FirmwareTouchpad;
     let mut touchpad_session = TouchpadSession::new();
     #[cfg(feature = "radio-scan-demo")]
@@ -391,7 +394,7 @@ async fn run_app(
                 display_worker::changed(),
                 select(
                     discovery::changed(),
-                    select(gnss::changed(), power::observation::changed()),
+                    select(gnss::changed(), power_observation.changed()),
                 ),
                 Timer::at(Instant::from_millis(app.next_deadline_ms())),
             ),

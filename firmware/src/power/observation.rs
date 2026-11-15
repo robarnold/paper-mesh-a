@@ -1,120 +1,41 @@
-//! Periodic power observations on core 0 through the shared I2C bus.
+//! Board composition for the portable power observation service.
 //!
 //! # Design choices
 //!
-//! - Publish gauge and charger observations independently so a bus error for one
-//!   device does not invalidate the other.
+//! - Supply the board's chip drivers, shared bus, and polling interval to the service.
+//! - Keep service storage in firmware while the crate owns its state and coordination.
 //!
-//! See [Hardware and execution](../../../docs/boards/lilygo-t5-s3-pro-power.md#hardware-and-execution).
-
-mod lifecycle;
-pub use lifecycle::PowerObservationLifecycle;
-
-use core::cell::RefCell;
-use embassy_executor::Spawner;
-use embassy_futures::select::select;
-use embassy_sync::{
-    blocking_mutex::{Mutex, raw::CriticalSectionRawMutex},
-    signal::Signal,
-};
-use embassy_time::{Duration, Instant, Timer};
-use paper_mesh_platform::power::{
-    BatteryGauge, ChargerObserver, Power, PowerAvailability, PowerReading, PowerSnapshot,
-};
-use paper_mesh_platform::worker::{Pause, PauseWorker};
-use static_cell::StaticCell;
+//! See [power observation ownership](../../../docs/adapters/power-observation.md).
 
 use crate::bus::Bus;
+use embassy_time::{Duration, Instant, Timer};
+use paper_mesh_platform::power::PowerSnapshot;
+use paper_mesh_power_observation::{Lifecycle, Observer, Service, Workers};
 
-static STATE: Mutex<CriticalSectionRawMutex, RefCell<PowerSnapshot>> =
-    Mutex::new(RefCell::new(PowerSnapshot::INITIAL));
-static CHANGED: Signal<CriticalSectionRawMutex, ()> = Signal::new();
-static PAUSE: StaticCell<Pause<CriticalSectionRawMutex>> = StaticCell::new();
+pub static SERVICE: Service = Service::new();
 
-/// Cached battery and charger observations published by the firmware worker.
-pub struct FirmwarePowerObservation;
-
-impl Power for FirmwarePowerObservation {
-    fn snapshot(&mut self, _now_ms: u64) -> PowerSnapshot {
-        STATE.lock(|state| *state.borrow())
-    }
-}
-
-pub async fn changed() {
-    CHANGED.wait().await;
-}
-
-fn publish(snapshot: PowerSnapshot) {
-    STATE.lock(|state| *state.borrow_mut() = snapshot);
-    CHANGED.signal(());
-}
-
+/// Supply fresh chip capabilities for a direct sample after lifecycle preparation.
 pub async fn read_now(bus: &Bus) -> PowerSnapshot {
-    let battery = paper_mesh_bq27220::Bq27220::new(bus)
-        .read()
+    SERVICE
+        .read_now(
+            &mut Observer::new(
+                paper_mesh_bq27220::Bq27220::new(bus),
+                paper_mesh_bq25896::observation::Observer::new(bus),
+            ),
+            || Instant::now().as_millis(),
+        )
         .await
-        .map(|value| PowerReading::ready(value, Instant::now().as_millis()))
-        .unwrap_or(PowerReading::unavailable(PowerAvailability::Fault));
-    let charger = paper_mesh_bq25896::observation::Observer::new(bus)
-        .read()
-        .await
-        .map(|value| PowerReading::ready(value, Instant::now().as_millis()))
-        .unwrap_or(PowerReading::unavailable(PowerAvailability::Fault));
-    let snapshot = PowerSnapshot { battery, charger };
-    publish(snapshot);
-    snapshot
 }
 
-/// Start periodic observations with the runtime's nonzero polling interval.
-/// Pauses interrupt the delay after a completed pair of device reads.
-pub fn start_observation(
-    spawner: Spawner,
-    bus: &'static Bus,
-    poll_interval: Duration,
-) -> PowerObservationLifecycle {
+/// Prepare the service with initialized device resources and the board's polling interval.
+pub fn prepare(bus: &'static Bus, poll_interval: Duration) -> (Lifecycle, Workers) {
     assert!(poll_interval.as_ticks() > 0);
-    let (mut pause, worker_pause) = PAUSE.init(Pause::new()).split();
-    // The shared bus is initialized before observation starts.
-    pause.resume();
-    spawner.spawn(observation_worker(bus, worker_pause, poll_interval).unwrap());
-    PowerObservationLifecycle { pause }
-}
-
-#[embassy_executor::task]
-async fn observation_worker(
-    bus: &'static Bus,
-    mut pause: PauseWorker<'static, CriticalSectionRawMutex>,
-    poll_interval: Duration,
-) {
-    let mut gauge = paper_mesh_bq27220::Bq27220::new(bus);
-    let mut charger = paper_mesh_bq25896::observation::Observer::new(bus);
-    let mut failed = (false, false);
-    loop {
-        pause.checkpoint().await;
-        let battery = gauge
-            .read()
-            .await
-            .map(|value| PowerReading::ready(value, Instant::now().as_millis()));
-        // Each device releases the bus before the next read, so other clients can proceed.
-        let charger_reading = charger
-            .read()
-            .await
-            .map(|value| PowerReading::ready(value, Instant::now().as_millis()));
-        if let Err(error) = &battery
-            && !failed.0
-        {
-            log::error!("battery: read failed: {:?}", error);
-        }
-        if let Err(error) = &charger_reading
-            && !failed.1
-        {
-            log::error!("charger: read failed: {:?}", error);
-        }
-        failed = (battery.is_err(), charger_reading.is_err());
-        publish(PowerSnapshot {
-            battery: battery.unwrap_or(PowerReading::unavailable(PowerAvailability::Fault)),
-            charger: charger_reading.unwrap_or(PowerReading::unavailable(PowerAvailability::Fault)),
-        });
-        select(Timer::after(poll_interval), pause.requested()).await;
-    }
+    SERVICE.prepare(
+        Observer::new(
+            paper_mesh_bq27220::Bq27220::new(bus),
+            paper_mesh_bq25896::observation::Observer::new(bus),
+        ),
+        || Instant::now().as_millis(),
+        move || Timer::after(poll_interval),
+    )
 }

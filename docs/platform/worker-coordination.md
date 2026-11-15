@@ -104,7 +104,11 @@ Power-off preparation leaves all workers paused until power removal or reset.
 
 ## Power observation integration
 
-The [power observation module](../../firmware/src/power/observation.rs) starts its periodic worker and returns a `PowerObservationLifecycle` handle.
+The [portable power observer](../adapters/power-observation.md) performs sampling and pause checkpoints.
+The crate owns the task, cache, notification signal, and pause channel. It returns lifecycle and worker handles. The caller reads observations through its existing service reference.
+Firmware supplies device capabilities, storage, timing policy, and executor placement.
+
+The [power observation module](../../firmware/src/power/observation.rs) prepares crate-owned workers and returns a crate-owned `Lifecycle` handle.
 The BQ27220 and BQ25896 drivers implement platform `BatteryGauge` and `ChargerObserver`.
 Each driver uses [shared bus ownership](shared-bus.md) to hold the bus for the complete observation and release it before returning.
 The observer calls these traits for both periodic observations and direct suspend comparisons.

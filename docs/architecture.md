@@ -11,6 +11,7 @@ The toolkit has no dependency on a particular application.
 | --- | --- | --- |
 | [`crates/app`](../crates/app/src/lib.rs) | Application state, screens, layout, actions, and policy choices | `paper-mesh-platform` |
 | [`crates/platform`](../crates/platform/src/lib.rs) | Application toolkit and portable contracts | None |
+| [`crates/power-observation`](../crates/power-observation/README.md) | Independent power sampling and cooperative observation loop | Platform observation and pause contracts |
 | [`crates/gnss`](../crates/gnss/README.md) | Portable NMEA decoding, acquisition, and optional baud probing | Platform serial and location contracts |
 | [`crates/bq25896`](../crates/bq25896/README.md) | Charger observations and guarded battery isolation through I2C | Platform charger state |
 | [`crates/bq27220`](../crates/bq27220/README.md) | Portable fuel-gauge observations through I2C | Platform battery state |
@@ -126,6 +127,9 @@ Firmware separates [power observations](../firmware/src/power/observation.rs) fr
 The observation module owns cached snapshots, notifications, immediate reads, and worker lifecycle coordination.
 The battery and charger drivers implement platform observation traits through the platform `Arbitrated` bus.
 Firmware supplies its configured bus and owns observation scheduling.
+The [portable power observer](adapters/power-observation.md) owns sampling and the cooperative worker loop.
+The observer crate owns task storage, cached observations, notifications, and lifecycle coordination.
+Firmware supplies devices, static service storage, timing policy, and executor placement.
 The runtime selects its polling interval. Power-off checks and battery isolation do not depend on the observation worker.
 The application also requests explicit lifecycle transitions through portable request and error types.
 The runtime coordinates display completion and service preparation before the backend changes system power.
