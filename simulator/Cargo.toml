@@ -22,7 +22,7 @@ tokio = { version = "=1.54.1", features = ["rt", "macros", "net", "time"] }
 paper-mesh-bq25896 = { path = "../crates/bq25896" }
 paper-mesh-bq27220 = { path = "../crates/bq27220" }
 paper-mesh-gnss = { path = "../crates/gnss" }
-heapless = "=0.9.3"
+heapless = "=0.9.4"
 embassy-sync = "=0.8.0"
 embedded-hal = "=1.0.0"
 bt-hci = "=0.11.0"
