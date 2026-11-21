@@ -170,7 +170,7 @@ dependencies = [
  "embedded-io 0.7.1",
  "embedded-io-async 0.7.0",
  "futures-intrusive",
- "heapless 0.9.3",
+ "heapless 0.8.0",
 ]
 
 [[package]]
@@ -536,7 +536,7 @@ dependencies = [
  "embedded-io-async 0.7.0",
  "futures-core",
  "futures-sink",
- "heapless 0.9.3",
+ "heapless 0.9.4",
 ]
 
 [[package]]
@@ -578,7 +578,7 @@ dependencies = [
  "embassy-time",
  "embassy-usb-driver",
  "embedded-io-async 0.7.0",
- "heapless 0.9.3",
+ "heapless 0.9.4",
  "log",
 ]
 
@@ -1127,9 +1127,9 @@ dependencies = [
 
 [[package]]
 name = "heapless"
-version = "0.9.3"
+version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "25ba4bd83f9415b58b4ed8dc5714c76e626a105be4646c02630ad730ad3b5aa4"
+checksum = "411fdef4df93751117bd9ef8caa0e7f99c65dafec5bd84313eb8e2fdd75e32f2"
 dependencies = [
  "hash32",
  "stable_deref_trait",
@@ -1442,7 +1442,7 @@ name = "paper-mesh-app"
 version = "0.1.0"
 dependencies = [
  "embedded-graphics",
- "heapless 0.9.3",
+ "heapless 0.9.4",
  "paper-mesh-platform",
 ]
 
@@ -1482,7 +1482,7 @@ dependencies = [
  "embassy-usb",
  "embedded-graphics",
  "esp-hal",
- "heapless 0.9.3",
+ "heapless 0.9.4",
  "log",
  "paper-mesh-gt911",
  "paper-mesh-hid-touchpad",
@@ -1531,7 +1531,7 @@ dependencies = [
  "embedded-graphics",
  "embedded-iconoir",
  "embedded-io-async 0.7.0",
- "heapless 0.9.3",
+ "heapless 0.9.4",
  "time",
 ]
 
@@ -1557,7 +1557,7 @@ dependencies = [
  "embassy-sync 0.8.0",
  "embedded-graphics",
  "embedded-hal 1.0.0",
- "heapless 0.9.3",
+ "heapless 0.9.4",
  "paper-mesh-app",
  "paper-mesh-bq25896",
  "paper-mesh-bq27220",
